@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Marché 241 API</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            background-color: #000;
+            color: #fff;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+        }
+        
+        .container {
+            max-width: 800px;
+            padding: 2rem;
+        }
+        
+        .logo {
+            font-size: 3rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            letter-spacing: 2px;
+        }
+        
+        .tagline {
+            font-size: 1.2rem;
+            margin-bottom: 2rem;
+            opacity: 0.8;
+        }
+        
+        .status {
+            display: inline-block;
+            padding: 0.5rem 1rem;
+            background-color: #111;
+            border: 1px solid #333;
+            border-radius: 4px;
+            margin-bottom: 2rem;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            background-color: #0f0;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        
+        .api-info {
+            background-color: #111;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 1.5rem;
+            text-align: left;
+            margin-bottom: 2rem;
+        }
+        
+        .endpoint {
+            margin: 1rem 0;
+            padding: 0.8rem;
+            background-color: #0a0a0a;
+            border-radius: 4px;
+            border-left: 3px solid #333;
+        }
+        
+        .endpoint:hover {
+            border-left-color: #fff;
+        }
+        
+        .method {
+            display: inline-block;
+            padding: 0.2rem 0.5rem;
+            border-radius: 3px;
+            font-size: 0.8rem;
+            margin-right: 0.5rem;
+            font-weight: bold;
+        }
+        
+        .get { background-color: #222; }
+        .post { background-color: #222; }
+        .put { background-color: #222; }
+        .delete { background-color: #222; }
+        
+        .url {
+            font-family: 'Courier New', Courier, monospace;
+            font-weight: 600;
+        }
+        
+        .description {
+            margin-top: 0.5rem;
+            opacity: 0.7;
+            font-size: 0.9rem;
+        }
+        
+        footer {
+            margin-top: 2rem;
+            opacity: 0.6;
+            font-size: 0.8rem;
+        }
+        
+        a {
+            color: #fff;
+            text-decoration: none;
+            border-bottom: 1px dotted #555;
+        }
+        
+        a:hover {
+            border-bottom: 1px solid #fff;
+        }
+        
+        .version {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            font-size: 0.8rem;
+            opacity: 0.5;
+        }
+    </style>
+</head>
+<body>
+    <div class="version">v1.0.0</div>
+    
+    <div class="container">
+        <div class="logo">MARCHÉ 241</div>
+        <div class="tagline">API pour la plateforme de commerce électronique gabonaise</div>
+        
+        <div class="status">
+            <span class="status-indicator"></span>
+            API en ligne
+        </div>
+        
+        <div class="api-info">
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <span class="url">/api/v1/boutiques</span>
+                <div class="description">Récupérer toutes les boutiques</div>
+            </div>
+            
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <span class="url">/api/v1/boutiques/:id</span>
+                <div class="description">Récupérer une boutique par son ID</div>
+            </div>
+            
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <span class="url">/api/v1/boutiques/slug/:slug</span>
+                <div class="description">Récupérer une boutique par son slug</div>
+            </div>
+            
+            <div class="endpoint">
+                <span class="method post">POST</span>
+                <span class="url">/api/v1/vendeurs/code</span>
+                <div class="description">Demander un code de vérification</div>
+            </div>
+            
+            <div class="endpoint">
+                <span class="method post">POST</span>
+                <span class="url">/api/v1/vendeurs/verification</span>
+                <div class="description">Vérifier un code de vérification</div>
+            </div>
+        </div>
+        
+        <footer>
+            &copy; 2025 Marché 241 - Développé par <a href="#">Eben Ezer MOMBO</a>
+        </footer>
+    </div>
+    
+    <script>
+        // Afficher la date et l'heure actuelles
+        const now = new Date();
+        document.querySelector('.status').innerHTML += ` - ${now.toLocaleString()}`;
+        
+        // Animation du point de statut
+        setInterval(() => {
+            const statusIndicator = document.querySelector('.status-indicator');
+            statusIndicator.style.opacity = statusIndicator.style.opacity === '0.4' ? '1' : '0.4';
+        }, 1000);
+    </script>
+</body>
+</html>
