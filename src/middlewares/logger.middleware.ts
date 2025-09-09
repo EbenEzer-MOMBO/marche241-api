@@ -17,11 +17,12 @@ const logFilePath = path.join(logsDir, 'app.log');
 export const requestLogger = (req: Request, res: Response, next: NextFunction) => {
   const start = Date.now();
   
-  // Capturer la réponse
+  // Capturer la réponse (sans modifier le type Response)
+  let responseBody: any;
   const originalSend = res.send;
   res.send = function(body) {
+    responseBody = body;
     res.send = originalSend;
-    res.body = body;
     return originalSend.call(this, body);
   };
   
