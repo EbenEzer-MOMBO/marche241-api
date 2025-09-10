@@ -76,13 +76,6 @@ const router = Router();
 router.get('/', validateQuery(paginationQuerySchema), BoutiqueController.getAllBoutiques);
 
 /**
- * @route   GET /api/v1/boutiques/:id
- * @desc    Récupère une boutique par son ID
- * @access  Public
- */
-router.get('/:id', validateParams(idParamSchema), BoutiqueController.getBoutiqueById);
-
-/**
  * @route   GET /api/v1/boutiques/slug/:slug
  * @desc    Récupère une boutique par son slug
  * @access  Public
@@ -95,6 +88,13 @@ router.get('/slug/:slug', validateParams(slugParamSchema), BoutiqueController.ge
  * @access  Public
  */
 router.get('/vendeur/:vendeurId', validateParams(idParamSchema), BoutiqueController.getBoutiquesByVendeurId);
+
+/**
+ * @route   GET /api/v1/boutiques/:id
+ * @desc    Récupère une boutique par son ID
+ * @access  Public
+ */
+router.get('/:id', validateParams(idParamSchema), BoutiqueController.getBoutiqueById);
 
 /**
  * @route   POST /api/v1/boutiques

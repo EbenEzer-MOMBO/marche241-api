@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import boutiqueRoutes from './boutique.routes';
 import vendeurRoutes from './vendeur.routes';
+import categorieRoutes from './categorie.routes';
+import produitRoutes from './produit.routes';
 
 const router = Router();
 
@@ -12,6 +14,12 @@ router.use(`${apiPrefix}/boutiques`, boutiqueRoutes);
 
 // Routes pour les vendeurs
 router.use(`${apiPrefix}/vendeurs`, vendeurRoutes);
+
+// Routes pour les catégories
+router.use(`${apiPrefix}/categories`, categorieRoutes);
+
+// Routes pour les produits
+router.use(`${apiPrefix}/produits`, produitRoutes);
 
 // Ajouter d'autres routes ici au fur et à mesure
 

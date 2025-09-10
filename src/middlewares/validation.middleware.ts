@@ -94,8 +94,8 @@ export const validateQuery = (schema: any) => {
         return next(apiError);
       }
 
-      // Remplacer les paramètres de requête par les données validées
-      req.query = value;
+      // Au lieu de remplacer req.query, nous stockons les valeurs validées dans une propriété personnalisée
+      (req as any).validatedQuery = value;
       next();
     } catch (err) {
       next(err);

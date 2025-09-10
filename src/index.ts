@@ -1,14 +1,44 @@
 import app from './app';
 import dotenv from 'dotenv';
+import os from 'os';
 
 // Charger les variables d'environnement
 dotenv.config();
 
 const port = process.env.PORT || 3000;
 
-// Démarrer le serveur
-app.listen(port, () => {
+// Démarrer le serveur sur toutes les interfaces réseau (0.0.0.0)
+app.listen(3000, '0.0.0.0', () => {
   console.log(`🚀 Serveur démarré sur le port ${port}`);
   console.log(`📝 Environnement: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🔗 API disponible à l'adresse: http://localhost:${port}${process.env.API_PREFIX || '/api/v1'}`);
+  console.log(`🔗 API disponible localement à l'adresse: http://localhost:${port}${process.env.API_PREFIX || '/api/v1'}`);
+  
+  // Afficher l'adresse IP locale pour faciliter l'accès depuis d'autres appareils
+  const nets = os.networkInterfaces();
+  const results: {[key: string]: string[]} = {};
+
+  if (nets) {
+    for (const name of Object.keys(nets)) {
+      const interfaces = nets[name];
+      if (interfaces) {
+        for (const net of interfaces) {
+          // Ignorer les interfaces non IPv4 et les interfaces de bouclage interne
+          if (net.family === 'IPv4' && !net.internal) {
+            if (!results[name]) {
+              results[name] = [];
+            }
+            results[name].push(net.address);
+          }
+        }
+      }
+    }
+  }
+  
+  // Afficher les adresses IP disponibles
+  console.log('\n🌐 API disponible sur le réseau aux adresses suivantes:');
+  for (const [dev, addresses] of Object.entries(results)) {
+    for (const addr of addresses) {
+      console.log(`   http://${addr}:${port}${process.env.API_PREFIX || '/api/v1'}`);
+    }
+  }
 });

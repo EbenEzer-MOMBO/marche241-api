@@ -31,21 +31,23 @@ export class BoutiqueController {
   }
 
   /**
-   * Récupère une boutique par son ID
+   * Récupère une boutique par son ID ou son slug
    */
   static async getBoutiqueById(req: Request, res: Response): Promise<void> {
     try {
-      const id = parseInt(req.params.id);
+      const idOrSlug = req.params.id;
+      let boutique;
       
-      if (isNaN(id)) {
-        res.status(400).json({
-          success: false,
-          message: 'ID de boutique invalide'
-        });
-        return;
+      // Vérifier si l'ID est un nombre ou une chaîne
+      const id = parseInt(idOrSlug);
+      
+      if (!isNaN(id)) {
+        // Si c'est un nombre, rechercher par ID
+        boutique = await BoutiqueModel.getBoutiqueById(id);
+      } else {
+        // Sinon, rechercher par slug
+        boutique = await BoutiqueModel.getBoutiqueBySlug(idOrSlug);
       }
-
-      const boutique = await BoutiqueModel.getBoutiqueById(id);
       
       if (!boutique) {
         res.status(404).json({

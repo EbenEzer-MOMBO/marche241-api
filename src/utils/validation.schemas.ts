@@ -128,8 +128,11 @@ export const updateBoutiqueStatusSchema = Joi.object({
 
 // Schémas pour les paramètres
 export const idParamSchema = Joi.object({
-  id: Joi.number().integer().required().messages({
-    'number.base': 'L\'ID doit être un nombre',
+  id: Joi.alternatives().try(
+    Joi.number().integer(),
+    Joi.string().min(2).max(100).pattern(/^[a-z0-9-_]+$/)
+  ).required().messages({
+    'alternatives.match': 'L\'ID doit être un nombre ou un slug valide',
     'any.required': 'L\'ID est obligatoire'
   })
 });

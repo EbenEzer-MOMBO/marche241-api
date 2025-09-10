@@ -96,7 +96,7 @@ export interface Categorie {
 }
 
 // Table produits
-export interface ProduitDB {
+export interface Produit {
   id: number;
   nom: string;
   slug: string;
@@ -184,7 +184,7 @@ export interface CommandeArticle {
   
   // Relations
   commande?: Commande;
-  produit?: ProduitDB;
+  produit?: Produit;
 }
 
 // Table transactions
@@ -227,7 +227,7 @@ export interface AvisProduit {
   date_moderation?: Date;
   
   // Relations
-  produit?: ProduitDB;
+  produit?: Produit;
   commande?: Commande;
 }
 
@@ -244,11 +244,11 @@ export interface Panier {
   
   // Relations
   boutique?: Boutique;
-  produit?: ProduitDB;
+  produit?: Produit;
 }
 
 // Vues
-export interface ProduitComplet extends ProduitDB {
+export interface ProduitComplet extends Produit {
   nom_boutique: string;
   slug_boutique: string;
   logo_boutique?: string;
@@ -395,7 +395,7 @@ export interface StatistiquesBoutique {
   chiffre_affaires: number; // En centimes
   note_moyenne: number;
   nombre_avis: number;
-  produits_populaires: ProduitDB[];
+  produits_populaires: Produit[];
   commandes_recentes: Commande[];
 }
 
