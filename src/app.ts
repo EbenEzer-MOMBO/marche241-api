@@ -15,7 +15,7 @@ const port = process.env.PORT || 3000;
 
 // Middlewares
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || '*',
+  origin: [process.env.CORS_ORIGIN || '*', 'https://*.up.railway.app'],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
