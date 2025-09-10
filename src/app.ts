@@ -15,12 +15,20 @@ const port = process.env.PORT || 3000;
 
 // Middlewares
 app.use(cors({
-  origin: [process.env.CORS_ORIGIN || '*', 'https://*.up.railway.app'],
+  origin: [
+    process.env.CORS_ORIGIN || '*',
+    'https://marche241-production.up.railway.app',
+    'https://marche241-backend-production.up.railway.app'
+  ],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
+  optionsSuccessStatus: 200
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+
 
 // Logger middleware
 app.use(requestLogger);
