@@ -3,6 +3,7 @@ import boutiqueRoutes from './boutique.routes';
 import vendeurRoutes from './vendeur.routes';
 import categorieRoutes from './categorie.routes';
 import produitRoutes from './produit.routes';
+import panierRoutes from './panier.routes';
 
 const router = Router();
 
@@ -20,6 +21,9 @@ router.use(`${apiPrefix}/categories`, categorieRoutes);
 
 // Routes pour les produits
 router.use(`${apiPrefix}/produits`, produitRoutes);
+
+// Routes pour le panier
+router.use(`${apiPrefix}/panier`, panierRoutes);
 
 // Ajouter d'autres routes ici au fur et à mesure
 

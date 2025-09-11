@@ -161,3 +161,44 @@ export const paginationQuerySchema = Joi.object({
     'any.only': 'L\'ordre doit être ASC ou DESC'
   })
 });
+
+// Schémas de validation pour le panier
+export const sessionIdParamSchema = Joi.object({
+  sessionId: Joi.string().required().messages({
+    'any.required': 'L\'ID de session est obligatoire'
+  })
+});
+
+export const addToCartSchema = Joi.object({
+  session_id: Joi.string().required().messages({
+    'any.required': 'L\'ID de session est obligatoire'
+  }),
+  boutique_id: Joi.number().integer().required().messages({
+    'number.base': 'L\'ID de la boutique doit être un nombre',
+    'any.required': 'L\'ID de la boutique est obligatoire'
+  }),
+  produit_id: Joi.number().integer().required().messages({
+    'number.base': 'L\'ID du produit doit être un nombre',
+    'any.required': 'L\'ID du produit est obligatoire'
+  }),
+  quantite: Joi.number().integer().min(1).required().messages({
+    'number.base': 'La quantité doit être un nombre',
+    'number.min': 'La quantité doit être supérieure ou égale à {#limit}',
+    'any.required': 'La quantité est obligatoire'
+  }),
+  variants_selectionnes: Joi.object().allow(null)
+});
+
+export const updateCartQuantitySchema = Joi.object({
+  quantite: Joi.number().integer().min(1).required().messages({
+    'number.base': 'La quantité doit être un nombre',
+    'number.min': 'La quantité doit être supérieure ou égale à {#limit}',
+    'any.required': 'La quantité est obligatoire'
+  })
+});
+
+export const updateCartVariantsSchema = Joi.object({
+  variants_selectionnes: Joi.object().required().messages({
+    'any.required': 'Les variants sélectionnés sont obligatoires'
+  })
+});

@@ -17,6 +17,7 @@ const port = process.env.PORT || 3000;
 app.use(cors({
   origin: [
     process.env.CORS_ORIGIN || '*',
+    'http://localhost:3001',
     'https://marche241-production.up.railway.app',
     'https://marche241-backend-production.up.railway.app'
   ],
