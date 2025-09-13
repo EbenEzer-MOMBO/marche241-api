@@ -5,10 +5,10 @@ import os from 'os';
 // Charger les variables d'environnement
 dotenv.config();
 
-const port = process.env.PORT || 3000;
+const port = parseInt(process.env.PORT || '3000', 10);
 
 // Démarrer le serveur sur toutes les interfaces réseau (0.0.0.0)
-app.listen(3000, '0.0.0.0', () => {
+app.listen(port, '0.0.0.0', () => {
   console.log(`🚀 Serveur démarré sur le port ${port}`);
   console.log(`📝 Environnement: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🔗 API disponible localement à l'adresse: http://localhost:${port}${process.env.API_PREFIX || '/api/v1'}`);
