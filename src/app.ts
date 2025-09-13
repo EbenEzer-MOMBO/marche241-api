@@ -11,13 +11,13 @@ import { setupSwagger } from './utils/swagger';
 dotenv.config();
 
 const app: Application = express();
-const port = process.env.PORT || 3000;
+const port = parseInt(process.env.PORT || '3000', 10);
 
 // Middlewares
 app.use(cors({
   origin: [
     process.env.CORS_ORIGIN || '*',
-    'http://localhost:3001',
+    'http://localhost:3000',
     'https://marche241-production.up.railway.app',
     'https://marche241-backend-production.up.railway.app'
   ],
