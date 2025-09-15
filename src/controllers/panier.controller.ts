@@ -19,11 +19,82 @@ export class PanierController {
       }
 
       const panierItems = await PanierModel.getPanierBySessionId(sessionId);
+      
+      // Vérifier la disponibilité et le stock de chaque produit
+      const panierItemsVerifies = [];
+      const produitsIndisponibles = [];
+      const quantitesAjustees = [];
 
-      res.status(200).json({
+      for (const item of panierItems) {
+        const produit = item.produit;
+        
+        // Vérifier si le produit existe et est actif
+        if (!produit || produit.statut !== 'actif') {
+          produitsIndisponibles.push({
+            id: item.id,
+            nom: produit?.nom || 'Produit inconnu',
+            raison: 'Produit non disponible'
+          });
+          // Supprimer l'élément du panier
+          await PanierModel.removeFromCart(item.id);
+          continue;
+        }
+
+        // Vérifier le stock disponible
+        const stockDisponible = produit.quantite_stock || 0;
+        
+        if (stockDisponible === 0) {
+          produitsIndisponibles.push({
+            id: item.id,
+            nom: produit.nom,
+            raison: 'Produit en rupture de stock'
+          });
+          // Supprimer l'élément du panier
+          await PanierModel.removeFromCart(item.id);
+          continue;
+        }
+
+        // Vérifier si la quantité demandée est disponible
+        if (item.quantite > stockDisponible) {
+          // Ajuster la quantité au stock disponible
+          const nouvelleQuantite = stockDisponible;
+          await PanierModel.updateCartItemQuantity(item.id, nouvelleQuantite);
+          
+          quantitesAjustees.push({
+            id: item.id,
+            nom: produit.nom,
+            quantiteOriginale: item.quantite,
+            nouvelleQuantite: nouvelleQuantite,
+            stockDisponible: stockDisponible
+          });
+          
+          // Mettre à jour l'item avec la nouvelle quantité
+          item.quantite = nouvelleQuantite;
+        }
+
+        panierItemsVerifies.push(item);
+      }
+
+      // Préparer la réponse avec les informations de vérification
+      const response: any = {
         success: true,
-        panier: panierItems
-      });
+        panier: panierItemsVerifies
+      };
+
+      // Ajouter les avertissements si nécessaire
+      if (produitsIndisponibles.length > 0 || quantitesAjustees.length > 0) {
+        response.avertissements = {};
+        
+        if (produitsIndisponibles.length > 0) {
+          response.avertissements.produitsSupprimes = produitsIndisponibles;
+        }
+        
+        if (quantitesAjustees.length > 0) {
+          response.avertissements.quantitesAjustees = quantitesAjustees;
+        }
+      }
+
+      res.status(200).json(response);
     } catch (error: any) {
       res.status(500).json({
         success: false,
