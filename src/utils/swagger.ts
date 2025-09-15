@@ -46,7 +46,8 @@ const swaggerOptions = {
   },
   apis: [
     './src/routes/*.ts',
-    './src/utils/swagger-schemas.ts'
+    './src/utils/swagger-schemas.ts',
+    './src/utils/swagger-schemas.commune.ts'
   ] // Chemins vers les fichiers avec les annotations JSDoc
 };
 
