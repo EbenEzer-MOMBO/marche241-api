@@ -5,6 +5,9 @@ import categorieRoutes from './categorie.routes';
 import produitRoutes from './produit.routes';
 import panierRoutes from './panier.routes';
 import communeRoutes from './commune.routes';
+import transactionRoutes from './transaction.routes';
+import paiementRoutes from './paiement.routes';
+import commandeRoutes from './commande.routes';
 
 const router = Router();
 
@@ -28,6 +31,15 @@ router.use(`${apiPrefix}/panier`, panierRoutes);
 
 // Routes pour les communes de livraison
 router.use(`${apiPrefix}/communes`, communeRoutes);
+
+// Routes pour les transactions
+router.use(`${apiPrefix}/transactions`, transactionRoutes);
+
+// Routes pour les paiements
+router.use(`${apiPrefix}/paiements`, paiementRoutes);
+
+// Routes pour les commandes
+router.use(`${apiPrefix}/commandes`, commandeRoutes);
 
 // Ajouter d'autres routes ici au fur et à mesure
 

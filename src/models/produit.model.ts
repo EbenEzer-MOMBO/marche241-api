@@ -3,6 +3,64 @@ import { Produit } from '../lib/database-types';
 
 export class ProduitModel {
   /**
+   * Met à jour le stock d'un produit
+   * @param produitId ID du produit
+   * @param quantite Quantité à décrémenter (valeur positive pour décrémenter, négative pour incrémenter)
+   * @returns Le produit mis à jour
+   */
+  static async updateStock(produitId: number, quantite: number): Promise<Produit> {
+    console.log(`[ProduitModel] Mise à jour du stock pour le produit ${produitId}, quantité: ${quantite}`);
+    
+    try {
+      // Récupérer le produit actuel pour vérifier le stock disponible
+      const { data: produit, error: produitError } = await supabaseAdmin
+        .from('produits')
+        .select('stock')
+        .eq('id', produitId)
+        .single();
+      
+      if (produitError) {
+        console.error(`[ProduitModel] Erreur lors de la récupération du produit: ${produitError.message}`);
+        throw new Error(`Erreur lors de la récupération du produit: ${produitError.message}`);
+      }
+      
+      if (!produit) {
+        console.error(`[ProduitModel] Produit non trouvé: ${produitId}`);
+        throw new Error(`Produit non trouvé: ${produitId}`);
+      }
+      
+      // Vérifier si le stock est suffisant
+      const nouveauStock = produit.stock - quantite;
+      if (nouveauStock < 0) {
+        console.error(`[ProduitModel] Stock insuffisant pour le produit ${produitId}: ${produit.stock} < ${quantite}`);
+        throw new Error(`Stock insuffisant pour le produit ${produitId}`);
+      }
+      
+      // Mettre à jour le stock
+      const { data: produitMisAJour, error: updateError } = await supabaseAdmin
+        .from('produits')
+        .update({
+          stock: nouveauStock,
+          date_modification: new Date()
+        })
+        .eq('id', produitId)
+        .select()
+        .single();
+      
+      if (updateError) {
+        console.error(`[ProduitModel] Erreur lors de la mise à jour du stock: ${updateError.message}`);
+        throw new Error(`Erreur lors de la mise à jour du stock: ${updateError.message}`);
+      }
+      
+      console.log(`[ProduitModel] Stock mis à jour pour le produit ${produitId}: ${produit.stock} -> ${nouveauStock}`);
+      return produitMisAJour;
+    } catch (error) {
+      console.error(`[ProduitModel] Exception dans updateStock:`, error);
+      throw error;
+    }
+  }
+  
+  /**
    * Récupère tous les produits avec pagination
    */
   static async getAllProduits(page: number = 1, limite: number = 10, tri_par: string = 'date_creation', ordre: 'ASC' | 'DESC' = 'DESC'): Promise<{ produits: Produit[], total: number }> {
