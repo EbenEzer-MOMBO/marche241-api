@@ -2,9 +2,68 @@ import { Request, Response } from 'express';
 import axios from 'axios';
 import { TransactionModel } from '../models/transaction.model';
 import { CommandeModel } from '../models/commande.model';
-import { StatutPaiement } from '../lib/database-types';
+import { StatutPaiement, Transaction } from '../lib/database-types';
+import { ProduitModel } from '../models/produit.model';
 
 export class PaiementController {
+  /**
+   * Vérifie que le montant d'une transaction correspond au total réel des articles de la commande
+   * @param transaction Transaction à vérifier
+   * @returns {Promise<boolean>} true si le montant est correct, false sinon
+   */
+  private static async verifierMontantTransaction(transaction: Transaction): Promise<{ isValid: boolean, message?: string }> {
+    console.log(`[PaiementController] Vérification du montant de la transaction ${transaction.id}`);
+
+    try {
+      const commandeId = transaction.commande_id;
+      if (!commandeId) {
+        console.log(`[PaiementController] Pas de commande associée à la transaction ${transaction.id}`);
+        return { isValid: true }; // Pas de commande à vérifier
+      }
+
+      // Récupérer la commande avec ses articles
+      const commande = await CommandeModel.getCommandeById(commandeId);
+      if (!commande) {
+        console.error(`[PaiementController] Commande ${commandeId} non trouvée`);
+        return { isValid: false, message: `Commande ${commandeId} non trouvée` };
+      }
+
+      // Vérifier que la commande a des articles
+      const articles = commande.articles;
+      if (!articles || articles.length === 0) {
+        console.error(`[PaiementController] Aucun article trouvé pour la commande ${commandeId}`);
+        return { isValid: false, message: `Aucun article trouvé pour la commande ${commandeId}` };
+      }
+
+      // Calculer le total des articles
+      const totalArticles = articles.reduce((sum, article) => {
+        return sum + (article.prix_unitaire * article.quantite);
+      }, 0);
+
+      // Ajouter les frais de livraison si applicable
+      const fraisLivraison = commande.frais_livraison || 0;
+      const totalCalcule = totalArticles + fraisLivraison;
+
+      console.log(`[PaiementController] Montant transaction: ${transaction.montant}, Total calculé: ${totalCalcule}`);
+      console.log(`[PaiementController] Détail: Articles=${totalArticles}, Livraison=${fraisLivraison}`);
+
+      // Vérifier que le montant correspond (avec une tolérance de 1 centime pour les erreurs d'arrondi)
+      const difference = Math.abs(totalCalcule - transaction.montant);
+      if (difference > 1) {
+        console.error(`[PaiementController] Montant incorrect: différence de ${difference}`);
+        return {
+          isValid: false,
+          message: `Montant de la transaction (${transaction.montant}) non conforme au total de la commande (${totalCalcule})`
+        };
+      }
+
+      return { isValid: true };
+    } catch (error: any) {
+      console.error(`[PaiementController] Erreur lors de la vérification du montant:`, error);
+      return { isValid: false, message: `Erreur lors de la vérification du montant: ${error.message || 'Erreur inconnue'}` };
+    }
+  }
+
   /**
    * Initialise un paiement mobile (Airtel Money ou Moov Money)
    * @param req Requête HTTP
@@ -14,28 +73,28 @@ export class PaiementController {
     try {
       console.log('[PaiementController] Début de initierPaiementMobile');
       console.log('[PaiementController] Body reçu:', JSON.stringify(req.body, null, 2));
-      
+
       // Utiliser les données validées par le middleware
       const validatedData = (req as any).validatedBody || req.body;
       console.log('[PaiementController] Données validées:', JSON.stringify(validatedData, null, 2));
-      
-      const { 
-        email, 
-        msisdn, 
-        amount, 
-        reference, 
-        payment_system, 
+
+      const {
+        email,
+        msisdn,
+        amount,
+        reference,
+        payment_system,
         description,
         lastname,
         firstname
       } = validatedData;
-      
-      console.log('[PaiementController] Paramètres extraits:', { 
-        email, 
-        msisdn, 
-        amount, 
-        reference, 
-        payment_system, 
+
+      console.log('[PaiementController] Paramètres extraits:', {
+        email,
+        msisdn,
+        amount,
+        reference,
+        payment_system,
         description,
         lastname,
         firstname
@@ -58,7 +117,7 @@ export class PaiementController {
         firstname
       };
       console.log('[PaiementController] Données de la facture:', JSON.stringify(factureData, null, 2));
-      
+
       const factureResponse = await PaiementController.creerFacture(factureData, accessToken);
       console.log('[PaiementController] Réponse de création de facture:', JSON.stringify(factureResponse, null, 2));
 
@@ -67,21 +126,9 @@ export class PaiementController {
         const billId = factureResponse.response.e_bills[0].bill_id;
         console.log('[PaiementController] ID de facture obtenu:', billId);
 
-        // Mettre à jour la transaction avec l'ID de la facture
+        // Recherche de la transaction avec référence
         console.log('[PaiementController] Recherche de la transaction avec référence:', reference);
         const transaction = await TransactionModel.getTransactionByReference(reference);
-        
-        if (transaction) {
-          console.log('[PaiementController] Transaction trouvée:', JSON.stringify(transaction, null, 2));
-          console.log('[PaiementController] Mise à jour de la transaction avec l\'ID de facture...');
-          await TransactionModel.updateTransaction(transaction.id, {
-            statut: 'en_attente' as StatutPaiement,
-            reference_operateur: billId
-          });
-          console.log('[PaiementController] Transaction mise à jour');
-        } else {
-          console.log('[PaiementController] Aucune transaction trouvée avec la référence:', reference);
-        }
 
         console.log('[PaiementController] Conversion du système de paiement pour Ebilling');
         let payment_system_ebilling = '';
@@ -111,6 +158,7 @@ export class PaiementController {
           bill_id: billId,
           message: 'Paiement mobile initialisé avec succès'
         });
+
       } else {
         console.log('[PaiementController] Erreur: Données de facture invalides dans la réponse');
         res.status(400).json({
@@ -121,7 +169,7 @@ export class PaiementController {
     } catch (error: any) {
       console.error('[PaiementController] Exception dans initierPaiementMobile:', error);
       console.error('[PaiementController] Stack trace:', error.stack);
-      
+
       res.status(500).json({
         success: false,
         message: 'Erreur lors de l\'initialisation du paiement mobile',
@@ -139,12 +187,12 @@ export class PaiementController {
     try {
       console.log('[PaiementController] Début de initierPaiementVisa');
       console.log('[PaiementController] Body reçu:', JSON.stringify(req.body, null, 2));
-      
+
       // Utiliser les données validées par le middleware
       const validatedData = (req as any).validatedBody || req.body;
       console.log('[PaiementController] Données validées:', JSON.stringify(validatedData, null, 2));
-      
-      const { 
+
+      const {
         transaction_id,
         return_url,
         email,
@@ -152,9 +200,9 @@ export class PaiementController {
         lastname,
         firstname
       } = validatedData;
-      
-      console.log('[PaiementController] Paramètres extraits:', { 
-        transaction_id, 
+
+      console.log('[PaiementController] Paramètres extraits:', {
+        transaction_id,
         return_url,
         email,
         msisdn,
@@ -171,6 +219,21 @@ export class PaiementController {
         });
         return;
       }
+
+      // Vérifier que le montant de la transaction correspond au total réel des articles
+      console.log('[PaiementController] Vérification du montant de la transaction...');
+      const montantVerification = await PaiementController.verifierMontantTransaction(transaction);
+
+      if (!montantVerification.isValid) {
+        console.error(`[PaiementController] Erreur de vérification du montant: ${montantVerification.message}`);
+        res.status(400).json({
+          success: false,
+          message: montantVerification.message || 'Montant de la transaction non conforme'
+        });
+        return;
+      }
+
+      console.log('[PaiementController] Montant de la transaction vérifié et conforme');
 
       // Récupérer le jeton d'accès
       const accessToken = await PaiementController.getAccessToken();
@@ -230,11 +293,11 @@ export class PaiementController {
     try {
       console.log('[PaiementController] Début de verifierPaiement');
       console.log('[PaiementController] Paramètres reçus:', JSON.stringify(req.params, null, 2));
-      
+
       // Utiliser les données validées par le middleware
       const validatedParams = (req as any).validatedParams || req.params;
       console.log('[PaiementController] Paramètres validés:', JSON.stringify(validatedParams, null, 2));
-      
+
       const { bill_id } = validatedParams;
       console.log('[PaiementController] ID de facture:', bill_id);
 
@@ -370,7 +433,7 @@ export class PaiementController {
   private static async processPaymentVerification(billId: string): Promise<any> {
     try {
       console.log(`[PaiementController] Début de processPaymentVerification pour billId: ${billId}`);
-      
+
       const SERVER_URL = "https://stg.billing-easy.com/api/v1/merchant/e_bills";
       const USER_NAME = 'weupgrade';
       const SHARED_KEY = 'ae049010-e12a-4b92-8b4a-f83f1c489f97';
@@ -378,13 +441,13 @@ export class PaiementController {
       // Vérifier l'état du bill
       const checkBillUrl = `${SERVER_URL}/${billId}`;
       console.log(`[PaiementController] URL de vérification: ${checkBillUrl}`);
-      
+
       console.log(`[PaiementController] Envoi de la requête GET avec authentification...`);
-      
+
       let billState: string | null = null;
       let psTransactionId: string | null = null;
       let paymentSystemName: string | null = null;
-      
+
       try {
         const response = await axios.get(checkBillUrl, {
           auth: {
@@ -398,7 +461,7 @@ export class PaiementController {
         });
 
         console.log(`[PaiementController] Réponse reçue avec statut: ${response.status}`);
-        
+
         if (response.status !== 200) {
           console.log(`[PaiementController] Erreur: Statut de réponse non 200: ${response.status}`);
           return {
@@ -409,12 +472,12 @@ export class PaiementController {
 
         const billInfo = response.data;
         console.log(`[PaiementController] Informations de la facture:`, JSON.stringify(billInfo, null, 2));
-        
+
         // Récupérer les informations importantes de la facture
         billState = billInfo.state || null;
         psTransactionId = billInfo.ps_transaction_id || null;
         paymentSystemName = billInfo.payment_system_name || null;
-        
+
         console.log(`[PaiementController] État de la facture: ${billState}`);
         console.log(`[PaiementController] ID de transaction du système de paiement: ${psTransactionId || 'Non disponible'}`);
         console.log(`[PaiementController] Nom du système de paiement: ${paymentSystemName || 'Non disponible'}`);
@@ -431,12 +494,12 @@ export class PaiementController {
           message: `Erreur lors de la communication avec le serveur de paiement: ${axiosError.message}`
         };
       }
-      
+
       // On a déjà logué ces informations dans le bloc try
-      
+
       // Rechercher la transaction associée
       const transaction = await TransactionModel.findByReferenceOperateur(billId);
-      
+
       if (!transaction) {
         console.log(`[PaiementController] Aucune transaction trouvée pour la facture ${billId}`);
         return {
@@ -444,13 +507,28 @@ export class PaiementController {
           message: "Transaction non trouvée pour cette facture."
         };
       }
-      
+
       console.log(`[PaiementController] Transaction trouvée:`, JSON.stringify(transaction, null, 2));
-      
+
       // Traiter selon l'état de la facture
       if (billState === 'processed' || billState === 'paid') {
+        console.log(`[PaiementController] Facture ${billId} est ${billState}, vérification du montant...`);
+
+        // Vérifier que le montant de la transaction correspond au total réel des articles
+        const montantVerification = await PaiementController.verifierMontantTransaction(transaction);
+
+        if (!montantVerification.isValid) {
+          console.error(`[PaiementController] Erreur de vérification du montant: ${montantVerification.message}`);
+          return {
+            success: false,
+            message: montantVerification.message || 'Montant de la transaction non conforme',
+            needsReview: true
+          };
+        }
+
+        console.log(`[PaiementController] Montant de la transaction vérifié et conforme`);
         console.log(`[PaiementController] Facture ${billId} est ${billState}, mise à jour de la transaction...`);
-        
+
         // Mettre à jour la transaction avec les informations du paiement
         await TransactionModel.updateTransaction(transaction.id, {
           statut: 'paye' as StatutPaiement,
@@ -478,9 +556,9 @@ export class PaiementController {
         if (paymentSystemName && paymentSystemName !== transaction.methode_paiement) {
           console.log(`[PaiementController] Mise à jour du système de paiement: ${paymentSystemName}`);
           let methode_paiement_format = '';
-          if(paymentSystemName === 'airtelmoney') {
+          if (paymentSystemName === 'airtelmoney') {
             methode_paiement_format = 'airtel_money';
-          }else if(paymentSystemName === 'moovmoney'){
+          } else if (paymentSystemName === 'moovmoney') {
             methode_paiement_format = 'moov_money';
           }
           await TransactionModel.updateTransaction(transaction.id, {
@@ -488,7 +566,7 @@ export class PaiementController {
             notes: `Paiement en attente. Système de paiement: ${paymentSystemName}`
           });
         }
-        
+
         console.log(`[PaiementController] Paiement en attente (ready) pour la facture ${billId}`);
         return {
           success: false,
