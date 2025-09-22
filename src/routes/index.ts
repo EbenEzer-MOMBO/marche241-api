@@ -8,6 +8,7 @@ import communeRoutes from './commune.routes';
 import transactionRoutes from './transaction.routes';
 import paiementRoutes from './paiement.routes';
 import commandeRoutes from './commande.routes';
+import whatsappRoutes from './whatsapp.routes';
 
 const router = Router();
 
@@ -40,6 +41,9 @@ router.use(`${apiPrefix}/paiements`, paiementRoutes);
 
 // Routes pour les commandes
 router.use(`${apiPrefix}/commandes`, commandeRoutes);
+
+// Routes pour WhatsApp
+router.use(`${apiPrefix}/whatsapp`, whatsappRoutes);
 
 // Ajouter d'autres routes ici au fur et à mesure
 
