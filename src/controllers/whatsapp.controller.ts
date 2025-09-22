@@ -281,19 +281,36 @@ export class WhatsAppController {
             prix: 5000
           }
         ],
-        adresseLivraison: 'Adresse de test'
+        adresseLivraison: 'Adresse de test',
+        nomBoutique: 'Marché 241'
       };
 
-      // Test avec le template hello_world qui fonctionne
+      // Préparation de la liste des produits formatée
+      const produitsFormatte = commandeTest.produits
+        .map((p: any) => `• ${p.nom} (x${p.quantite}) - ${p.prix} FCFA`)
+        .join('\n');
+
+      // Test avec le template commande_validee et les variables attendues
       const messageTest = {
         messaging_product: 'whatsapp' as const,
         to: WhatsAppService.formaterNumeroWhatsApp(telephone),
         type: 'template' as const,
         template: {
-          name: 'hello_world',
+          name: 'commande_validation',
           language: {
-            code: 'en_US'
-          }
+            code: 'fr'
+          },
+          components: [{
+            type: 'body',
+            parameters: [
+              { type: 'text', text: commandeTest.nomClient },                // customer_name
+              { type: 'text', text: commandeTest.numeroCommande },            // order_number
+              { type: 'text', text: commandeTest.montantTotal.toString() },    // total_amount
+              { type: 'text', text: commandeTest.dateCommande },              // order_date
+              { type: 'text', text: produitsFormatte },                        // product_list
+              { type: 'text', text: commandeTest.nomBoutique }                // shop_name1
+            ]
+          }]
         }
       };
 
@@ -310,7 +327,9 @@ export class WhatsAppController {
         data: {
           messageId: resultat.messages?.[0]?.id,
           numeroDestination: WhatsAppService.formaterNumeroWhatsApp(telephone),
-          commandeTest: commandeTest
+          commandeTest: commandeTest,
+          templateUtilise: 'commande_validee',
+          parametresTemplate: messageTest.template.components[0].parameters
         }
       });
 
