@@ -314,13 +314,13 @@ export interface UpdateCommuneLivraison {
 // Interfaces pour l'authentification
 // ===================================
 
-// Types pour l'authentification par code WhatsApp
+// Types pour l'authentification par code email
 export interface DemandeCodeVerification {
-  telephone: string;
+  email: string;
 }
 
 export interface VerificationCode {
-  telephone: string;
+  email: string;
   code: string;
 }
 

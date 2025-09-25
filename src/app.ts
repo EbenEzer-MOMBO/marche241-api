@@ -6,9 +6,13 @@ import routes from './routes';
 import { errorHandler, notFound } from './middlewares/error.middleware';
 import { requestLogger, errorLogger } from './middlewares/logger.middleware';
 import { setupSwagger } from './utils/swagger';
+import { EmailService } from './services/email.service';
 
 // Charger les variables d'environnement
 dotenv.config();
+
+// Initialiser les services
+EmailService.initialize();
 
 const app: Application = express();
 const port = parseInt(process.env.PORT || '3000', 10);

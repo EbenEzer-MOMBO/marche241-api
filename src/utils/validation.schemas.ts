@@ -36,19 +36,19 @@ export const updateVendeurSchema = Joi.object({
 });
 
 export const demandeCodeSchema = Joi.object({
-  telephone: Joi.string().required().pattern(/^\+?[0-9]{8,15}$/).messages({
-    'string.pattern.base': 'Le numéro de téléphone doit être au format international (8-15 chiffres)',
-    'any.required': 'Le numéro de téléphone est obligatoire'
+  email: Joi.string().required().email().messages({
+    'string.email': 'L\'adresse email n\'est pas valide',
+    'any.required': 'L\'adresse email est obligatoire'
   })
 });
 
 export const verificationCodeSchema = Joi.object({
-  telephone: Joi.string().required().pattern(/^\+?[0-9]{8,15}$/).messages({
-    'string.pattern.base': 'Le numéro de téléphone doit être au format international (8-15 chiffres)',
-    'any.required': 'Le numéro de téléphone est obligatoire'
+  email: Joi.string().required().email().messages({
+    'string.email': 'L\'adresse email n\'est pas valide',
+    'any.required': 'L\'adresse email est obligatoire'
   }),
-  code: Joi.string().required().pattern(/^[0-9]{4}$/).messages({
-    'string.pattern.base': 'Le code doit être composé de 4 chiffres',
+  code: Joi.string().required().pattern(/^[0-9]{6}$/).messages({
+    'string.pattern.base': 'Le code doit être composé de 6 chiffres',
     'any.required': 'Le code est obligatoire'
   })
 });

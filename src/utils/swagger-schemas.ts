@@ -70,7 +70,7 @@
  *       type: object
  *       required:
  *         - id
- *         - telephone
+ *         - email
  *         - nom
  *         - tentatives_code
  *         - date_creation
@@ -80,16 +80,16 @@
  *         id:
  *           type: integer
  *           description: ID unique du vendeur
- *         telephone:
- *           type: string
- *           description: Numéro de téléphone du vendeur (identifiant principal)
- *         nom:
- *           type: string
- *           description: Nom du vendeur
  *         email:
  *           type: string
  *           format: email
- *           description: Adresse email du vendeur
+ *           description: Adresse email du vendeur (identifiant principal)
+ *         nom:
+ *           type: string
+ *           description: Nom du vendeur
+ *         telephone:
+ *           type: string
+ *           description: Numéro de téléphone du vendeur (optionnel)
  *         code_verification:
  *           type: string
  *           description: Code de vérification temporaire
