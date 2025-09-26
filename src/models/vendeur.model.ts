@@ -224,6 +224,11 @@ export class VendeurModel {
   static async inscrireVendeur(data: CreateVendeurData): Promise<{ vendeur: Vendeur; code: string }> {
     const { email, nom, telephone, ville } = data;
     
+    // Vérifier que l'email est fourni
+    if (!email) {
+      throw new Error('L\'adresse email est requise pour l\'inscription');
+    }
+    
     console.log(`[VendeurModel] Inscription du vendeur: ${email}`);
     
     // Vérifier si l'email existe déjà

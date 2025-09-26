@@ -8,6 +8,7 @@ declare global {
   namespace Express {
     interface Request {
       vendeur?: Vendeur;
+      user?: Vendeur; // Alias pour compatibilité
       isAdmin?: boolean;
     }
   }
@@ -15,55 +16,100 @@ declare global {
 
 export const auth = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    console.log('[AuthMiddleware] Headers reçus:', req.headers.authorization);
+    
     // Vérifier si le token est présent dans les headers
     const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    if (!authHeader) {
+      console.log('[AuthMiddleware] Aucun header Authorization trouvé');
       return res.status(401).json({
         success: false,
         message: 'Accès non autorisé, token manquant'
       });
     }
 
+    if (!authHeader.startsWith('Bearer ')) {
+      console.log('[AuthMiddleware] Format Bearer incorrect:', authHeader);
+      return res.status(401).json({
+        success: false,
+        message: 'Format de token invalide. Utilisez: Bearer <token>'
+      });
+    }
+
     // Extraire le token
     const token = authHeader.split(' ')[1];
+    console.log('[AuthMiddleware] Token extrait:', token ? 'Présent' : 'Absent');
+
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        message: 'Token manquant après Bearer'
+      });
+    }
 
     try {
+      // Vérifier la présence de JWT_SECRET
+      const jwtSecret = process.env.JWT_SECRET;
+      if (!jwtSecret) {
+        console.error('[AuthMiddleware] JWT_SECRET non défini dans les variables d\'environnement');
+        return res.status(500).json({
+          success: false,
+          message: 'Configuration serveur incorrecte'
+        });
+      }
+
+      console.log('[AuthMiddleware] Vérification du token avec JWT_SECRET');
+      
       // Vérifier et décoder le token
-      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'default_secret') as any;
+      const decoded = jwt.verify(token, jwtSecret) as any;
+      console.log('[AuthMiddleware] Token décodé:', { id: decoded.id, email: decoded.email || 'N/A' });
 
       // Récupérer le vendeur à partir de l'ID dans le token
       const vendeur = await VendeurModel.getVendeurById(decoded.id);
       
       if (!vendeur) {
+        console.log('[AuthMiddleware] Vendeur non trouvé pour ID:', decoded.id);
         return res.status(401).json({
           success: false,
           message: 'Vendeur non trouvé'
         });
       }
 
+      console.log('[AuthMiddleware] Vendeur trouvé:', { id: vendeur.id, email: vendeur.email || 'N/A', statut: vendeur.statut });
+
       // Vérifier si le vendeur est actif
       if (vendeur.statut !== 'actif') {
+        console.log('[AuthMiddleware] Vendeur inactif:', vendeur.statut);
         return res.status(401).json({
           success: false,
           message: 'Compte vendeur inactif ou en attente de vérification'
         });
       }
 
-      // Ajouter le vendeur à la requête
+      // Ajouter le vendeur à la requête (deux propriétés pour compatibilité)
       req.vendeur = vendeur;
+      req.user = vendeur; // Alias pour compatibilité avec le contrôleur
       
       // Vérifier si le vendeur est admin (à implémenter selon vos besoins)
       req.isAdmin = false; // Par défaut, pas admin
       
+      console.log('[AuthMiddleware] Authentification réussie pour:', vendeur.email || vendeur.telephone);
       next();
-    } catch (error) {
+    } catch (jwtError: any) {
+      console.error('[AuthMiddleware] Erreur JWT:', jwtError.message);
       return res.status(401).json({
         success: false,
-        message: 'Token invalide ou expiré'
+        message: 'Token invalide ou expiré',
+        error: jwtError.message
       });
     }
-  } catch (error) {
-    next(error);
+  } catch (error: any) {
+    console.error('[AuthMiddleware] Erreur générale:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Erreur interne du serveur',
+      error: error.message
+    });
   }
 };
 

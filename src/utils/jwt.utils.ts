@@ -18,7 +18,8 @@ export const generateToken = (vendeur: Vendeur): string => {
     {
       id: vendeur.id,
       telephone: vendeur.telephone,
-      nom: vendeur.nom
+      nom: vendeur.nom,
+      email: vendeur.email
     },
     secret,
     options

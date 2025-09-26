@@ -77,6 +77,14 @@ export class VendeurController {
   static async inscrireVendeur(req: Request, res: Response): Promise<void> {
     try {
       const { email, nom, telephone, ville } = req.body as CreateVendeurData;
+
+      if (!email) {
+        res.status(400).json({
+          success: false,
+          message: 'L\'adresse email est requise'
+        });
+        return;
+      }
       
       // Validation basique de l'email
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

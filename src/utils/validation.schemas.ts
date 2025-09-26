@@ -143,6 +143,13 @@ export const slugParamSchema = Joi.object({
   })
 });
 
+export const vendeurIdParamSchema = Joi.object({
+  vendeurId: Joi.number().integer().required().messages({
+    'number.base': 'L\'ID du vendeur doit être un nombre',
+    'any.required': 'L\'ID du vendeur est obligatoire'
+  })
+});
+
 // Schémas pour les paramètres de requête (pagination)
 export const paginationQuerySchema = Joi.object({
   page: Joi.number().integer().min(1).default(1).messages({

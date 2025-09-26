@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { CategorieModel } from '../models/categorie.model';
+import { CategorieModel, CreateCategorieData } from '../models/categorie.model';
 
 export class CategorieController {
   /**
@@ -104,6 +104,221 @@ export class CategorieController {
         message: 'Erreur lors de la récupération de la catégorie',
         error: error.message
       });
+    }
+  }
+
+  /**
+   * Crée une nouvelle catégorie
+   */
+  static async createCategorie(req: Request, res: Response): Promise<void> {
+    try {
+      const categorieData: CreateCategorieData = req.body;
+      
+      // Validation des champs requis
+      if (!categorieData.nom || !categorieData.slug) {
+        res.status(400).json({
+          success: false,
+          message: 'Le nom et le slug sont obligatoires'
+        });
+        return;
+      }
+
+      // Vérifier que l'utilisateur est authentifié et récupérer ses informations
+      const user = (req as any).user;
+      if (!user) {
+        res.status(401).json({
+          success: false,
+          message: 'Authentification requise'
+        });
+        return;
+      }
+
+      // Si boutique_id est spécifié, vérifier que l'utilisateur en est propriétaire
+      if (categorieData.boutique_id) {
+        // TODO: Ajouter la vérification de propriété de la boutique
+        // const isOwner = await BoutiqueModel.isBoutiqueOwnedByVendeur(categorieData.boutique_id, user.id);
+        // if (!isOwner) {
+        //   res.status(403).json({
+        //     success: false,
+        //     message: 'Vous n\'êtes pas autorisé à créer des catégories pour cette boutique'
+        //   });
+        //   return;
+        // }
+      }
+
+      const categorie = await CategorieModel.createCategorie(categorieData);
+      
+      res.status(201).json({
+        success: true,
+        message: 'Catégorie créée avec succès',
+        categorie
+      });
+    } catch (error: any) {
+      if (error.message.includes('slug existe déjà')) {
+        res.status(409).json({
+          success: false,
+          message: error.message
+        });
+      } else {
+        res.status(500).json({
+          success: false,
+          message: 'Erreur lors de la création de la catégorie',
+          error: error.message
+        });
+      }
+    }
+  }
+
+  /**
+   * Met à jour une catégorie existante
+   */
+  static async updateCategorie(req: Request, res: Response): Promise<void> {
+    try {
+      const id = parseInt(req.params.id);
+      
+      if (isNaN(id)) {
+        res.status(400).json({
+          success: false,
+          message: 'ID de catégorie invalide'
+        });
+        return;
+      }
+
+      const categorieData: Partial<CreateCategorieData> = req.body;
+      
+      // Vérifier que l'utilisateur est authentifié
+      const user = (req as any).user;
+      if (!user) {
+        res.status(401).json({
+          success: false,
+          message: 'Authentification requise'
+        });
+        return;
+      }
+
+      // Récupérer la catégorie existante pour vérifier les permissions
+      const existingCategorie = await CategorieModel.getCategorieById(id);
+      if (!existingCategorie) {
+        res.status(404).json({
+          success: false,
+          message: 'Catégorie non trouvée'
+        });
+        return;
+      }
+
+      // Si la catégorie appartient à une boutique, vérifier les permissions
+      if (existingCategorie.boutique_id) {
+        // TODO: Ajouter la vérification de propriété de la boutique
+        // const isOwner = await BoutiqueModel.isBoutiqueOwnedByVendeur(existingCategorie.boutique_id, user.id);
+        // if (!isOwner) {
+        //   res.status(403).json({
+        //     success: false,
+        //     message: 'Vous n\'êtes pas autorisé à modifier cette catégorie'
+        //   });
+        //   return;
+        // }
+      }
+
+      const categorie = await CategorieModel.updateCategorie(id, categorieData);
+      
+      res.status(200).json({
+        success: true,
+        message: 'Catégorie mise à jour avec succès',
+        categorie
+      });
+    } catch (error: any) {
+      if (error.message.includes('slug existe déjà')) {
+        res.status(409).json({
+          success: false,
+          message: error.message
+        });
+      } else if (error.message.includes('non trouvée')) {
+        res.status(404).json({
+          success: false,
+          message: error.message
+        });
+      } else {
+        res.status(500).json({
+          success: false,
+          message: 'Erreur lors de la mise à jour de la catégorie',
+          error: error.message
+        });
+      }
+    }
+  }
+
+  /**
+   * Supprime une catégorie
+   */
+  static async deleteCategorie(req: Request, res: Response): Promise<void> {
+    try {
+      const id = parseInt(req.params.id);
+      
+      if (isNaN(id)) {
+        res.status(400).json({
+          success: false,
+          message: 'ID de catégorie invalide'
+        });
+        return;
+      }
+
+      // Vérifier que l'utilisateur est authentifié
+      const user = (req as any).user;
+      if (!user) {
+        res.status(401).json({
+          success: false,
+          message: 'Authentification requise'
+        });
+        return;
+      }
+
+      // Récupérer la catégorie existante pour vérifier les permissions
+      const existingCategorie = await CategorieModel.getCategorieById(id);
+      if (!existingCategorie) {
+        res.status(404).json({
+          success: false,
+          message: 'Catégorie non trouvée'
+        });
+        return;
+      }
+
+      // Si la catégorie appartient à une boutique, vérifier les permissions
+      if (existingCategorie.boutique_id) {
+        // TODO: Ajouter la vérification de propriété de la boutique
+        // const isOwner = await BoutiqueModel.isBoutiqueOwnedByVendeur(existingCategorie.boutique_id, user.id);
+        // if (!isOwner) {
+        //   res.status(403).json({
+        //     success: false,
+        //     message: 'Vous n\'êtes pas autorisé à supprimer cette catégorie'
+        //   });
+        //   return;
+        // }
+      }
+
+      await CategorieModel.deleteCategorie(id);
+      
+      res.status(200).json({
+        success: true,
+        message: 'Catégorie supprimée avec succès'
+      });
+    } catch (error: any) {
+      if (error.message.includes('non trouvée')) {
+        res.status(404).json({
+          success: false,
+          message: error.message
+        });
+      } else if (error.message.includes('sous-catégories') || error.message.includes('produits')) {
+        res.status(400).json({
+          success: false,
+          message: error.message
+        });
+      } else {
+        res.status(500).json({
+          success: false,
+          message: 'Erreur lors de la suppression de la catégorie',
+          error: error.message
+        });
+      }
     }
   }
 }
