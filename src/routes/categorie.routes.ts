@@ -74,6 +74,25 @@ const router = Router();
  *     responses:
  *       200:
  *         description: Liste des catégories récupérée avec succès
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 categories:
+ *                   type: array
+ *                   items:
+ *                     allOf:
+ *                       - $ref: '#/components/schemas/Categorie'
+ *                       - type: object
+ *                         properties:
+ *                           nombre_produits:
+ *                             type: integer
+ *                             description: Nombre de produits dans cette catégorie
+ *                             example: 15
  *       500:
  *         description: Erreur serveur
  * 

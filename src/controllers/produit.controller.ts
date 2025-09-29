@@ -172,4 +172,274 @@ export class ProduitController {
       });
     }
   }
+
+  /**
+   * Crée un nouveau produit
+   */
+  static async createProduit(req: Request, res: Response): Promise<void> {
+    try {
+      console.log('[ProduitController] Début createProduit');
+      console.log('[ProduitController] Headers:', req.headers);
+      console.log('[ProduitController] Body:', req.body);
+      
+      const produitData = req.body;
+      
+      // Vérifier que l'utilisateur est authentifié
+      const user = (req as any).user;
+      if (!user) {
+        res.status(401).json({
+          success: false,
+          message: 'Authentification requise'
+        });
+        return;
+      }
+
+      // Validation des champs requis
+      console.log('[ProduitController] Vérification des champs requis:', {
+        nom: !!produitData.nom,
+        slug: !!produitData.slug,
+        prix: !!produitData.prix,
+        boutique_id: !!produitData.boutique_id
+      });
+      
+      if (!produitData.nom || !produitData.slug || !produitData.prix || !produitData.boutique_id) {
+        res.status(400).json({
+          success: false,
+          message: 'Les champs nom, slug, prix et boutique_id sont obligatoires'
+        });
+        return;
+      }
+
+      // TODO: Vérifier que l'utilisateur est propriétaire de la boutique
+      // const isOwner = await BoutiqueModel.isBoutiqueOwnedByVendeur(produitData.boutique_id, user.id);
+      // if (!isOwner) {
+      //   res.status(403).json({
+      //     success: false,
+      //     message: 'Vous n\'êtes pas autorisé à créer des produits pour cette boutique'
+      //   });
+      //   return;
+      // }
+
+      console.log('[ProduitController] Tentative de création du produit avec les données:', {
+        nom: produitData.nom,
+        slug: produitData.slug,
+        prix: produitData.prix,
+        boutique_id: produitData.boutique_id,
+        // Autres champs non sensibles
+        categorie_id: produitData.categorie_id,
+        description: produitData.description ? 'Présent' : 'Absent'
+      });
+      
+      const produit = await ProduitModel.createProduit(produitData);
+      console.log('[ProduitController] Produit créé avec succès:', produit.id);
+      
+      res.status(201).json({
+        success: true,
+        message: 'Produit créé avec succès',
+        produit
+      });
+    } catch (error: any) {
+      if (error.message.includes('slug existe déjà')) {
+        res.status(409).json({
+          success: false,
+          message: error.message
+        });
+      } else {
+        res.status(500).json({
+          success: false,
+          message: 'Erreur lors de la création du produit',
+          error: error.message
+        });
+      }
+    }
+  }
+
+  /**
+   * Met à jour un produit existant
+   */
+  static async updateProduit(req: Request, res: Response): Promise<void> {
+    try {
+      const id = parseInt(req.params.id);
+      
+      if (isNaN(id)) {
+        res.status(400).json({
+          success: false,
+          message: 'ID de produit invalide'
+        });
+        return;
+      }
+
+      const produitData = req.body;
+      
+      // Vérifier que l'utilisateur est authentifié
+      const user = (req as any).user;
+      if (!user) {
+        res.status(401).json({
+          success: false,
+          message: 'Authentification requise'
+        });
+        return;
+      }
+
+      // Récupérer le produit existant pour vérifier les permissions
+      const existingProduit = await ProduitModel.getProduitById(id);
+      if (!existingProduit) {
+        res.status(404).json({
+          success: false,
+          message: 'Produit non trouvé'
+        });
+        return;
+      }
+
+      // TODO: Vérifier que l'utilisateur est propriétaire de la boutique du produit
+      // const isOwner = await BoutiqueModel.isBoutiqueOwnedByVendeur(existingProduit.boutique_id, user.id);
+      // if (!isOwner) {
+      //   res.status(403).json({
+      //     success: false,
+      //     message: 'Vous n\'êtes pas autorisé à modifier ce produit'
+      //   });
+      //   return;
+      // }
+
+      const produit = await ProduitModel.updateProduit(id, produitData);
+      
+      res.status(200).json({
+        success: true,
+        message: 'Produit mis à jour avec succès',
+        produit
+      });
+    } catch (error: any) {
+      if (error.message.includes('slug existe déjà')) {
+        res.status(409).json({
+          success: false,
+          message: error.message
+        });
+      } else if (error.message.includes('non trouvé')) {
+        res.status(404).json({
+          success: false,
+          message: error.message
+        });
+      } else {
+        res.status(500).json({
+          success: false,
+          message: 'Erreur lors de la mise à jour du produit',
+          error: error.message
+        });
+      }
+    }
+  }
+
+  /**
+   * Supprime un produit
+   */
+  static async deleteProduit(req: Request, res: Response): Promise<void> {
+    try {
+      const id = parseInt(req.params.id);
+      
+      if (isNaN(id)) {
+        res.status(400).json({
+          success: false,
+          message: 'ID de produit invalide'
+        });
+        return;
+      }
+
+      // Vérifier que l'utilisateur est authentifié
+      const user = (req as any).user;
+      if (!user) {
+        res.status(401).json({
+          success: false,
+          message: 'Authentification requise'
+        });
+        return;
+      }
+
+      // Récupérer le produit existant pour vérifier les permissions
+      const existingProduit = await ProduitModel.getProduitById(id);
+      if (!existingProduit) {
+        res.status(404).json({
+          success: false,
+          message: 'Produit non trouvé'
+        });
+        return;
+      }
+
+      // TODO: Vérifier que l'utilisateur est propriétaire de la boutique du produit
+      // const isOwner = await BoutiqueModel.isBoutiqueOwnedByVendeur(existingProduit.boutique_id, user.id);
+      // if (!isOwner) {
+      //   res.status(403).json({
+      //     success: false,
+      //     message: 'Vous n\'êtes pas autorisé à supprimer ce produit'
+      //   });
+      //   return;
+      // }
+
+      await ProduitModel.deleteProduit(id);
+      
+      res.status(200).json({
+        success: true,
+        message: 'Produit supprimé avec succès'
+      });
+    } catch (error: any) {
+      if (error.message.includes('non trouvé')) {
+        res.status(404).json({
+          success: false,
+          message: error.message
+        });
+      } else if (error.message.includes('commandes associées')) {
+        res.status(400).json({
+          success: false,
+          message: error.message
+        });
+      } else {
+        res.status(500).json({
+          success: false,
+          message: 'Erreur lors de la suppression du produit',
+          error: error.message
+        });
+      }
+    }
+  }
+
+  /**
+   * Récupère tous les produits d'une boutique
+   */
+  static async getProduitsByBoutique(req: Request, res: Response): Promise<void> {
+    try {
+      const boutiqueId = parseInt(req.params.boutiqueId);
+      
+      if (isNaN(boutiqueId)) {
+        res.status(400).json({
+          success: false,
+          message: 'ID de boutique invalide'
+        });
+        return;
+      }
+
+      // Utiliser validatedQuery s'il existe, sinon utiliser query
+      const query = (req as any).validatedQuery || req.query;
+      
+      const page = parseInt(query.page as string) || 1;
+      const limite = parseInt(query.limite as string) || 10;
+      const tri_par = (query.tri_par as string) || 'date_creation';
+      const ordre = ((query.ordre as string)?.toUpperCase() === 'ASC' ? 'ASC' : 'DESC') as 'ASC' | 'DESC';
+      
+      const { produits, total } = await ProduitModel.getProduitsByBoutique(boutiqueId, page, limite, tri_par, ordre);
+      
+      res.status(200).json({
+        success: true,
+        donnees: produits,
+        total,
+        page,
+        limite,
+        total_pages: Math.ceil(total / limite)
+      });
+    } catch (error: any) {
+      res.status(500).json({
+        success: false,
+        message: 'Erreur lors de la récupération des produits de la boutique',
+        error: error.message
+      });
+    }
+  }
 }

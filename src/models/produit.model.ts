@@ -228,4 +228,170 @@ export class ProduitModel {
     
     return result;
   }
+
+  /**
+   * Crée un nouveau produit
+   */
+  static async createProduit(produitData: any): Promise<Produit> {
+    console.log('[ProduitModel] Début createProduit avec les données:', {
+      nom: produitData.nom,
+      slug: produitData.slug,
+      prix: produitData.prix,
+      boutique_id: produitData.boutique_id
+    });
+    
+    // Vérifier si le slug existe déjà
+    const existingProduit = await this.getProduitBySlug(produitData.slug);
+    if (existingProduit) {
+      console.log('[ProduitModel] Erreur: Un produit avec ce slug existe déjà:', produitData.slug);
+      throw new Error('Un produit avec ce slug existe déjà');
+    }
+    
+    console.log('[ProduitModel] Slug disponible, préparation des données du produit');
+
+    // Préparer les données avec les valeurs par défaut
+    const produitWithDefaults = {
+      ...produitData,
+      statut: produitData.statut || 'actif',
+      en_stock: produitData.en_stock || false,
+      quantite_stock: produitData.stock || 0,
+      note_moyenne: 0,
+      nombre_ventes: 0,
+      nombre_avis: 0,
+      date_creation: new Date().toISOString(),
+      date_modification: new Date().toISOString()
+    };
+
+    console.log('[ProduitModel] Tentative d\'insertion du produit dans la base de données');
+    
+    const { data, error } = await supabaseAdmin
+      .from('produits')
+      .insert(produitWithDefaults)
+      .select(`
+        *,
+        boutique:boutique_id(*),
+        categorie:categorie_id(*)
+      `)
+      .single();
+
+    if (error) {
+      console.log('[ProduitModel] Erreur lors de l\'insertion du produit:', error.message);
+      throw new Error(`Erreur lors de la création du produit: ${error.message}`);
+    }
+    
+    console.log('[ProduitModel] Produit créé avec succès, ID:', data.id);
+
+    return data as Produit;
+  }
+
+  /**
+   * Met à jour un produit existant
+   */
+  static async updateProduit(id: number, produitData: any): Promise<Produit> {
+    // Vérifier si le produit existe
+    const existingProduit = await this.getProduitById(id);
+    if (!existingProduit) {
+      throw new Error('Produit non trouvé');
+    }
+
+    // Si le slug est modifié, vérifier qu'il n'existe pas déjà
+    if (produitData.slug && produitData.slug !== existingProduit.slug) {
+      const slugExists = await this.getProduitBySlug(produitData.slug);
+      if (slugExists) {
+        throw new Error('Un produit avec ce slug existe déjà');
+      }
+    }
+
+    // Préparer les données de mise à jour
+    const updatedData = {
+      ...produitData,
+      date_modification: new Date().toISOString()
+    };
+
+    const { data, error } = await supabaseAdmin
+      .from('produits')
+      .update(updatedData)
+      .eq('id', id)
+      .select(`
+        *,
+        boutique:boutique_id(*),
+        categorie:categorie_id(*)
+      `)
+      .single();
+
+    if (error) {
+      throw new Error(`Erreur lors de la mise à jour du produit: ${error.message}`);
+    }
+
+    return data as Produit;
+  }
+
+  /**
+   * Supprime un produit
+   */
+  static async deleteProduit(id: number): Promise<void> {
+    // Vérifier si le produit existe
+    const existingProduit = await this.getProduitById(id);
+    if (!existingProduit) {
+      throw new Error('Produit non trouvé');
+    }
+
+    // Vérifier s'il y a des commandes associées
+    const { data: commandes } = await supabaseAdmin
+      .from('commande_produits')
+      .select('id')
+      .eq('produit_id', id);
+
+    if (commandes && commandes.length > 0) {
+      throw new Error('Impossible de supprimer un produit qui a des commandes associées');
+    }
+
+    const { error } = await supabaseAdmin
+      .from('produits')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      throw new Error(`Erreur lors de la suppression du produit: ${error.message}`);
+    }
+  }
+
+  /**
+   * Récupère tous les produits d'une boutique avec pagination
+   */
+  static async getProduitsByBoutique(boutiqueId: number, page: number = 1, limite: number = 10, tri_par: string = 'date_creation', ordre: 'ASC' | 'DESC' = 'DESC'): Promise<{ produits: Produit[], total: number }> {
+    // Calculer l'offset pour la pagination
+    const offset = (page - 1) * limite;
+    
+    // Récupérer le nombre total de produits pour cette boutique
+    const { count, error: countError } = await supabaseAdmin
+      .from('produits')
+      .select('*', { count: 'exact', head: true })
+      .eq('boutique_id', boutiqueId);
+    
+    if (countError) {
+      throw new Error(`Erreur lors du comptage des produits: ${countError.message}`);
+    }
+    
+    // Récupérer les produits avec pagination
+    const { data, error } = await supabaseAdmin
+      .from('produits')
+      .select(`
+        *,
+        boutique:boutique_id(*),
+        categorie:categorie_id(*)
+      `)
+      .eq('boutique_id', boutiqueId)
+      .order(tri_par, { ascending: ordre === 'ASC' })
+      .range(offset, offset + limite - 1);
+    
+    if (error) {
+      throw new Error(`Erreur lors de la récupération des produits de la boutique: ${error.message}`);
+    }
+    
+    return {
+      produits: data || [],
+      total: count || 0
+    };
+  }
 }

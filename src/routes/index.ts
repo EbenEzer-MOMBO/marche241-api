@@ -9,6 +9,7 @@ import transactionRoutes from './transaction.routes';
 import paiementRoutes from './paiement.routes';
 import commandeRoutes from './commande.routes';
 import whatsappRoutes from './whatsapp.routes';
+import uploadRoutes from './upload.routes';
 
 const router = Router();
 
@@ -44,6 +45,9 @@ router.use(`${apiPrefix}/commandes`, commandeRoutes);
 
 // Routes pour WhatsApp
 router.use(`${apiPrefix}/whatsapp`, whatsappRoutes);
+
+// Routes pour l'upload d'images
+router.use(`${apiPrefix}/upload`, uploadRoutes);
 
 // Ajouter d'autres routes ici au fur et à mesure
 

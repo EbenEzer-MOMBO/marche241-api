@@ -16,10 +16,13 @@ export class CategorieModel {
    * @param boutiqueId ID de la boutique (optionnel)
    */
   static async getAllCategories(boutiqueId?: number): Promise<Categorie[]> {
-    // Construire la requête
+    // Construire la requête avec le nombre de produits
     let query = supabaseAdmin
       .from('categories')
-      .select('*')
+      .select(`
+        *,
+        produits:produits(count)
+      `)
       .order('ordre_affichage', { ascending: true });
     
     // Filtrer par boutique si spécifié
@@ -34,7 +37,14 @@ export class CategorieModel {
       throw new Error(`Erreur lors de la récupération des catégories: ${error.message}`);
     }
     
-    return data || [];
+    // Transformer les données pour inclure le nombre de produits
+    const categoriesWithCount = (data || []).map(categorie => ({
+      ...categorie,
+      nombre_produits: categorie.produits?.[0]?.count || 0,
+      produits: undefined // Supprimer la propriété produits temporaire
+    }));
+    
+    return categoriesWithCount;
   }
 
   /**

@@ -150,6 +150,13 @@ export const vendeurIdParamSchema = Joi.object({
   })
 });
 
+export const boutiqueIdParamSchema = Joi.object({
+  boutiqueId: Joi.number().integer().required().messages({
+    'number.base': 'L\'ID de la boutique doit être un nombre',
+    'any.required': 'L\'ID de la boutique est obligatoire'
+  })
+});
+
 // Schémas pour les paramètres de requête (pagination)
 export const paginationQuerySchema = Joi.object({
   page: Joi.number().integer().min(1).default(1).messages({
