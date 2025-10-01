@@ -1,14 +1,22 @@
 import app from './app';
 import dotenv from 'dotenv';
 import os from 'os';
+import http from 'http';
+import { WebSocketService } from './services/websocket.service';
 
 // Charger les variables d'environnement
 dotenv.config();
 
 const port = parseInt(process.env.PORT || '3000', 10);
 
+// Créer le serveur HTTP
+const server = http.createServer(app);
+
+// Initialiser le service WebSocket
+WebSocketService.initialize(server);
+
 // Démarrer le serveur sur toutes les interfaces réseau (0.0.0.0)
-app.listen(port, '0.0.0.0', () => {
+server.listen(port, '0.0.0.0', () => {
   console.log(`🚀 Serveur démarré sur le port ${port}`);
   console.log(`📝 Environnement: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🔗 API disponible localement à l'adresse: http://localhost:${port}${process.env.API_PREFIX || '/api/v1'}`);

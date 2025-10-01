@@ -170,14 +170,44 @@ export class ProduitModel {
    * @param boutiqueId ID de la boutique (optionnel)
    */
   static async getTopProduitsByCategories(limite: number = 4, boutiqueId?: number): Promise<{ [key: string]: any }> {
+    console.log('[ProduitModel] Début getTopProduitsByCategories - limite:', limite, 'boutiqueId:', boutiqueId);
     // Récupérer toutes les catégories
-    const { data: categories, error: categoriesError } = await supabaseAdmin
+    console.log('[ProduitModel] Récupération des catégories...');
+    
+    // D'abord, vérifions si la boutique a des produits et dans quelles catégories
+    let categoriesAvecProduits;
+    if (boutiqueId) {
+      console.log(`[ProduitModel] Recherche des catégories avec des produits pour la boutique ${boutiqueId}`);
+      const { data: produitsBoutique, error: produitError } = await supabaseAdmin
+        .from('produits')
+        .select('categorie_id')
+        .eq('boutique_id', boutiqueId)
+        .eq('statut', 'actif');
+
+      if (produitError) {
+        console.error('[ProduitModel] Erreur lors de la recherche des produits:', produitError.message);
+      } else {
+        categoriesAvecProduits = new Set(produitsBoutique?.map(p => p.categorie_id));
+        console.log('[ProduitModel] Catégories avec des produits:', Array.from(categoriesAvecProduits));
+      }
+    }
+
+    // Récupérer les catégories
+    let { data: categories, error: categoriesError } = await supabaseAdmin
       .from('categories')
       .select('*')
       .eq('statut', 'active')
-      .order('ordre_affichage', { ascending: true })
-      .limit(3); // Limiter à 3 catégories maximum
+      .order('ordre_affichage', { ascending: true });
     
+    console.log('[ProduitModel] Toutes les catégories trouvées:', categories?.map(c => ({ id: c.id, nom: c.nom, statut: c.statut })));
+    
+    // Si on a une boutique spécifique, filtrer les catégories qui ont des produits
+    if (boutiqueId && categoriesAvecProduits && categories) {
+      const categoriesFiltrees = categories.filter(c => categoriesAvecProduits.has(c.id));
+      console.log('[ProduitModel] Catégories filtrées avec des produits:', categoriesFiltrees.map(c => ({ id: c.id, nom: c.nom })));
+      categories = categoriesFiltrees;
+    }
+
     if (categoriesError) {
       throw new Error(`Erreur lors de la récupération des catégories: ${categoriesError.message}`);
     }
@@ -191,6 +221,7 @@ export class ProduitModel {
     
     for (const categorie of categories) {
       // Construire la requête
+      console.log(`[ProduitModel] Construction de la requête pour catégorie ${categorie.id} (${categorie.nom})`);
       let query = supabaseAdmin
         .from('produits')
         .select(`
@@ -199,33 +230,54 @@ export class ProduitModel {
           categorie:categorie_id(id, nom, slug)
         `)
         .eq('categorie_id', categorie.id)
-        .eq('statut', 'actif')
+        .eq('statut', 'actif');
+
+      // Ajouter le filtre par boutique si spécifié
+      if (boutiqueId) {
+        console.log(`[ProduitModel] Ajout du filtre boutique_id = ${boutiqueId}`);
+        query = query.eq('boutique_id', boutiqueId);
+      }
+
+      // Ajouter le tri et la limite
+      query = query
         .order('note_moyenne', { ascending: false })
         .order('nombre_ventes', { ascending: false })
         .limit(limite);
       
-      // Ajouter le filtre par boutique si spécifié
-      if (boutiqueId) {
-        query = query.eq('boutique_id', boutiqueId);
-      }
       
       // Exécuter la requête
       const { data: produits, error: produitsError } = await query;
       
+      console.log(`[ProduitModel] Résultats pour catégorie ${categorie.id} (${categorie.nom}):`, {
+        produits: produits ? produits.length : 0,
+        error: produitsError?.message || 'aucun'
+      });
+
       if (produitsError) {
-        console.error(`Erreur lors de la récupération des produits pour la catégorie ${categorie.id}: ${produitsError.message}`);
+        console.error(`[ProduitModel] Erreur lors de la récupération des produits pour la catégorie ${categorie.id}: ${produitsError.message}`);
         continue;
       }
       
       // Ne pas inclure les catégories sans produits
       if (produits && produits.length > 0) {
+        console.log(`[ProduitModel] Ajout de la catégorie ${categorie.nom} avec ${produits.length} produits`);
         result[categorie.slug] = {
           categorie,
           produits: produits
         };
+      } else {
+        console.log(`[ProduitModel] Catégorie ${categorie.nom} ignorée car aucun produit trouvé`);
       }
     }
     
+    console.log('[ProduitModel] Résultat final:', {
+      nombreCategories: Object.keys(result).length,
+      categories: Object.keys(result).map(slug => ({
+        slug,
+        nom: result[slug].categorie.nom,
+        nombreProduits: result[slug].produits.length
+      }))
+    });
     return result;
   }
 

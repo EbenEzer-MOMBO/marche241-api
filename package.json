@@ -16,6 +16,7 @@
     "@supabase/supabase-js": "^2.39.3",
     "@types/multer": "^2.0.0",
     "@types/nodemailer": "^7.0.1",
+    "@types/ws": "^8.18.1",
     "axios": "^1.12.2",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
@@ -27,7 +28,8 @@
     "nodemailer": "^7.0.6",
     "resend": "^6.1.0",
     "swagger-jsdoc": "^6.2.8",
-    "swagger-ui-express": "^5.0.1"
+    "swagger-ui-express": "^5.0.1",
+    "ws": "^8.18.3"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",

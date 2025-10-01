@@ -19,13 +19,34 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
+            padding: 2rem 1rem;
             text-align: center;
+        }
+
+        @media (max-width: 1200px) {
+            .content-grid {
+                grid-template-columns: 1fr;
+                gap: 1rem;
+            }
+
+            .container {
+                padding: 1rem;
+            }
+
+            .api-info, .terminal {
+                min-height: 400px;
+            }
         }
         
         .container {
-            max-width: 800px;
+            max-width: 1400px;
             padding: 2rem;
+            width: 100%;
+        }
+        
+        .header-section {
+            text-align: center;
+            margin-bottom: 2rem;
         }
         
         .logo {
@@ -49,6 +70,13 @@
             border-radius: 4px;
             margin-bottom: 2rem;
         }
+
+        .content-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
         
         .status-indicator {
             display: inline-block;
@@ -65,7 +93,10 @@
             border-radius: 8px;
             padding: 1.5rem;
             text-align: left;
-            margin-bottom: 2rem;
+            height: 100%;
+            min-height: 300px;
+            display: flex;
+            flex-direction: column;
         }
         
         .endpoint {
@@ -128,58 +159,165 @@
             font-size: 0.8rem;
             opacity: 0.5;
         }
+
+        /* Terminal de logs */
+        .terminal {
+            background-color: #0a0a0a;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-top: 2rem;
+            font-family: 'Courier New', monospace;
+            height: 300px;
+            overflow-y: auto;
+            text-align: left;
+            position: relative;
+        }
+
+        .terminal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid #333;
+        }
+
+        .terminal-title {
+            font-size: 0.9rem;
+            font-weight: bold;
+            color: #888;
+        }
+
+        .terminal-controls {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .terminal-button {
+            background-color: #222;
+            border: 1px solid #444;
+            color: #fff;
+            padding: 0.2rem 0.5rem;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 0.8rem;
+        }
+
+        .terminal-button:hover {
+            background-color: #333;
+        }
+
+        .log-entry {
+            margin: 0.2rem 0;
+            font-size: 0.9rem;
+            line-height: 1.4;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .log-info { color: #4a9eff; }
+        .log-error { color: #ff4a4a; }
+        .log-warning { color: #ffd700; }
+        .log-success { color: #4aff4a; }
+
+        .terminal::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .terminal::-webkit-scrollbar-track {
+            background: #0a0a0a;
+        }
+
+        .terminal::-webkit-scrollbar-thumb {
+            background: #333;
+            border-radius: 4px;
+        }
+
+        .terminal::-webkit-scrollbar-thumb:hover {
+            background: #444;
+        }
+
+        .auto-scroll {
+            position: absolute;
+            bottom: 1rem;
+            right: 1rem;
+            background-color: rgba(0, 0, 0, 0.8);
+            padding: 0.3rem 0.6rem;
+            border-radius: 3px;
+            font-size: 0.8rem;
+            display: none;
+        }
     </style>
 </head>
 <body>
     <div class="version">v1.0.0</div>
     
     <div class="container">
-        <div class="logo">MARCHÉ 241</div>
-        <div class="tagline">API pour la plateforme de commerce électronique gabonaise</div>
-        
-        <div class="status">
-            <span class="status-indicator"></span>
-            API en ligne
-        </div>
-        
-        <div class="api-info">
-            <div class="endpoint">
-                <span class="method get">GET</span>
-                <span class="url">/api/v1/produits/categories</span>
-                <div class="description">Récupérer les produits par catégories (4 produits par catégorie)</div>
-            </div>
+        <div class="header-section">
+            <div class="logo">MARCHÉ 241</div>
+            <div class="tagline">API pour la plateforme de commerce électronique gabonaise</div>
             
-            <div class="endpoint">
-                <span class="method get">GET</span>
-                <span class="url">/api/v1/categories</span>
-                <div class="description">Récupérer toutes les catégories</div>
-            </div>
-            
-            <div class="endpoint">
-                <span class="method get">GET</span>
-                <span class="url">/api/v1/produits</span>
-                <div class="description">Récupérer tous les produits</div>
-            </div>
-            
-            <div class="endpoint">
-                <span class="method get">GET</span>
-                <span class="url">/api/v1/boutiques</span>
-                <div class="description">Récupérer toutes les boutiques</div>
-            </div>
-            
-            <div class="endpoint">
-                <span class="method get">GET</span>
-                <span class="url">/api/v1/produits/:id</span>
-                <div class="description">Récupérer un produit par son ID ou slug</div>
-            </div>
-            
-            <div class="endpoint">
-                <span class="method post">POST</span>
-                <span class="url">/api/v1/vendeurs/verification</span>
-                <div class="description">Vérifier un code de vérification</div>
+            <div class="status">
+                <span class="status-indicator"></span>
+                API en ligne
             </div>
         </div>
-        
+
+        <div class="content-grid">
+            <div class="api-info">
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="url">/api/v1/produits/categories</span>
+                    <div class="description">Récupérer les produits par catégories (4 produits par catégorie)</div>
+                </div>
+                
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="url">/api/v1/categories</span>
+                    <div class="description">Récupérer toutes les catégories</div>
+                </div>
+                
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="url">/api/v1/produits</span>
+                    <div class="description">Récupérer tous les produits</div>
+                </div>
+                
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="url">/api/v1/boutiques</span>
+                    <div class="description">Récupérer toutes les boutiques</div>
+                </div>
+                
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="url">/api/v1/produits/:id</span>
+                    <div class="description">Récupérer un produit par son ID ou slug</div>
+                </div>
+                
+                <div class="endpoint">
+                    <span class="method post">POST</span>
+                    <span class="url">/api/v1/vendeurs/verification</span>
+                    <div class="description">Vérifier un code de vérification</div>
+                </div>
+            </div>
+            
+            <!-- Terminal de logs -->
+            <div class="terminal">
+                <div class="terminal-header">
+                    <div class="terminal-title">Logs en temps réel</div>
+                    <div class="terminal-controls">
+                        <button class="terminal-button" onclick="clearLogs()">Effacer</button>
+                        <button class="terminal-button" onclick="toggleAutoScroll()">Auto-scroll</button>
+                        <button class="terminal-button" onclick="reconnectWebSocket()">Reconnecter</button>
+                    </div>
+                </div>
+                <div id="logs"></div>
+                <div class="auto-scroll" id="autoScrollIndicator">↓ Nouveaux logs</div>
+            </div>
+        </div>
+
         <footer>
             &copy; 2025 Marché 241 - Développé par <a href="#">Eben Ezer MOMBO</a>
         </footer>
@@ -195,6 +333,100 @@
             const statusIndicator = document.querySelector('.status-indicator');
             statusIndicator.style.opacity = statusIndicator.style.opacity === '0.4' ? '1' : '0.4';
         }, 1000);
+
+        // Configuration WebSocket
+        let ws;
+        let autoScroll = true;
+        const logsContainer = document.getElementById('logs');
+        const autoScrollIndicator = document.getElementById('autoScrollIndicator');
+        const maxLogs = 1000; // Nombre maximum de logs à conserver
+
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/logs`;
+            
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                addLogEntry('Connexion WebSocket établie', 'success');
+            };
+
+            ws.onclose = () => {
+                addLogEntry('Connexion WebSocket perdue. Tentative de reconnexion dans 5 secondes...', 'error');
+                setTimeout(reconnectWebSocket, 5000);
+            };
+
+            ws.onerror = (error) => {
+                addLogEntry(`Erreur WebSocket: ${error.message}`, 'error');
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const log = JSON.parse(event.data);
+                    let logClass = 'info';
+                    
+                    if (log.level === 'error') logClass = 'error';
+                    else if (log.level === 'warning') logClass = 'warning';
+                    else if (log.level === 'success') logClass = 'success';
+                    
+                    addLogEntry(log.message, logClass);
+                } catch (e) {
+                    addLogEntry(event.data, 'info');
+                }
+            };
+        }
+
+        function addLogEntry(message, type = 'info') {
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logsContainer.appendChild(entry);
+
+            // Limiter le nombre de logs
+            while (logsContainer.children.length > maxLogs) {
+                logsContainer.removeChild(logsContainer.firstChild);
+            }
+
+            // Gérer l'auto-scroll
+            if (autoScroll) {
+                logsContainer.scrollTop = logsContainer.scrollHeight;
+                autoScrollIndicator.style.display = 'none';
+            } else if (logsContainer.scrollHeight - logsContainer.scrollTop > logsContainer.clientHeight + 100) {
+                autoScrollIndicator.style.display = 'block';
+            }
+        }
+
+        function clearLogs() {
+            logsContainer.innerHTML = '';
+            addLogEntry('Logs effacés', 'info');
+        }
+
+        function toggleAutoScroll() {
+            autoScroll = !autoScroll;
+            if (autoScroll) {
+                logsContainer.scrollTop = logsContainer.scrollHeight;
+                autoScrollIndicator.style.display = 'none';
+            }
+            addLogEntry(`Auto-scroll ${autoScroll ? 'activé' : 'désactivé'}`, 'info');
+        }
+
+        function reconnectWebSocket() {
+            if (ws) {
+                ws.close();
+            }
+            connectWebSocket();
+        }
+
+        // Détecter le scroll manuel
+        logsContainer.addEventListener('scroll', () => {
+            if (autoScroll && logsContainer.scrollHeight - logsContainer.scrollTop > logsContainer.clientHeight + 50) {
+                autoScroll = false;
+                addLogEntry('Auto-scroll désactivé (défilement manuel détecté)', 'info');
+            }
+        });
+
+        // Connexion initiale
+        connectWebSocket();
     </script>
 </body>
 </html>
