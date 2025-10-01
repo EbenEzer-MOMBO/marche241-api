@@ -64,7 +64,7 @@ export class EmailService {
         from: `"${fromName}" <${fromEmail}>`,
         to: email,
         subject: 'Code de vérification - Marché 241',
-        html: this.generateVerificationEmailTemplate(code, nom),
+        html: this.generateVerificationEmailTemplate(nom, code),
         text: `Votre code de vérification pour Marché 241 est : ${code}. Ce code expire dans 10 minutes.`
       };
 
@@ -207,7 +207,7 @@ export class EmailService {
         <div class="email-container">
             <!-- Header -->
             <div class="header">
-                <img src="${process.env.APP_URL || 'http://localhost:3000'}/public/images/site-logo.png" alt="Marché 241" />
+                <img src="${process.env.APP_URL || 'http://localhost:3000'}/images/site-logo.png" alt="Marché 241" />
                 <h1>Code de vérification</h1>
             </div>
             
@@ -462,7 +462,7 @@ export class EmailService {
         <div class="email-container">
             <!-- Header -->
             <div class="header">
-                <img src="${process.env.APP_URL || 'http://localhost:3000'}/public/images/site-logo.png" alt="Marché 241" />
+                <img src="${process.env.APP_URL || 'http://localhost:3000'}/images/site-logo.png" alt="Marché 241" />
                 <h1>Bienvenue sur Marché 241 ! <span class="emoji">🎉</span></h1>
             </div>
             

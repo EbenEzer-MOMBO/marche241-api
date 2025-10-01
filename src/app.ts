@@ -46,6 +46,12 @@ const publicPath = process.env.NODE_ENV === 'production'
 // Servir les fichiers statiques
 app.use(express.static(publicPath));
 
+// En développement, servir également les images depuis src/public/images
+if (process.env.NODE_ENV !== 'production') {
+  const imagesPath = path.join(__dirname, '..', 'public', 'images');
+  app.use('/images', express.static(imagesPath));
+}
+
 // Configurer Swagger
 setupSwagger(app);
 
