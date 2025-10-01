@@ -146,7 +146,7 @@ export class EmailService {
                 margin-bottom: 15px;
             }
             .code {
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                background: linear-gradient(135deg,rgb(0, 10, 57) 0%, #764ba2 100%);
                 color: #ffffff;
                 font-size: 36px;
                 font-weight: bold;

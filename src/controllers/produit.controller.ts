@@ -259,9 +259,13 @@ export class ProduitController {
    */
   static async updateProduit(req: Request, res: Response): Promise<void> {
     try {
+      console.log('[ProduitController] Début updateProduit');
+      console.log('[ProduitController] Params:', req.params);
       const id = parseInt(req.params.id);
+      console.log('[ProduitController] ID extrait:', id);
       
       if (isNaN(id)) {
+        console.log('[ProduitController] ID de produit invalide:', req.params.id);
         res.status(400).json({
           success: false,
           message: 'ID de produit invalide'
@@ -270,10 +274,13 @@ export class ProduitController {
       }
 
       const produitData = req.body;
+      console.log('[ProduitController] Body reçu:', produitData);
       
       // Vérifier que l'utilisateur est authentifié
       const user = (req as any).user;
+      console.log('[ProduitController] Utilisateur extrait:', user ? user.email || user.id : user);
       if (!user) {
+        console.log('[ProduitController] Authentification requise');
         res.status(401).json({
           success: false,
           message: 'Authentification requise'
@@ -283,7 +290,9 @@ export class ProduitController {
 
       // Récupérer le produit existant pour vérifier les permissions
       const existingProduit = await ProduitModel.getProduitById(id);
+      console.log('[ProduitController] Produit existant:', existingProduit ? existingProduit.id : existingProduit);
       if (!existingProduit) {
+        console.log('[ProduitController] Produit non trouvé pour l\'ID:', id);
         res.status(404).json({
           success: false,
           message: 'Produit non trouvé'
@@ -301,7 +310,9 @@ export class ProduitController {
       //   return;
       // }
 
+      console.log('[ProduitController] Données envoyées à updateProduit:', produitData);
       const produit = await ProduitModel.updateProduit(id, produitData);
+      console.log('[ProduitController] Produit mis à jour avec succès:', produit.id);
       
       res.status(200).json({
         success: true,
@@ -309,6 +320,7 @@ export class ProduitController {
         produit
       });
     } catch (error: any) {
+      console.log('[ProduitController] Erreur dans updateProduit:', error.message);
       if (error.message.includes('slug existe déjà')) {
         res.status(409).json({
           success: false,
