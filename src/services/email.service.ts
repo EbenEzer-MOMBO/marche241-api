@@ -83,7 +83,7 @@ export class EmailService {
    * @param nom Nom du vendeur
    * @param code Code de vérification
    */
-  private static generateVerificationEmailTemplate(nom: string, code: string): string {
+  private static generateVerificationEmailTemplate(nom: string | undefined, code: string): string {
     return `
     <!DOCTYPE html>
     <html lang="fr">
@@ -214,7 +214,7 @@ export class EmailService {
             <!-- Content -->
             <div class="content">
                 <div class="greeting">
-                    Bonjour <span class="highlight">${nom}</span>,
+                    Bonjour <span class="highlight">${nom || 'cher utilisateur'}</span>,
                 </div>
                 
                 <p>Voici votre code de vérification pour accéder à votre compte Marché 241 :</p>
