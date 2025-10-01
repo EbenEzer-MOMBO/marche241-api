@@ -288,6 +288,9 @@ export class ProduitModel {
    * Met à jour un produit existant
    */
   static async updateProduit(id: number, produitData: any): Promise<Produit> {
+    console.log('[ProduitModel] Début updateProduit pour le produit ID:', id);
+    console.log('[ProduitModel] Données reçues:', produitData);
+    
     // Vérifier si le produit existe
     const existingProduit = await this.getProduitById(id);
     if (!existingProduit) {
@@ -303,10 +306,24 @@ export class ProduitModel {
     }
 
     // Préparer les données de mise à jour
-    const updatedData = {
+    const updatedData: any = {
       ...produitData,
       date_modification: new Date().toISOString()
     };
+    
+    // Si le champ stock est présent, le convertir en quantite_stock
+    if (produitData.stock !== undefined) {
+      updatedData.quantite_stock = produitData.stock;
+      delete updatedData.stock;
+    }
+    
+    // Si en_stock est un nombre, le convertir en quantite_stock et définir en_stock comme boolean
+    if (typeof updatedData.en_stock === 'number') {
+      updatedData.quantite_stock = updatedData.en_stock;
+      updatedData.en_stock = updatedData.en_stock > 0;
+    }
+    
+    console.log('[ProduitModel] Données après transformation:', updatedData);
 
     const { data, error } = await supabaseAdmin
       .from('produits')
@@ -320,9 +337,11 @@ export class ProduitModel {
       .single();
 
     if (error) {
+      console.log('[ProduitModel] Erreur lors de la mise à jour:', error.message);
       throw new Error(`Erreur lors de la mise à jour du produit: ${error.message}`);
     }
 
+    console.log('[ProduitModel] Produit mis à jour avec succès');
     return data as Produit;
   }
 
