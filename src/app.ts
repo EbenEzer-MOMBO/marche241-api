@@ -25,7 +25,9 @@ app.use(cors({
     process.env.CORS_ORIGIN || '*',
     'http://localhost:3000',
     'https://marche241-production.up.railway.app',
-    'https://marche241-backend-production.up.railway.app'
+    'https://marche241-backend-production.up.railway.app',
+    'https://marche241.netlify.app',
+    'https://marche241-api.onrender.com'
   ],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization'],
