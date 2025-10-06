@@ -35,4 +35,25 @@ export class WebSocketService {
       }
     });
   }
+
+  static cleanup() {
+    if (this.wss) {
+      console.log('🔌 Fermeture des connexions WebSocket...');
+      
+      // Fermer proprement toutes les connexions clients
+      this.clients.forEach(client => {
+        if (client.readyState === WebSocket.OPEN) {
+          client.close(1000, 'Server shutting down');
+        }
+      });
+
+      // Vider la liste des clients
+      this.clients.clear();
+
+      // Fermer le serveur WebSocket
+      this.wss.close(() => {
+        console.log('🔌 Serveur WebSocket fermé avec succès');
+      });
+    }
+  }
 }

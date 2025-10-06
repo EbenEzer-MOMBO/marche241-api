@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 import os from 'os';
 import http from 'http';
 import { WebSocketService } from './services/websocket.service';
+import { MonitorService } from './services/monitor.service';
 
 // Charger les variables d'environnement
 dotenv.config();
@@ -21,6 +22,12 @@ server.listen(port, '0.0.0.0', () => {
   console.log(`📝 Environnement: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🔗 API disponible localement à l'adresse: http://localhost:${port}${process.env.API_PREFIX || '/api/v1'}`);
   
+  // Initialiser le monitoring en production
+  if (process.env.NODE_ENV === 'production') {
+    const appUrl = process.env.APP_URL || `http://localhost:${port}`;
+    MonitorService.initialize(appUrl);
+  }
+
   // Afficher l'adresse IP locale pour faciliter l'accès depuis d'autres appareils
   const nets = os.networkInterfaces();
   const results: {[key: string]: string[]} = {};
@@ -49,4 +56,15 @@ server.listen(port, '0.0.0.0', () => {
       console.log(`   http://${addr}:${port}${process.env.API_PREFIX || '/api/v1'}`);
     }
   }
+});
+
+// Gestion propre de l'arrêt du serveur
+process.on('SIGTERM', () => {
+  console.log('Signal SIGTERM reçu. Arrêt propre du serveur...');
+  MonitorService.cleanup();
+  WebSocketService.cleanup();
+  server.close(() => {
+    console.log('Serveur arrêté avec succès');
+    process.exit(0);
+  });
 });

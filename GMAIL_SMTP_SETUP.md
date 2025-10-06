@@ -27,8 +27,8 @@ Dans votre fichier `.env`, ajoutez :
 
 ```bash
 # Configuration Gmail SMTP
-MAIL_MAILER=smtp
-MAIL_HOST=smtp.gmail.com
+MAIL_MAILER=serveur
+MAIL_HOST=exemple.gmail.com
 MAIL_PORT=587
 MAIL_USERNAME=votre-email@gmail.com
 MAIL_PASSWORD=votre-mot-de-passe-application
@@ -49,11 +49,11 @@ MAIL_FROM_NAME="Marché 241"
 MAIL_MAILER=smtp
 MAIL_HOST=smtp.gmail.com
 MAIL_PORT=587
-MAIL_USERNAME=ebenezermombo@gmail.com
-MAIL_PASSWORD=abcd efgh ijkl mnop
+MAIL_USERNAME=exemple@gmail.com
+MAIL_PASSWORD=exemple
 MAIL_ENCRYPTION=tls
-MAIL_FROM_ADDRESS=ebenezermombo@gmail.com
-MAIL_FROM_NAME="Marché 241"
+MAIL_FROM_ADDRESS=exemple@gmail.com
+MAIL_FROM_NAME="AppName"
 ```
 
 ## Test de la configuration
