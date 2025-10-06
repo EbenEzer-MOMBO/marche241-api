@@ -5,41 +5,40 @@ export class EmailService {
 
   static initialize() {
     if (!process.env.MAIL_USERNAME || !process.env.MAIL_PASSWORD) {
-      console.log('⚠️ Configuration Gmail SMTP non configurée - Emails désactivés');
+      console.log('⚠️ Configuration SMTP non configurée - Emails désactivés');
       console.log('   Veuillez configurer MAIL_USERNAME et MAIL_PASSWORD dans votre fichier .env');
       return;
     }
     
     this.transporter = nodemailer.createTransport({
-      host: process.env.MAIL_HOST || 'smtp.gmail.com',
-      port: parseInt(process.env.MAIL_PORT || '587'),
-      secure: false, // true pour 465, false pour autres ports
+      host: 'marche241.cashless.ga',
+      port: 465,
+      secure: true, // true pour 465 (SSL/TLS)
       auth: {
-        user: process.env.MAIL_USERNAME,
+        user: 'app@marche241.cashless.ga',
         pass: process.env.MAIL_PASSWORD
       },
       tls: {
+        // Ne pas vérifier le certificat si auto-signé
         rejectUnauthorized: false
       }
     });
     
-    console.log('✅ Service email Gmail SMTP configuré');
+    console.log('✅ Service email SMTP configuré');
+    console.log(`✉️  Utilisation du compte: app@marche241.cashless.ga`);
     
     // Vérifier la connexion
     this.transporter.verify((error, success) => {
       if (error) {
-        console.error('❌ Erreur de connexion Gmail SMTP:', error);
+        console.error('❌ Erreur de connexion SMTP:', error);
       } else {
-        console.log('✅ Connexion Gmail SMTP vérifiée avec succès');
+        console.log('✅ Connexion SMTP vérifiée avec succès');
       }
     });
   }
 
   /**
    * Envoie un code de vérification par email
-   * @param email Email du destinataire
-   * @param code Code de vérification
-   * @param nom Nom du destinataire (optionnel)
    */
   static async envoyerCodeVerification(email: string, code: string, nom?: string): Promise<void> {
     try {
@@ -47,16 +46,16 @@ export class EmailService {
         this.initialize();
       }
 
-      // Si Gmail SMTP n'est pas configuré, simuler l'envoi
+      // Si SMTP n'est pas configuré, simuler l'envoi
       if (!this.transporter) {
-        console.log('📧 Simulation envoi email (Gmail SMTP non configuré)');
+        console.log('📧 Simulation envoi email (SMTP non configuré)');
         console.log(`📧 Code de vérification pour: ${email}`);
         console.log(`📧 Code: ${code}`);
         return;
       }
 
-      const fromEmail = process.env.MAIL_FROM_ADDRESS || process.env.MAIL_USERNAME;
-      const fromName = process.env.MAIL_FROM_NAME || 'Marché 241';
+      const fromEmail = 'app@marche241.cashless.ga';
+      const fromName = 'Marché 241';
       
       console.log(`[EmailService] Envoi d'email de ${fromEmail} vers ${email}`);
 
@@ -69,9 +68,8 @@ export class EmailService {
       };
 
       const info = await this.transporter.sendMail(mailOptions);
-
       console.log('[EmailService] Email envoyé avec succès:', info.messageId);
-      console.log('[EmailService] Aperçu:', nodemailer.getTestMessageUrl(info));
+
     } catch (error: any) {
       console.error('[EmailService] Exception lors de l\'envoi de l\'email:', error);
       throw new Error(`Erreur lors de l'envoi de l'email: ${error.message}`);
@@ -80,8 +78,6 @@ export class EmailService {
 
   /**
    * Génère le template HTML pour l'email de code de vérification
-   * @param nom Nom du vendeur
-   * @param code Code de vérification
    */
   private static generateVerificationEmailTemplate(nom: string | undefined, code: string): string {
     return `
@@ -205,13 +201,11 @@ export class EmailService {
     </head>
     <body>
         <div class="email-container">
-            <!-- Header -->
             <div class="header">
                 <img src="${process.env.APP_URL || 'http://localhost:3000'}/images/site-logo.png" alt="Marché 241" />
                 <h1>Code de vérification</h1>
             </div>
             
-            <!-- Content -->
             <div class="content">
                 <div class="greeting">
                     Bonjour <span class="highlight">${nom || 'cher utilisateur'}</span>,
@@ -239,7 +233,6 @@ export class EmailService {
                 <p>Merci de faire confiance à <span class="highlight">Marché 241</span> !</p>
             </div>
             
-            <!-- Footer -->
             <div class="footer">
                 <p>Cet email a été envoyé automatiquement, merci de ne pas y répondre.</p>
                 <p>Pour toute question, contactez-nous à support@marche241.ga</p>
@@ -253,8 +246,6 @@ export class EmailService {
 
   /**
    * Envoie un email de bienvenue à un nouveau vendeur
-   * @param email Email du vendeur
-   * @param nom Nom du vendeur
    */
   static async envoyerEmailBienvenue(email: string, nom: string): Promise<void> {
     try {
@@ -262,15 +253,15 @@ export class EmailService {
         this.initialize();
       }
 
-      // Si Gmail SMTP n'est pas configuré, simuler l'envoi
+      // Si SMTP n'est pas configuré, simuler l'envoi
       if (!this.transporter) {
-        console.log('📧 Simulation envoi email de bienvenue (Gmail SMTP non configuré)');
+        console.log('📧 Simulation envoi email de bienvenue (SMTP non configuré)');
         console.log(`📧 Email de bienvenue pour: ${email}`);
         return;
       }
 
-      const fromEmail = process.env.MAIL_FROM_ADDRESS || process.env.MAIL_USERNAME;
-      const fromName = process.env.MAIL_FROM_NAME || 'Marché 241';
+      const fromEmail = 'app@marche241.cashless.ga';
+      const fromName = 'Marché 241';
       
       console.log(`[EmailService] Envoi d'email de bienvenue de ${fromEmail} vers ${email}`);
 
@@ -283,8 +274,8 @@ export class EmailService {
       };
 
       const info = await this.transporter.sendMail(mailOptions);
-
       console.log('[EmailService] Email de bienvenue envoyé avec succès:', info.messageId);
+
     } catch (error: any) {
       console.error('[EmailService] Exception lors de l\'envoi de l\'email de bienvenue:', error);
       throw new Error(`Erreur lors de l'envoi de l'email de bienvenue: ${error.message}`);
@@ -293,7 +284,6 @@ export class EmailService {
 
   /**
    * Génère le template HTML pour l'email de bienvenue
-   * @param nom Nom du vendeur
    */
   private static generateWelcomeEmailTemplate(nom: string): string {
     return `
@@ -460,13 +450,11 @@ export class EmailService {
     </head>
     <body>
         <div class="email-container">
-            <!-- Header -->
             <div class="header">
                 <img src="${process.env.APP_URL || 'http://localhost:3000'}/images/site-logo.png" alt="Marché 241" />
                 <h1>Bienvenue sur Marché 241 ! <span class="emoji">🎉</span></h1>
             </div>
             
-            <!-- Content -->
             <div class="content">
                 <div class="greeting">
                     Félicitations <span class="highlight">${nom}</span> !
@@ -508,7 +496,6 @@ export class EmailService {
                 <p><strong>Bonne vente et bienvenue dans la communauté Marché 241 !</strong> <span class="emoji">🎯</span></p>
             </div>
             
-            <!-- Footer -->
             <div class="footer">
                 <p>Cet email a été envoyé automatiquement, merci de ne pas y répondre.</p>
                 <p>Pour toute question, contactez-nous à support@marche241.ga</p>
