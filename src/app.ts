@@ -7,6 +7,7 @@ import { errorHandler, notFound } from './middlewares/error.middleware';
 import { requestLogger, errorLogger } from './middlewares/logger.middleware';
 import { setupSwagger } from './utils/swagger';
 import { EmailService } from './services/email.service';
+import { MonitorService } from './services/monitor.service';
 
 // Charger les variables d'environnement
 dotenv.config();
@@ -32,8 +33,6 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
-
 
 // Logger middleware
 app.use(requestLogger);
@@ -70,6 +69,21 @@ app.get('/api/status', (req, res) => {
     version: process.env.APP_VERSION || '1.0.0',
     status: 'online',
     timestamp: new Date().toISOString()
+  });
+});
+
+// Route de health check pour le monitoring
+app.get('/health', (req, res) => {
+  const status = MonitorService.getStatus();
+  res.status(200).json({
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    memory: process.memoryUsage(),
+    monitor: {
+      lastPing: status.lastPingTime,
+      isActive: status.isActive
+    }
   });
 });
 
