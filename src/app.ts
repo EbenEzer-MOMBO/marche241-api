@@ -27,7 +27,8 @@ app.use(cors({
     'https://marche241-production.up.railway.app',
     'https://marche241-backend-production.up.railway.app',
     'https://marche241.netlify.app',
-    'https://marche241-api.onrender.com'
+    'https://marche241-api.onrender.com',
+    'https://marche241.ga'
   ],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization'],
