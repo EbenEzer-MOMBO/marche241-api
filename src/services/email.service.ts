@@ -11,11 +11,11 @@ export class EmailService {
     }
     
     this.transporter = nodemailer.createTransport({
-      host: 'marche241.cashless.ga',
-      port: 465,
+      host: process.env.MAIL_HOST,
+      port: parseInt(process.env.MAIL_PORT || '465'),
       secure: true, // true pour 465 (SSL/TLS)
       auth: {
-        user: 'app@marche241.cashless.ga',
+        user: process.env.MAIL_USERNAME,
         pass: process.env.MAIL_PASSWORD
       },
       tls: {
@@ -25,7 +25,7 @@ export class EmailService {
     });
     
     console.log('✅ Service email SMTP configuré');
-    console.log(`✉️  Utilisation du compte: app@marche241.cashless.ga`);
+    console.log(`✉️  Utilisation du compte: ${process.env.MAIL_USERNAME}`);
     
     // Vérifier la connexion
     this.transporter.verify((error, success) => {
@@ -54,8 +54,8 @@ export class EmailService {
         return;
       }
 
-      const fromEmail = 'app@marche241.cashless.ga';
-      const fromName = 'Marché 241';
+      const fromEmail = process.env.MAIL_FROM_ADDRESS;
+      const fromName = process.env.MAIL_FROM_NAME;
       
       console.log(`[EmailService] Envoi d'email de ${fromEmail} vers ${email}`);
 
@@ -260,8 +260,8 @@ export class EmailService {
         return;
       }
 
-      const fromEmail = 'app@marche241.cashless.ga';
-      const fromName = 'Marché 241';
+      const fromEmail = process.env.MAIL_FROM_ADDRESS;
+      const fromName = process.env.MAIL_FROM_NAME;
       
       console.log(`[EmailService] Envoi d'email de bienvenue de ${fromEmail} vers ${email}`);
 
