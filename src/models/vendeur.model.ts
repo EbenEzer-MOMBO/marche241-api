@@ -335,6 +335,9 @@ export class VendeurModel {
    * Vérifie un code de vérification (par téléphone)
    */
   static async verifyCode(telephone: string, code: string): Promise<boolean> {
+    console.log(`[VendeurModel.verifyCode] Début vérification pour ${telephone}`);
+    console.log(`[VendeurModel.verifyCode] Code reçu: "${code}" (type: ${typeof code}, longueur: ${code.length})`);
+    
     // Récupérer le vendeur
     const { data, error } = await supabaseAdmin
       .from(this.TABLE_NAME)
@@ -343,21 +346,37 @@ export class VendeurModel {
       .single();
     
     if (error) {
+      console.log(`[VendeurModel.verifyCode] Erreur: ${error.message}`);
       throw new Error(`Erreur lors de la vérification du code: ${error.message}`);
     }
     
     if (!data) {
+      console.log('[VendeurModel.verifyCode] Aucune donnée trouvée');
       return false;
     }
     
-    // Vérifier si le code est expiré
-    const codeExpiration = new Date(data.code_expiration);
-    if (codeExpiration < new Date()) {
+    console.log(`[VendeurModel.verifyCode] Code en DB: "${data.code_verification}" (type: ${typeof data.code_verification})`);
+    console.log(`[VendeurModel.verifyCode] Expiration: ${data.code_expiration}`);
+    console.log(`[VendeurModel.verifyCode] Tentatives: ${data.tentatives_code}`);
+    
+    // Vérifier si le code est expiré (forcer UTC)
+    // Ajouter 'Z' si pas présent pour forcer l'interprétation UTC
+    const expirationString = data.code_expiration.endsWith('Z') ? data.code_expiration : data.code_expiration + 'Z';
+    const codeExpiration = new Date(expirationString);
+    const maintenant = new Date();
+    
+    
+    if (codeExpiration.getTime() < maintenant.getTime()) {
+      console.log('[VendeurModel.verifyCode] Code expiré');
       return false;
     }
     
     // Vérifier si le code est correct
+    console.log(`[VendeurModel.verifyCode] Comparaison: "${data.code_verification}" !== "${code}" = ${data.code_verification !== code}`);
+    console.log(`[VendeurModel.verifyCode] Comparaison stricte égale: ${data.code_verification === code}`);
+    
     if (data.code_verification !== code) {
+      console.log('[VendeurModel.verifyCode] Code incorrect');
       // Incrémenter le nombre de tentatives
       await supabaseAdmin
         .from(this.TABLE_NAME)
@@ -369,6 +388,8 @@ export class VendeurModel {
       
       return false;
     }
+    
+    console.log('[VendeurModel.verifyCode] Code correct, mise à jour du vendeur');
     
     // Code correct, mettre à jour le statut du vendeur
     await supabaseAdmin

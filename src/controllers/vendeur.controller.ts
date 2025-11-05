@@ -297,61 +297,81 @@ export class VendeurController {
    */
   static async demanderCodeVerification(req: Request, res: Response): Promise<void> {
     try {
-      const { email } = req.body as DemandeCodeVerification;
+      let { email, phone } = req.body as DemandeCodeVerification;
       
-      if (!email) {
-        res.status(400).json({
-          success: false,
-          message: 'L\'adresse email est obligatoire'
-        });
-        return;
-      }
-
-      // Validation basique de l'email
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(email)) {
-        res.status(400).json({
-          success: false,
-          message: 'L\'adresse email n\'est pas valide'
-        });
-        return;
+      // Nettoyer le numéro de téléphone en retirant le +
+      if (phone) {
+        phone = phone.replace(/^\+/, '').replace(/\s/g, '');
       }
       
-      // Vérifier si le vendeur existe
-      const vendeur = await VendeurModel.getVendeurByEmail(email);
+      // Vérifier si le vendeur existe (par email ou téléphone)
+      let vendeur;
+      if (email) {
+        vendeur = await VendeurModel.getVendeurByEmail(email);
+      } else if (phone) {
+        vendeur = await VendeurModel.getVendeurByTelephone('+' + phone);
+      }
       
       if (!vendeur) {
         res.status(404).json({
           success: false,
-          message: 'Aucun compte vendeur trouvé avec cette adresse email. Veuillez vous inscrire d\'abord.'
+          message: `Aucun compte vendeur trouvé avec ${email ? 'cette adresse email' : 'ce numéro de téléphone'}. Veuillez vous inscrire d\'abord.`
         });
         return;
       }
       
       // Générer un code de vérification
-      const code = await VendeurModel.generateVerificationCodeByEmail(email);
+      const code = email 
+        ? await VendeurModel.generateVerificationCodeByEmail(email)
+        : await VendeurModel.generateVerificationCode('+' + phone!);
       
-      // Envoyer le code par email
+      // Envoyer les données vers le webhook
       try {
-        await EmailService.envoyerCodeVerification(email, code, vendeur.nom);
+        const webhookUrl = process.env.WEBHOOK_VERIFICATION_URL;
+        
+        if (!webhookUrl) {
+          throw new Error('URL du webhook non configurée');
+        }
+
+        const webhookData = {
+          type: email ? 'email' : 'phone',
+          destination: email || phone,
+          code: code,
+          vendeurNom: vendeur.nom,
+          vendeurId: vendeur.id,
+          timestamp: new Date().toISOString()
+        };
+
+        const response = await fetch(webhookUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${process.env.WEBHOOK_SECRET || ''}`
+          },
+          body: JSON.stringify(webhookData)
+        });
+
+        if (!response.ok) {
+          throw new Error(`Webhook responded with status ${response.status}`);
+        }
         
         res.status(200).json({
           success: true,
-          message: 'Code de vérification envoyé par email avec succès',
+          message: `Code de vérification envoyé ${email ? 'par email' : 'par SMS'} avec succès`,
           // En développement, on peut renvoyer le code pour faciliter les tests
           code: process.env.NODE_ENV === 'development' ? code : undefined
         });
-      } catch (emailError: any) {
-        console.error('Erreur lors de l\'envoi de l\'email:', emailError);
+      } catch (webhookError: any) {
+        console.error('Erreur lors de l\'envoi au webhook:', webhookError);
         
-        // Si l'envoi d'email échoue, on renvoie quand même une réponse positive
+        // Si l'envoi au webhook échoue, on renvoie quand même une réponse positive
         // mais on log l'erreur pour investigation
         res.status(200).json({
           success: true,
           message: 'Code de vérification généré avec succès',
           // En cas d'erreur d'envoi, on renvoie le code en développement
           code: process.env.NODE_ENV === 'development' ? code : undefined,
-          warning: process.env.NODE_ENV === 'development' ? 'Email non envoyé - erreur de service' : undefined
+          warning: process.env.NODE_ENV === 'development' ? 'Webhook non appelé - erreur de service' : undefined
         });
       }
     } catch (error: any) {
@@ -369,30 +389,41 @@ export class VendeurController {
    */
   static async verifierCode(req: Request, res: Response): Promise<void> {
     try {
-      const { email, code } = req.body as VerificationCode;
+      let { email, phone, code } = req.body as VerificationCode;
       
-      if (!email || !code) {
+      console.log('[verifierCode] Données reçues:', { email, phone, code });
+      
+      if (!code) {
+        console.log('[verifierCode] Code manquant');
         res.status(400).json({
           success: false,
-          message: 'L\'adresse email et le code sont obligatoires'
+          message: 'Le code est obligatoire'
         });
         return;
       }
 
-      // Validation basique de l'email
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(email)) {
-        res.status(400).json({
-          success: false,
-          message: 'L\'adresse email n\'est pas valide'
-        });
-        return;
+      // Nettoyer le numéro de téléphone en retirant le +
+      if (phone) {
+        console.log('[verifierCode] Numéro avant nettoyage:', phone);
+        phone = phone.replace(/^\+/, '').replace(/\s/g, '');
+        console.log('[verifierCode] Numéro après nettoyage:', phone);
       }
       
       // Vérifier si le vendeur existe
-      const vendeur = await VendeurModel.getVendeurByEmail(email);
+      let vendeur;
+      if (email) {
+        console.log('[verifierCode] Recherche par email:', email);
+        vendeur = await VendeurModel.getVendeurByEmail(email);
+      } else if (phone) {
+        const phoneToSearch = '+' + phone;
+        console.log('[verifierCode] Recherche par téléphone:', phoneToSearch);
+        vendeur = await VendeurModel.getVendeurByTelephone(phoneToSearch);
+      }
+      
+      console.log('[verifierCode] Vendeur trouvé:', vendeur ? { id: vendeur.id, nom: vendeur.nom, statut: vendeur.statut } : 'null');
       
       if (!vendeur) {
+        console.log('[verifierCode] Vendeur non trouvé');
         res.status(404).json({
           success: false,
           message: 'Vendeur non trouvé'
@@ -400,10 +431,25 @@ export class VendeurController {
         return;
       }
       
+      console.log('[verifierCode] Code stocké:', vendeur.code_verification);
+      console.log('[verifierCode] Code expiration:', vendeur.code_expiration);
+      console.log('[verifierCode] Tentatives:', vendeur.tentatives_code);
+      
       // Vérifier le code
-      const isValid = await VendeurModel.verifyCodeByEmail(email, code);
+      let isValid: boolean;
+      if (email) {
+        console.log('[verifierCode] Vérification par email');
+        isValid = await VendeurModel.verifyCodeByEmail(email, code);
+      } else {
+        const phoneToVerify = '+' + phone!;
+        console.log('[verifierCode] Vérification par téléphone:', phoneToVerify);
+        isValid = await VendeurModel.verifyCode(phoneToVerify, code);
+      }
+      
+      console.log('[verifierCode] Code valide:', isValid);
       
       if (!isValid) {
+        console.log('[verifierCode] Code invalide ou expiré');
         res.status(400).json({
           success: false,
           message: 'Code de vérification invalide ou expiré',
@@ -413,9 +459,17 @@ export class VendeurController {
       }
       
       // Code valide, récupérer le vendeur mis à jour
-      const vendeurMisAJour = await VendeurModel.getVendeurByEmail(email);
+      let vendeurMisAJour;
+      if (email) {
+        vendeurMisAJour = await VendeurModel.getVendeurByEmail(email);
+      } else {
+        vendeurMisAJour = await VendeurModel.getVendeurByTelephone('+' + phone!);
+      }
+      
+      console.log('[verifierCode] Vendeur mis à jour:', vendeurMisAJour ? { id: vendeurMisAJour.id, statut: vendeurMisAJour.statut } : 'null');
       
       if (!vendeurMisAJour) {
+        console.log('[verifierCode] Erreur récupération vendeur après vérification');
         res.status(500).json({
           success: false,
           message: 'Erreur lors de la récupération du vendeur après vérification'
@@ -423,8 +477,9 @@ export class VendeurController {
         return;
       }
       
-      // Envoyer un email de bienvenue si c'est la première vérification
-      if (vendeur.statut === 'en_attente_verification') {
+      // Envoyer un email de bienvenue si c'est la première vérification et si on a un email
+      if (vendeur.statut === 'en_attente_verification' && email) {
+        console.log('[verifierCode] Envoi email de bienvenue');
         try {
           await EmailService.envoyerEmailBienvenue(email, vendeurMisAJour.nom);
         } catch (emailError: any) {
@@ -435,6 +490,7 @@ export class VendeurController {
       
       // Générer un token JWT
       const token = generateToken(vendeurMisAJour);
+      console.log('[verifierCode] Token généré avec succès');
       
       res.status(200).json({
         success: true,
@@ -443,7 +499,7 @@ export class VendeurController {
         token
       });
     } catch (error: any) {
-      console.error('Erreur dans verifierCode:', error);
+      console.error('[verifierCode] Erreur:', error);
       res.status(500).json({
         success: false,
         message: 'Erreur lors de la vérification du code',

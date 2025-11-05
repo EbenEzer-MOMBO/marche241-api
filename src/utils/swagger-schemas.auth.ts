@@ -4,21 +4,26 @@
  *   schemas:
  *     DemandeCodeVerification:
  *       type: object
- *       required:
- *         - email
  *       properties:
  *         email:
  *           type: string
  *           format: email
  *           description: Adresse email du vendeur
  *           example: "vendeur@example.com"
+ *         phone:
+ *           type: string
+ *           pattern: '^\+?[0-9]{10,15}$'
+ *           description: Numéro de téléphone du vendeur (avec ou sans le +)
+ *           example: "+24162648538"
+ *       oneOf:
+ *         - required: [email]
+ *         - required: [phone]
  *       example:
  *         email: "vendeur@example.com"
  *
  *     VerificationCode:
  *       type: object
  *       required:
- *         - email
  *         - code
  *       properties:
  *         email:
@@ -26,11 +31,19 @@
  *           format: email
  *           description: Adresse email du vendeur
  *           example: "vendeur@example.com"
+ *         phone:
+ *           type: string
+ *           pattern: '^\+?[0-9]{10,15}$'
+ *           description: Numéro de téléphone du vendeur (avec ou sans le +)
+ *           example: "+24162648538"
  *         code:
  *           type: string
- *           pattern: '^[0-9]{6}$'
- *           description: Code de vérification à 6 chiffres
+ *           pattern: '^[0-9]{4,6}$'
+ *           description: Code de vérification à 4 ou 6 chiffres
  *           example: "123456"
+ *       oneOf:
+ *         - required: [email, code]
+ *         - required: [phone, code]
  *       example:
  *         email: "vendeur@example.com"
  *         code: "123456"

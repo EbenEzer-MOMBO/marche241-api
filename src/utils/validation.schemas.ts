@@ -36,21 +36,29 @@ export const updateVendeurSchema = Joi.object({
 });
 
 export const demandeCodeSchema = Joi.object({
-  email: Joi.string().required().email().messages({
-    'string.email': 'L\'adresse email n\'est pas valide',
-    'any.required': 'L\'adresse email est obligatoire'
+  email: Joi.string().email().messages({
+    'string.email': 'L\'adresse email n\'est pas valide'
+  }),
+  phone: Joi.string().pattern(/^\+?[0-9]{10,15}$/).messages({
+    'string.pattern.base': 'Le numéro de téléphone n\'est pas valide'
   })
+}).or('email', 'phone').messages({
+  'object.missing': 'L\'adresse email ou le numéro de téléphone est obligatoire'
 });
 
 export const verificationCodeSchema = Joi.object({
-  email: Joi.string().required().email().messages({
-    'string.email': 'L\'adresse email n\'est pas valide',
-    'any.required': 'L\'adresse email est obligatoire'
+  email: Joi.string().email().messages({
+    'string.email': 'L\'adresse email n\'est pas valide'
   }),
-  code: Joi.string().required().pattern(/^[0-9]{6}$/).messages({
-    'string.pattern.base': 'Le code doit être composé de 6 chiffres',
+  phone: Joi.string().pattern(/^\+?[0-9]{10,15}$/).messages({
+    'string.pattern.base': 'Le numéro de téléphone n\'est pas valide'
+  }),
+  code: Joi.string().required().pattern(/^[0-9]{4,6}$/).messages({
+    'string.pattern.base': 'Le code doit être composé de 4 à 6 chiffres',
     'any.required': 'Le code est obligatoire'
   })
+}).or('email', 'phone').messages({
+  'object.missing': 'L\'adresse email ou le numéro de téléphone est obligatoire'
 });
 
 // Schémas de validation pour les boutiques

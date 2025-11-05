@@ -316,11 +316,13 @@ export interface UpdateCommuneLivraison {
 
 // Types pour l'authentification par code email
 export interface DemandeCodeVerification {
-  email: string;
+  email?: string;
+  phone?: string;
 }
 
 export interface VerificationCode {
-  email: string;
+  email?: string;
+  phone?: string;
   code: string;
 }
 
