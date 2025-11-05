@@ -104,13 +104,47 @@ export class VendeurController {
         ville
       });
       
-      // Envoyer le code par email
+      // Envoyer les données vers le webhook
       try {
-        await EmailService.envoyerCodeVerification(email, code, nom);
+        const webhookUrl = process.env.WEBHOOK_REGISTER_URL;
+        
+        if (!webhookUrl) {
+          throw new Error('URL du webhook d\'inscription non configurée');
+        }
+
+        let phone = telephone.replace(/^\+/, '').replace(/\s/g, '');
+
+        const webhookData = {
+          type: 'registration',
+          email: email,
+          code: code,
+          phone: phone,
+          vendeur: {
+            id: vendeur.id,
+            nom: vendeur.nom,
+            telephone: vendeur.telephone,
+            ville: vendeur.ville,
+            statut: vendeur.statut
+          },
+          timestamp: new Date().toISOString()
+        };
+
+        const response = await fetch(webhookUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${process.env.WEBHOOK_SECRET || ''}`
+          },
+          body: JSON.stringify(webhookData)
+        });
+
+        if (!response.ok) {
+          throw new Error(`Webhook responded with status ${response.status}`);
+        }
         
         res.status(201).json({
           success: true,
-          message: 'Compte créé avec succès. Un code de vérification a été envoyé par email.',
+          message: 'Compte créé avec succès. Un code de vérification a été envoyé.',
           vendeur: {
             id: vendeur.id,
             email: vendeur.email,
@@ -123,14 +157,14 @@ export class VendeurController {
           // En développement, on peut renvoyer le code pour faciliter les tests
           code: process.env.NODE_ENV === 'development' ? code : undefined
         });
-      } catch (emailError: any) {
-        console.error('Erreur lors de l\'envoi de l\'email d\'inscription:', emailError);
+      } catch (webhookError: any) {
+        console.error('Erreur lors de l\'envoi au webhook d\'inscription:', webhookError);
         
-        // Si l'envoi d'email échoue, on renvoie quand même une réponse positive
+        // Si l'envoi au webhook échoue, on renvoie quand même une réponse positive
         // mais on log l'erreur pour investigation
         res.status(201).json({
           success: true,
-          message: 'Compte créé avec succès. Veuillez vérifier votre email pour le code de vérification.',
+          message: 'Compte créé avec succès.',
           vendeur: {
             id: vendeur.id,
             email: vendeur.email,
@@ -140,9 +174,9 @@ export class VendeurController {
             statut: vendeur.statut,
             date_creation: vendeur.date_creation
           },
-          // En développement, on peut renvoyer le code même si l'email échoue
+          // En développement, on peut renvoyer le code même si le webhook échoue
           code: process.env.NODE_ENV === 'development' ? code : undefined,
-          warning: 'Email non envoyé - Veuillez contacter le support si nécessaire'
+          warning: process.env.NODE_ENV === 'development' ? 'Webhook non appelé - erreur de service' : undefined
         });
       }
     } catch (error: any) {
