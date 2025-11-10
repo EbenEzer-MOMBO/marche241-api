@@ -301,12 +301,44 @@ export class ProduitModel {
     
     console.log('[ProduitModel] Slug disponible, préparation des données du produit');
 
+    // Gérer la conversion de en_stock (si c'est un nombre, le convertir en quantite_stock)
+    let quantiteStock = produitData.stock || 0;
+    let enStock = false;
+    
+    if (typeof produitData.en_stock === 'number') {
+      console.log('[ProduitModel] en_stock est un nombre:', produitData.en_stock, '- conversion en quantite_stock');
+      quantiteStock = produitData.en_stock;
+      enStock = produitData.en_stock > 0;
+    } else if (typeof produitData.en_stock === 'boolean') {
+      enStock = produitData.en_stock;
+    }
+    
+    // Gérer les variants avec le nouveau format
+    let variantsData = produitData.variants;
+    if (variantsData && Array.isArray(variantsData)) {
+      console.log('[ProduitModel] Traitement des variants:', JSON.stringify(variantsData));
+      
+      // Calculer la quantité totale depuis les variants si disponible
+      let totalQuantiteVariants = 0;
+      variantsData.forEach((variant: any) => {
+        if (variant.quantites && Array.isArray(variant.quantites)) {
+          totalQuantiteVariants += variant.quantites.reduce((sum: number, q: number) => sum + (q || 0), 0);
+        }
+      });
+      
+      if (totalQuantiteVariants > 0) {
+        console.log('[ProduitModel] Quantité totale calculée depuis les variants:', totalQuantiteVariants);
+        quantiteStock = totalQuantiteVariants;
+        enStock = true;
+      }
+    }
+
     // Préparer les données avec les valeurs par défaut
     const produitWithDefaults = {
       ...produitData,
       statut: produitData.statut || 'actif',
-      en_stock: produitData.en_stock || false,
-      quantite_stock: produitData.stock || 0,
+      en_stock: enStock,
+      quantite_stock: quantiteStock,
       note_moyenne: 0,
       nombre_ventes: 0,
       nombre_avis: 0,
@@ -314,6 +346,10 @@ export class ProduitModel {
       date_modification: new Date().toISOString()
     };
 
+    console.log('[ProduitModel] Données finales à insérer:', {
+      ...produitWithDefaults,
+      variants: variantsData ? 'Présent' : 'Absent'
+    });
     console.log('[ProduitModel] Tentative d\'insertion du produit dans la base de données');
     
     const { data, error } = await supabaseAdmin

@@ -109,6 +109,34 @@ export class PanierModel {
   }
 
   /**
+   * Ajoute un élément au panier sans vérification (utilisé quand la vérification est faite en amont)
+   */
+  static async addToCartWithoutCheck(panierData: Omit<Panier, 'id' | 'date_creation' | 'date_modification'>): Promise<Panier> {
+    // Ajouter les champs par défaut
+    const panierWithDefaults = {
+      ...panierData,
+      date_creation: new Date().toISOString(),
+      date_modification: new Date().toISOString()
+    };
+    
+    const { data, error } = await supabaseAdmin
+      .from(this.TABLE_NAME)
+      .insert(panierWithDefaults)
+      .select(`
+        *,
+        boutique:boutique_id(*),
+        produit:produit_id(*)
+      `)
+      .single();
+    
+    if (error) {
+      throw new Error(`Erreur lors de l'ajout au panier: ${error.message}`);
+    }
+    
+    return data as Panier;
+  }
+
+  /**
    * Met à jour la quantité d'un élément du panier
    */
   static async updateCartItemQuantity(id: number, quantite: number): Promise<Panier> {

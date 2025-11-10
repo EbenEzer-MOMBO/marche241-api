@@ -145,8 +145,18 @@ export class BoutiqueController {
     try {
       const boutiqueData: CreateBoutiqueData = req.body;
       
+      console.log('[createBoutique] Données reçues:', boutiqueData);
+      console.log('[createBoutique] Utilisateur authentifié:', req.user ? { id: req.user.id, email: req.user.email } : 'non authentifié');
+      
+      // Récupérer le vendeur_id depuis le token JWT si authentifié
+      if (req.user && req.user.id) {
+        boutiqueData.vendeur_id = req.user.id;
+        console.log('[createBoutique] vendeur_id récupéré du token:', boutiqueData.vendeur_id);
+      }
+      
       // Vérifier que les champs obligatoires sont présents
       if (!boutiqueData.nom || !boutiqueData.vendeur_id) {
+        console.log('[createBoutique] Champs manquants - nom:', boutiqueData.nom, 'vendeur_id:', boutiqueData.vendeur_id);
         res.status(400).json({
           success: false,
           message: 'Les champs nom et vendeur_id sont obligatoires'
@@ -154,16 +164,22 @@ export class BoutiqueController {
         return;
       }
       
+      console.log('[createBoutique] Création de la boutique avec vendeur_id:', boutiqueData.vendeur_id);
+      
       // Générer un slug si non fourni
       if (!boutiqueData.slug) {
         boutiqueData.slug = boutiqueData.nom
           .toLowerCase()
           .replace(/[^a-z0-9]+/g, '-')
           .replace(/^-|-$/g, '');
+        console.log('[createBoutique] Slug généré:', boutiqueData.slug);
       }
       
       // Vérifier si le slug existe déjà
+      console.log('[createBoutique] Vérification du slug:', boutiqueData.slug);
       const slugExists = await BoutiqueModel.slugExists(boutiqueData.slug);
+      console.log('[createBoutique] Slug existe déjà:', slugExists);
+      
       if (slugExists) {
         res.status(400).json({
           success: false,
@@ -172,7 +188,9 @@ export class BoutiqueController {
         return;
       }
 
+      console.log('[createBoutique] Appel BoutiqueModel.createBoutique avec:', boutiqueData);
       const nouvelleBoutique = await BoutiqueModel.createBoutique(boutiqueData);
+      console.log('[createBoutique] Boutique créée:', nouvelleBoutique);
 
       res.status(201).json({
         success: true,
@@ -180,6 +198,8 @@ export class BoutiqueController {
         boutique: nouvelleBoutique
       });
     } catch (error: any) {
+      console.error('[createBoutique] Erreur:', error);
+      console.error('[createBoutique] Stack:', error.stack);
       res.status(500).json({
         success: false,
         message: 'Erreur lors de la création de la boutique',

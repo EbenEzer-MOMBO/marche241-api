@@ -102,14 +102,14 @@ export class BoutiqueModel {
     // Ajouter les champs par défaut
     const boutiqueWithDefaults = {
       ...boutiqueData,
-      statut: 'en_attente' as const,
+      statut: 'active' as const,
       date_creation: new Date().toISOString(),
       date_modification: new Date().toISOString(),
       nombre_produits: 0,
       note_moyenne: 0,
       nombre_avis: 0,
-      couleur_primaire: boutiqueData.couleur_primaire || '#3B82F6', // Bleu par défaut
-      couleur_secondaire: boutiqueData.couleur_secondaire || '#1E40AF' // Bleu foncé par défaut
+      couleur_primaire: boutiqueData.couleur_primaire || '#000000',
+      couleur_secondaire: boutiqueData.couleur_secondaire || '#ffffff'
     };
     
     const { data, error } = await supabaseAdmin

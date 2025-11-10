@@ -193,7 +193,12 @@ export class CommuneController {
       // Utiliser validatedBody s'il existe, sinon utiliser body
       const body = (req as any).validatedBody || req.body;
       
+      console.log('[createCommune] Données reçues:', body);
+      console.log('[createCommune] Utilisateur authentifié:', req.user ? { id: req.user.id, email: req.user.email } : 'non authentifié');
+      
       const commune = await CommuneModel.createCommune(body);
+      
+      console.log('[createCommune] Commune créée:', commune);
       
       res.status(201).json({
         success: true,
@@ -201,6 +206,8 @@ export class CommuneController {
         commune
       });
     } catch (error: any) {
+      console.error('[createCommune] Erreur:', error);
+      console.error('[createCommune] Stack:', error.stack);
       res.status(500).json({
         success: false,
         message: 'Erreur lors de la création de la commune',

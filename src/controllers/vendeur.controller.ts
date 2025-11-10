@@ -511,14 +511,45 @@ export class VendeurController {
         return;
       }
       
-      // Envoyer un email de bienvenue si c'est la première vérification et si on a un email
-      if (vendeur.statut === 'en_attente_verification' && email) {
-        console.log('[verifierCode] Envoi email de bienvenue');
+      // Envoyer un webhook de bienvenue si c'est la première vérification
+      if (vendeur.statut === 'en_attente_verification') {
+        console.log('[verifierCode] Envoi webhook de bienvenue');
         try {
-          await EmailService.envoyerEmailBienvenue(email, vendeurMisAJour.nom);
-        } catch (emailError: any) {
-          console.error('Erreur lors de l\'envoi de l\'email de bienvenue:', emailError);
-          // On continue même si l'email de bienvenue échoue
+          const webhookUrl = process.env.WEBHOOK_REGISTER_URL;
+          
+          if (webhookUrl) {
+            let cleanPhone = vendeurMisAJour.telephone ? vendeurMisAJour.telephone.replace(/^\+/, '').replace(/\s/g, '') : null;
+
+            const webhookData = {
+              type: 'welcome',
+              email: email || null,
+              phone: cleanPhone,
+              vendeur: {
+                id: vendeurMisAJour.id, 
+                nom: vendeurMisAJour.nom,
+                telephone: vendeurMisAJour.telephone,
+                ville: vendeurMisAJour.ville,
+                statut: vendeurMisAJour.statut
+              },
+              timestamp: new Date().toISOString()
+            };
+
+            const response = await fetch(webhookUrl, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${process.env.WEBHOOK_SECRET || ''}`
+              },
+              body: JSON.stringify(webhookData)
+            });
+
+            if (!response.ok) {
+              console.error(`[verifierCode] Webhook responded with status ${response.status}`);
+            }
+          }
+        } catch (webhookError: any) {
+          console.error('[verifierCode] Erreur lors de l\'envoi du webhook de bienvenue:', webhookError);
+          // On continue même si le webhook échoue
         }
       }
       

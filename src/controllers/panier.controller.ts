@@ -149,6 +149,8 @@ export class PanierController {
     try {
       const { session_id, boutique_id, produit_id, quantite, variants_selectionnes } = req.body;
       
+      console.log('[addToCart] Données reçues:', { session_id, boutique_id, produit_id, quantite, variants_selectionnes });
+      
       // Vérifier que les champs obligatoires sont présents
       if (!session_id || !boutique_id || !produit_id || !quantite) {
         res.status(400).json({
@@ -167,20 +169,129 @@ export class PanierController {
         return;
       }
 
-      const panierItem = await PanierModel.addToCart({
-        session_id,
-        boutique_id,
-        produit_id,
-        quantite,
-        variants_selectionnes
-      });
+      // Récupérer le produit pour vérifier le stock
+      const { ProduitModel } = require('../models/produit.model');
+      const produit = await ProduitModel.getProduitById(produit_id);
+      
+      if (!produit) {
+        res.status(404).json({
+          success: false,
+          message: 'Produit non trouvé'
+        });
+        return;
+      }
 
-      res.status(201).json({
-        success: true,
-        message: 'Produit ajouté au panier avec succès',
-        item: panierItem
-      });
+      console.log('[addToCart] Produit trouvé:', { id: produit.id, nom: produit.nom, variants: produit.variants });
+
+      // Calculer le stock disponible selon les variants
+      let stockDisponible = produit.quantite_stock || 0;
+      
+      if (variants_selectionnes && produit.variants) {
+        console.log('[addToCart] Vérification du stock pour les variants sélectionnés');
+        
+        // Nouveau format: variants_selectionnes est un objet comme {"Type": "A"}
+        // produit.variants est un tableau comme [{"nom": "Type", "options": ["A", "B"], "quantites": [8, 8]}]
+        
+        for (const [variantNom, optionSelectionnee] of Object.entries(variants_selectionnes)) {
+          const variant = produit.variants.find((v: any) => v.nom === variantNom);
+          
+          if (variant && variant.quantites && Array.isArray(variant.quantites)) {
+            const indexOption = variant.options.indexOf(optionSelectionnee);
+            
+            if (indexOption !== -1 && variant.quantites[indexOption] !== undefined) {
+              const quantiteVariant = variant.quantites[indexOption];
+              console.log('[addToCart] Stock pour', variantNom, '=', optionSelectionnee, ':', quantiteVariant);
+              stockDisponible = Math.min(stockDisponible, quantiteVariant);
+            }
+          }
+        }
+      }
+
+      console.log('[addToCart] Stock disponible calculé:', stockDisponible);
+
+      // Vérifier le stock disponible
+      if (stockDisponible === 0) {
+        res.status(400).json({
+          success: false,
+          message: 'Produit en rupture de stock'
+        });
+        return;
+      }
+
+      // Récupérer les items existants du panier
+      const panierItems = await PanierModel.getPanierBySessionId(session_id);
+      
+      // Chercher un item identique (même produit ET mêmes variants)
+      let itemExistant = null;
+      
+      for (const item of panierItems) {
+        if (item.produit_id === produit_id) {
+          // Comparer les variants
+          const variantsIdentiques = JSON.stringify(item.variants_selectionnes) === JSON.stringify(variants_selectionnes);
+          
+          if (variantsIdentiques) {
+            itemExistant = item;
+            console.log('[addToCart] Item identique trouvé:', item.id);
+            break;
+          }
+        }
+      }
+
+      if (itemExistant) {
+        // Produit identique avec mêmes variants → mettre à jour la quantité
+        const nouvelleQuantite = itemExistant.quantite + quantite;
+        
+        console.log('[addToCart] Mise à jour de la quantité:', itemExistant.quantite, '+', quantite, '=', nouvelleQuantite);
+        
+        // Vérifier que la nouvelle quantité ne dépasse pas le stock
+        if (nouvelleQuantite > stockDisponible) {
+          res.status(400).json({
+            success: false,
+            message: `Stock insuffisant. Stock disponible: ${stockDisponible}, quantité demandée: ${nouvelleQuantite}`,
+            stockDisponible
+          });
+          return;
+        }
+
+        const updatedItem = await PanierModel.updateCartItemQuantity(itemExistant.id, nouvelleQuantite);
+        
+        res.status(200).json({
+          success: true,
+          message: 'Quantité mise à jour dans le panier',
+          item: updatedItem,
+          action: 'updated'
+        });
+      } else {
+        // Produit avec variants différents ou nouveau produit → ajouter un nouvel item
+        console.log('[addToCart] Ajout d\'un nouvel item au panier');
+        
+        // Vérifier que la quantité ne dépasse pas le stock
+        if (quantite > stockDisponible) {
+          res.status(400).json({
+            success: false,
+            message: `Stock insuffisant. Stock disponible: ${stockDisponible}`,
+            stockDisponible
+          });
+          return;
+        }
+
+        const panierItem = await PanierModel.addToCartWithoutCheck({
+          session_id,
+          boutique_id,
+          produit_id,
+          quantite,
+          variants_selectionnes
+        });
+
+        res.status(201).json({
+          success: true,
+          message: 'Produit ajouté au panier avec succès',
+          item: panierItem,
+          action: 'added'
+        });
+      }
     } catch (error: any) {
+      console.error('[addToCart] Erreur:', error);
       res.status(500).json({
         success: false,
         message: 'Erreur lors de l\'ajout au panier',

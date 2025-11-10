@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { CommuneController } from '../controllers/commune.controller';
-import { auth, isAdmin, isBoutiqueOwner } from '../middlewares/auth.middleware';
+import { auth, isAdmin, isBoutiqueOwner, isCommuneOwner } from '../middlewares/auth.middleware';
 import { validate, validateParams } from '../middlewares/validation.middleware';
 import { idParamSchema } from '../utils/validation.schemas';
 import { boutiqueIdParamSchema, createCommuneSchema, toggleCommuneStatusSchema, updateCommuneSchema } from '../utils/validation.schemas.commune';
@@ -172,7 +172,7 @@ router.get('/:id', validateParams(idParamSchema), CommuneController.getCommuneBy
  * @desc    Crée une nouvelle commune de livraison
  * @access  Private (admin ou propriétaire de la boutique)
  */
-router.post('/', auth, validate(createCommuneSchema), isBoutiqueOwner, CommuneController.createCommune);
+router.post('/', auth, validate(createCommuneSchema), isCommuneOwner, CommuneController.createCommune);
 
 /**
  * @swagger
@@ -214,7 +214,7 @@ router.post('/', auth, validate(createCommuneSchema), isBoutiqueOwner, CommuneCo
  * @desc    Met à jour une commune existante
  * @access  Private (admin ou propriétaire de la boutique)
  */
-router.put('/:id', auth, validateParams(idParamSchema), validate(updateCommuneSchema), isBoutiqueOwner, CommuneController.updateCommune);
+router.put('/:id', auth, validateParams(idParamSchema), validate(updateCommuneSchema), isCommuneOwner, CommuneController.updateCommune);
 
 /**
  * @swagger
@@ -256,7 +256,7 @@ router.put('/:id', auth, validateParams(idParamSchema), validate(updateCommuneSc
  * @desc    Active ou désactive une commune
  * @access  Private (admin ou propriétaire de la boutique)
  */
-router.patch('/:id/status', auth, validateParams(idParamSchema), validate(toggleCommuneStatusSchema), isBoutiqueOwner, CommuneController.toggleCommuneStatus);
+router.patch('/:id/status', auth, validateParams(idParamSchema), validate(toggleCommuneStatusSchema), isCommuneOwner, CommuneController.toggleCommuneStatus);
 
 /**
  * @swagger
@@ -290,6 +290,6 @@ router.patch('/:id/status', auth, validateParams(idParamSchema), validate(toggle
  * @desc    Supprime une commune
  * @access  Private (admin ou propriétaire de la boutique)
  */
-router.delete('/:id', auth, validateParams(idParamSchema), isBoutiqueOwner, CommuneController.deleteCommune);
+router.delete('/:id', auth, validateParams(idParamSchema), isCommuneOwner, CommuneController.deleteCommune);
 
 export default router;

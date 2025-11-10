@@ -76,7 +76,7 @@ export const createBoutiqueSchema = Joi.object({
   description: Joi.string().allow(null, '').messages({
     'string.base': 'La description doit être une chaîne de caractères'
   }),
-  vendeur_id: Joi.number().integer().required().messages({
+  vendeur_id: Joi.number().integer().messages({
     'number.base': 'L\'ID du vendeur doit être un nombre',
     'any.required': 'L\'ID du vendeur est obligatoire'
   }),
