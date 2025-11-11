@@ -457,4 +457,34 @@ export class CommandeModel {
       throw error;
     }
   }
+
+  /**
+   * Récupère les détails des produits d'une commande avec leurs informations complètes
+   * @param commandeId ID de la commande
+   */
+  static async getCommandeArticlesDetails(commandeId: number): Promise<any[]> {
+    console.log('[CommandeModel] Récupération des détails des articles pour la commande:', commandeId);
+    
+    try {
+      // Récupérer les articles de la commande avec les informations du produit
+      const { data: articles, error } = await supabaseAdmin
+        .from('commande_articles')
+        .select(`
+          *,
+          produit:produit_id(*)
+        `)
+        .eq('commande_id', commandeId);
+      
+      if (error) {
+        console.error('[CommandeModel] Erreur lors de la récupération des articles:', error);
+        throw new Error(`Erreur lors de la récupération des articles: ${error.message}`);
+      }
+      
+      console.log(`[CommandeModel] ${articles?.length || 0} articles trouvés`);
+      return articles || [];
+    } catch (error) {
+      console.error('[CommandeModel] Exception dans getCommandeArticlesDetails:', error);
+      throw error;
+    }
+  }
 }

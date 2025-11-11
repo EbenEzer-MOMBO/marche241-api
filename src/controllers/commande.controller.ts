@@ -411,4 +411,61 @@ export class CommandeController {
       });
     }
   }
+
+  /**
+   * Récupère les détails des produits d'une commande
+   * @param req Requête HTTP
+   * @param res Réponse HTTP
+   */
+  static async getCommandeArticlesDetails(req: Request, res: Response): Promise<void> {
+    try {
+      const id = parseInt(req.params.id);
+      
+      if (isNaN(id)) {
+        res.status(400).json({
+          success: false,
+          message: 'ID de commande invalide'
+        });
+        return;
+      }
+      
+      // Vérifier si la commande existe
+      const commande = await CommandeModel.getCommandeById(id);
+      
+      if (!commande) {
+        res.status(404).json({
+          success: false,
+          message: 'Commande non trouvée'
+        });
+        return;
+      }
+      
+      // Récupérer les détails des articles
+      const articles = await CommandeModel.getCommandeArticlesDetails(id);
+      
+      res.status(200).json({
+        success: true,
+        commande: {
+          id: commande.id,
+          numero_commande: commande.numero_commande,
+          statut: commande.statut,
+          statut_paiement: commande.statut_paiement,
+          sous_total: commande.sous_total,
+          frais_livraison: commande.frais_livraison,
+          taxes: commande.taxes,
+          remise: commande.remise,
+          total: commande.total,
+          date_commande: commande.date_commande
+        },
+        articles,
+        nombre_articles: articles.length
+      });
+    } catch (error: any) {
+      res.status(500).json({
+        success: false,
+        message: 'Erreur lors de la récupération des détails des produits de la commande',
+        error: error.message
+      });
+    }
+  }
 }

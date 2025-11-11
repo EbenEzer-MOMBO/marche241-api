@@ -275,4 +275,75 @@ router.patch('/:id/payment-status', auth, validateParams(idParamSchema), validat
  */
 router.post('/:id/paiement', validateParams(idParamSchema), validate(initierPaiementSchema), CommandeController.initierPaiement);
 
+/**
+ * @swagger
+ * /api/v1/commandes/{id}/articles:
+ *   get:
+ *     summary: Récupère les détails des produits d'une commande
+ *     description: Récupère la liste détaillée des produits/articles d'une commande avec leurs informations complètes
+ *     tags: [Commandes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID de la commande
+ *     responses:
+ *       200:
+ *         description: Détails des produits récupérés avec succès
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 commande:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                     numero_commande:
+ *                       type: string
+ *                     statut:
+ *                       type: string
+ *                     statut_paiement:
+ *                       type: string
+ *                     sous_total:
+ *                       type: number
+ *                     frais_livraison:
+ *                       type: number
+ *                     taxes:
+ *                       type: number
+ *                     remise:
+ *                       type: number
+ *                     total:
+ *                       type: number
+ *                     date_commande:
+ *                       type: string
+ *                       format: date-time
+ *                 articles:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                 nombre_articles:
+ *                   type: integer
+ *       400:
+ *         description: ID de commande invalide
+ *       401:
+ *         description: Non authentifié
+ *       404:
+ *         description: Commande non trouvée
+ *       500:
+ *         description: Erreur serveur
+ * 
+ * @route   GET /api/v1/commandes/:id/articles
+ * @desc    Récupère les détails des produits d'une commande
+ * @access  Private
+ */
+router.get('/:id/articles', auth, validateParams(idParamSchema), CommandeController.getCommandeArticlesDetails);
+
 export default router;

@@ -24,6 +24,7 @@ app.use(cors({
   origin: [
     process.env.CORS_ORIGIN || '*',
     'http://localhost:3000',
+    'http://192.168.1.7:3000',
     'https://marche241-production.up.railway.app',
     'https://marche241-backend-production.up.railway.app',
     'https://marche241.netlify.app',
