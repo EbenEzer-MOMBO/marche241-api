@@ -40,14 +40,38 @@ export class PanierController {
           continue;
         }
 
-        // Vérifier le stock disponible
-        const stockDisponible = produit.quantite_stock || 0;
+        // Calculer le stock disponible selon les variants
+        let stockDisponible = produit.quantite_stock || 0;
+        
+        if (item.variants_selectionnes && produit.variants) {
+          console.log('[getPanier] Vérification du stock pour les variants:', item.variants_selectionnes);
+          
+          // item.variants_selectionnes est un objet comme {"Type": "A", "Taille": "M"}
+          // produit.variants est un tableau comme [{"nom": "Type", "options": ["A", "B"], "quantites": [8, 5]}]
+          
+          for (const [variantNom, optionSelectionnee] of Object.entries(item.variants_selectionnes)) {
+            const variant = produit.variants.find((v: any) => v.nom === variantNom);
+            
+            if (variant && variant.quantites && Array.isArray(variant.quantites)) {
+              const indexOption = variant.options.indexOf(optionSelectionnee);
+              
+              if (indexOption !== -1 && variant.quantites[indexOption] !== undefined) {
+                const quantiteVariant = variant.quantites[indexOption];
+                console.log(`[getPanier] Stock pour ${variantNom}=${optionSelectionnee}: ${quantiteVariant}`);
+                stockDisponible = Math.min(stockDisponible, quantiteVariant);
+              }
+            }
+          }
+          
+          console.log('[getPanier] Stock disponible calculé:', stockDisponible);
+        }
         
         if (stockDisponible === 0) {
           produitsIndisponibles.push({
             id: item.id,
             nom: produit.nom,
-            raison: 'Produit en rupture de stock'
+            raison: 'Produit en rupture de stock',
+            variants: item.variants_selectionnes
           });
           // Supprimer l'élément du panier
           await PanierModel.removeFromCart(item.id);
@@ -65,7 +89,8 @@ export class PanierController {
             nom: produit.nom,
             quantiteOriginale: item.quantite,
             nouvelleQuantite: nouvelleQuantite,
-            stockDisponible: stockDisponible
+            stockDisponible: stockDisponible,
+            variants: item.variants_selectionnes
           });
           
           // Mettre à jour l'item avec la nouvelle quantité
