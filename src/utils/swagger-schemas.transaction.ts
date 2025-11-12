@@ -10,6 +10,7 @@
  *         - reference_transaction
  *         - montant
  *         - methode_paiement
+ *         - type_paiement
  *         - statut
  *         - date_creation
  *         - date_modification
@@ -30,10 +31,18 @@
  *           type: string
  *           enum: [mobile_money, airtel_money, moov_money, especes, virement]
  *           description: Méthode de paiement utilisée
+ *         type_paiement:
+ *           type: string
+ *           enum: [paiement_complet, acompte, frais_livraison, solde_apres_livraison, complement]
+ *           default: paiement_complet
+ *           description: Type de paiement
  *         statut:
  *           type: string
- *           enum: [en_attente, paye, echec, rembourse]
+ *           enum: [en_attente, partiellement_paye, paye, echec, rembourse]
  *           description: Statut actuel de la transaction
+ *         description:
+ *           type: string
+ *           description: Description du paiement (optionnel)
  *         numero_telephone:
  *           type: string
  *           description: Numéro de téléphone utilisé pour le paiement mobile (optionnel)
@@ -63,6 +72,7 @@
  *         - reference_transaction
  *         - montant
  *         - methode_paiement
+ *         - type_paiement
  *       properties:
  *         commande_id:
  *           type: integer
@@ -72,11 +82,19 @@
  *           description: Référence unique de la transaction
  *         montant:
  *           type: integer
- *           description: Montant en centimes
+ *           description: Montant en centimes (ne doit pas dépasser le montant_restant de la commande)
  *         methode_paiement:
  *           type: string
  *           enum: [mobile_money, airtel_money, moov_money, especes, virement]
  *           description: Méthode de paiement utilisée
+ *         type_paiement:
+ *           type: string
+ *           enum: [paiement_complet, acompte, frais_livraison, solde_apres_livraison, complement]
+ *           default: paiement_complet
+ *           description: Type de paiement (paiement_complet, acompte, frais_livraison, solde_apres_livraison, complement)
+ *         description:
+ *           type: string
+ *           description: Description du paiement (ex "Paiement des frais de livraison")
  *         statut:
  *           type: string
  *           enum: [en_attente, paye, echec, rembourse]

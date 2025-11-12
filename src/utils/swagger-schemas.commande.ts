@@ -135,13 +135,21 @@
  *           type: number
  *           format: float
  *           description: Total de la commande
+ *         montant_paye:
+ *           type: number
+ *           format: float
+ *           description: Montant déjà payé (calculé automatiquement à partir des transactions)
+ *         montant_restant:
+ *           type: number
+ *           format: float
+ *           description: Montant restant à payer (calculé automatiquement = total - montant_paye)
  *         statut:
  *           type: string
  *           enum: [en_attente, confirmee, en_preparation, expedie, livree, annulee, remboursee]
  *           description: Statut de la commande
  *         statut_paiement:
  *           type: string
- *           enum: [en_attente, paye, echec, rembourse]
+ *           enum: [en_attente, partiellement_paye, paye, echec, rembourse]
  *           description: Statut du paiement
  *         methode_paiement:
  *           type: string
@@ -198,7 +206,7 @@
  *       properties:
  *         statut_paiement:
  *           type: string
- *           enum: [en_attente, paye, echec, rembourse]
+ *           enum: [en_attente, partiellement_paye, paye, echec, rembourse]
  *           description: Nouveau statut de paiement
  *         methode_paiement:
  *           type: string
@@ -217,6 +225,85 @@
  *         numero_telephone:
  *           type: string
  *           description: Numéro de téléphone pour le paiement mobile (requis pour mobile_money, airtel_money, moov_money)
+ *     
+ *     ResumePaiements:
+ *       type: object
+ *       properties:
+ *         commande:
+ *           type: object
+ *           properties:
+ *             id:
+ *               type: integer
+ *               description: ID de la commande
+ *             numero_commande:
+ *               type: string
+ *               description: Numéro de la commande
+ *             total:
+ *               type: number
+ *               format: float
+ *               description: Montant total de la commande
+ *             montant_paye:
+ *               type: number
+ *               format: float
+ *               description: Montant déjà payé
+ *             montant_restant:
+ *               type: number
+ *               format: float
+ *               description: Montant restant à payer
+ *             statut_paiement:
+ *               type: string
+ *               enum: [en_attente, partiellement_paye, paye, echec, rembourse]
+ *               description: Statut du paiement
+ *             pourcentage_paye:
+ *               type: integer
+ *               description: Pourcentage du montant total déjà payé (0-100)
+ *         transactions:
+ *           type: array
+ *           items:
+ *             type: object
+ *             properties:
+ *               id:
+ *                 type: integer
+ *               montant:
+ *                 type: number
+ *                 format: float
+ *               type_paiement:
+ *                 type: string
+ *                 enum: [paiement_complet, acompte, frais_livraison, solde_apres_livraison, complement]
+ *               methode_paiement:
+ *                 type: string
+ *               statut:
+ *                 type: string
+ *               description:
+ *                 type: string
+ *               date_creation:
+ *                 type: string
+ *                 format: date-time
+ *               date_confirmation:
+ *                 type: string
+ *                 format: date-time
+ *           description: Liste des transactions effectuées pour cette commande
+ *         statistiques:
+ *           type: object
+ *           properties:
+ *             nombre_total_transactions:
+ *               type: integer
+ *               description: Nombre total de transactions
+ *             nombre_transactions_payees:
+ *               type: integer
+ *               description: Nombre de transactions confirmées
+ *             paiements_par_type:
+ *               type: object
+ *               description: Statistiques groupées par type de paiement
+ *               additionalProperties:
+ *                 type: object
+ *                 properties:
+ *                   montant_total:
+ *                     type: number
+ *                     format: float
+ *                   nombre_transactions:
+ *                     type: integer
+ *           description: Statistiques sur les paiements
  */
 
 // Ce fichier ne contient que des annotations JSDoc pour Swagger

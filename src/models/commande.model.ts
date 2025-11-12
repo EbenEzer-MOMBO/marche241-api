@@ -128,7 +128,7 @@ export class CommandeModel {
   }
 
   /**
-   * Met à jour le stock des produits d'une commande
+   * Met à jour le stock des produits d'une commande en tenant compte des variants
    * @param commandeId ID de la commande
    * @param increment Si true, incrémente le stock (annulation), sinon décrémente (confirmation)
    */
@@ -136,10 +136,10 @@ export class CommandeModel {
     console.log(`[CommandeModel] Mise à jour du stock pour la commande ${commandeId}, increment: ${increment}`);
     
     try {
-      // Récupérer les articles de la commande
+      // Récupérer les articles de la commande avec les variants sélectionnés
       const { data: articles, error } = await supabaseAdmin
         .from('commande_articles')
-        .select('produit_id, quantite')
+        .select('produit_id, quantite, variants_selectionnes')
         .eq('commande_id', commandeId);
       
       if (error) {
@@ -154,10 +154,17 @@ export class CommandeModel {
       
       // Mettre à jour le stock de chaque produit
       for (const article of articles) {
-        // Si increment est true, on incrémente le stock (quantité négative)
-        // Sinon, on décrémente le stock (quantité positive)
         const quantite = increment ? -article.quantite : article.quantite;
-        await ProduitModel.updateStock(article.produit_id, quantite);
+        
+        // Si l'article a des variants sélectionnés, mettre à jour le stock du variant
+        if (article.variants_selectionnes && Object.keys(article.variants_selectionnes).length > 0) {
+          console.log(`[CommandeModel] Mise à jour du stock avec variants pour produit ${article.produit_id}:`, article.variants_selectionnes);
+          await ProduitModel.updateStockWithVariants(article.produit_id, quantite, article.variants_selectionnes);
+        } else {
+          // Sinon, mettre à jour le stock global
+          console.log(`[CommandeModel] Mise à jour du stock global pour produit ${article.produit_id}`);
+          await ProduitModel.updateStock(article.produit_id, quantite);
+        }
       }
       
       console.log(`[CommandeModel] Stock mis à jour pour tous les produits de la commande ${commandeId}`);
@@ -484,6 +491,83 @@ export class CommandeModel {
       return articles || [];
     } catch (error) {
       console.error('[CommandeModel] Exception dans getCommandeArticlesDetails:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Recalcule le montant payé d'une commande en sommant les transactions confirmées
+   * @param commandeId ID de la commande
+   */
+  static async recalculerMontantPaye(commandeId: number): Promise<void> {
+    try {
+      // Utiliser la fonction SQL créée dans la migration
+      const { error } = await supabaseAdmin.rpc('recalculer_montant_paye_commande', {
+        p_commande_id: commandeId
+      });
+
+      if (error) {
+        console.error('[CommandeModel] Erreur lors du recalcul du montant payé:', error);
+        throw new Error(`Erreur lors du recalcul du montant payé: ${error.message}`);
+      }
+
+      console.log(`[CommandeModel] Montant payé recalculé pour la commande ${commandeId}`);
+    } catch (error) {
+      console.error('[CommandeModel] Exception dans recalculerMontantPaye:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Vérifie si une commande est entièrement payée
+   * @param commandeId ID de la commande
+   */
+  static async isCommandeEntierementPayee(commandeId: number): Promise<boolean> {
+    try {
+      const commande = await this.getCommandeById(commandeId);
+      if (!commande) {
+        throw new Error('Commande non trouvée');
+      }
+
+      return commande.montant_paye >= commande.total;
+    } catch (error) {
+      console.error('[CommandeModel] Exception dans isCommandeEntierementPayee:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Récupère le montant déjà payé pour une commande
+   * @param commandeId ID de la commande
+   */
+  static async getMontantPaye(commandeId: number): Promise<number> {
+    try {
+      const commande = await this.getCommandeById(commandeId);
+      if (!commande) {
+        throw new Error('Commande non trouvée');
+      }
+
+      return commande.montant_paye || 0;
+    } catch (error) {
+      console.error('[CommandeModel] Exception dans getMontantPaye:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Calcule le montant restant à payer pour une commande
+   * @param commandeId ID de la commande
+   */
+  static async getMontantRestant(commandeId: number): Promise<number> {
+    try {
+      const commande = await this.getCommandeById(commandeId);
+      if (!commande) {
+        throw new Error('Commande non trouvée');
+      }
+
+      return Math.max(0, commande.total - commande.montant_paye);
+    } catch (error) {
+      console.error('[CommandeModel] Exception dans getMontantRestant:', error);
       throw error;
     }
   }

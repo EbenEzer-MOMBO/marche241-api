@@ -218,10 +218,20 @@ export class TransactionModel {
     id: number, 
     transaction: Partial<Omit<Transaction, 'id' | 'date_creation' | 'date_modification'>>
   ): Promise<Transaction> {
+    // Filtrer les valeurs vides et undefined pour éviter les erreurs d'enum
+    const cleanedTransaction: any = {};
+    
+    for (const [key, value] of Object.entries(transaction)) {
+      // Ne garder que les valeurs non vides
+      if (value !== '' && value !== null && value !== undefined) {
+        cleanedTransaction[key] = value;
+      }
+    }
+    
     const { data, error } = await supabaseAdmin
       .from('transactions')
       .update({
-        ...transaction,
+        ...cleanedTransaction,
         date_modification: new Date()
       })
       .eq('id', id)

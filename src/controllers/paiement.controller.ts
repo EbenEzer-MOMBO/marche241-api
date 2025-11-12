@@ -2,17 +2,18 @@ import { Request, Response } from 'express';
 import axios from 'axios';
 import { TransactionModel } from '../models/transaction.model';
 import { CommandeModel } from '../models/commande.model';
-import { StatutPaiement, Transaction } from '../lib/database-types';
+import { StatutPaiement, Transaction, MethodePaiement } from '../lib/database-types';
 import { ProduitModel } from '../models/produit.model';
 
 export class PaiementController {
   /**
-   * Vérifie que le montant d'une transaction correspond au total réel des articles de la commande
+   * Vérifie que le montant d'une transaction correspond au montant attendu selon le type de paiement
    * @param transaction Transaction à vérifier
    * @returns {Promise<boolean>} true si le montant est correct, false sinon
    */
   private static async verifierMontantTransaction(transaction: Transaction): Promise<{ isValid: boolean, message?: string }> {
     console.log(`[PaiementController] Vérification du montant de la transaction ${transaction.id}`);
+    console.log(`[PaiementController] Type de paiement: ${transaction.type_paiement}, Montant: ${transaction.montant}`);
 
     try {
       const commandeId = transaction.commande_id;
@@ -40,23 +41,62 @@ export class PaiementController {
         return sum + (article.prix_unitaire * article.quantite);
       }, 0);
 
-      // Ajouter les frais de livraison si applicable
       const fraisLivraison = commande.frais_livraison || 0;
-      const totalCalcule = totalArticles + fraisLivraison;
+      const totalCommande = totalArticles + fraisLivraison;
+      const montantTransaction = transaction.montant;
 
-      console.log(`[PaiementController] Montant transaction: ${transaction.montant}, Total calculé: ${totalCalcule}`);
-      console.log(`[PaiementController] Détail: Articles=${totalArticles}, Livraison=${fraisLivraison}`);
+      // Frais de service de 2.5%
+      const FRAIS_SERVICE_POURCENTAGE = 0.025;
+      const avecFraisService = (montant: number) => Math.round(montant * (1 + FRAIS_SERVICE_POURCENTAGE));
 
-      // Vérifier que le montant correspond (avec une tolérance de 1 centime pour les erreurs d'arrondi)
-      const difference = Math.abs(totalCalcule - transaction.montant);
-      if (difference > 1) {
+      console.log(`[PaiementController] Détail commande: Articles=${totalArticles}, Livraison=${fraisLivraison}, Total=${totalCommande}`);
+
+      // Déterminer le montant attendu selon le type de paiement
+      let montantAttendu: number;
+      let typePaiementDescription: string;
+
+      switch (transaction.type_paiement) {
+        case 'frais_livraison':
+          montantAttendu = avecFraisService(fraisLivraison);
+          typePaiementDescription = `frais de livraison (${fraisLivraison} + frais service)`;
+          break;
+
+        case 'paiement_complet':
+          montantAttendu = avecFraisService(totalCommande);
+          typePaiementDescription = `paiement complet (${totalCommande} + frais service)`;
+          break;
+
+        case 'solde_apres_livraison':
+          montantAttendu = avecFraisService(totalCommande - fraisLivraison);
+          typePaiementDescription = `solde après livraison (${totalCommande - fraisLivraison} + frais service)`;
+          break;
+
+        case 'acompte':
+        case 'complement':
+          // Pour les acomptes et compléments, on accepte n'importe quel montant
+          console.log(`[PaiementController] Type de paiement ${transaction.type_paiement}: montant libre accepté`);
+          return { isValid: true };
+
+        default:
+          // Si le type de paiement n'est pas spécifié, vérifier contre le total complet
+          montantAttendu = avecFraisService(totalCommande);
+          typePaiementDescription = `total de la commande (${totalCommande} + frais service)`;
+          console.warn(`[PaiementController] Type de paiement non reconnu: ${transaction.type_paiement}`);
+      }
+
+      console.log(`[PaiementController] Vérification: Montant transaction=${montantTransaction}, Montant attendu=${montantAttendu} (${typePaiementDescription})`);
+
+      // Vérifier que le montant correspond (avec une tolérance de 2 FCFA pour les erreurs d'arrondi)
+      const difference = Math.abs(montantAttendu - montantTransaction);
+      if (difference > 2) {
         console.error(`[PaiementController] Montant incorrect: différence de ${difference}`);
         return {
           isValid: false,
-          message: `Montant de la transaction (${transaction.montant}) non conforme au total de la commande (${totalCalcule})`
+          message: `Montant de la transaction (${montantTransaction} FCFA) non conforme au montant attendu pour ${typePaiementDescription} (${montantAttendu} FCFA)`
         };
       }
 
+      console.log(`[PaiementController] Montant vérifié avec succès (différence: ${difference} FCFA)`);
       return { isValid: true };
     } catch (error: any) {
       console.error(`[PaiementController] Erreur lors de la vérification du montant:`, error);
@@ -529,18 +569,119 @@ export class PaiementController {
         console.log(`[PaiementController] Montant de la transaction vérifié et conforme`);
         console.log(`[PaiementController] Facture ${billId} est ${billState}, mise à jour de la transaction...`);
 
-        // Mettre à jour la transaction avec les informations du paiement
-        await TransactionModel.updateTransaction(transaction.id, {
-          statut: 'paye' as StatutPaiement,
-          reference_operateur: psTransactionId || billId,
-          date_confirmation: new Date(),
-          notes: `Paiement confirmé via API. État: ${billState}`
-        });
+        // Convertir le nom du système de paiement en méthode de paiement
+        let methode_paiement: MethodePaiement | undefined;
+        if (paymentSystemName) {
+          console.log(`[PaiementController] Conversion du système de paiement: ${paymentSystemName}`);
+          if (paymentSystemName === 'airtelmoney') {
+            methode_paiement = 'airtel_money';
+          } else if (paymentSystemName === 'moovmoney1' || paymentSystemName === 'moovmoney') {
+            methode_paiement = 'moov_money';
+          } else {
+            methode_paiement = 'mobile_money';
+          }
+          console.log(`[PaiementController] Méthode de paiement convertie: ${methode_paiement}`);
+        }
 
-        // Mettre à jour l'état de la commande si nécessaire
+        // Mettre à jour la transaction avec les informations du paiement
+        const updateData: any = {
+          statut: 'paye' as StatutPaiement,
+          reference_operateur: billId,
+          reference_transaction: psTransactionId,
+          date_confirmation: new Date(),
+          notes: `Paiement confirmé via API. État: ${billState}${paymentSystemName ? `, Système: ${paymentSystemName}` : ''}`
+        };
+
+        // Ajouter la méthode de paiement si elle a été identifiée
+        if (methode_paiement) {
+          updateData.methode_paiement = methode_paiement;
+          console.log(`[PaiementController] Mise à jour de la transaction avec méthode de paiement: ${methode_paiement}`);
+        }
+
+        await TransactionModel.updateTransaction(transaction.id, updateData);
+
+        // Mettre à jour l'état de la commande et recalculer les montants
         if (transaction.commande_id) {
-          console.log(`[PaiementController] Mise à jour du statut de la commande ${transaction.commande_id} vers 'confirmee'`);
-          await CommandeModel.updateCommandeStatus(transaction.commande_id, 'confirmee');
+          console.log(`[PaiementController] Mise à jour de la commande ${transaction.commande_id}...`);
+          
+          // Le trigger SQL va automatiquement recalculer montant_paye et montant_restant
+          // On doit juste forcer une mise à jour pour déclencher le trigger
+          const commande = await CommandeModel.getCommandeById(transaction.commande_id);
+          
+          if (commande) {
+            // Récupérer le total des paiements confirmés
+            const montantPaye = await CommandeModel.getMontantPaye(transaction.commande_id);
+            const montantRestant = commande.total - montantPaye;
+            
+            console.log(`[PaiementController] Montants de la commande:`, {
+              total: commande.total,
+              montant_paye: montantPaye,
+              montant_restant: montantRestant
+            });
+            
+            // Déterminer le nouveau statut de paiement
+            let nouveauStatutPaiement: StatutPaiement;
+            let nouveauStatutCommande = commande.statut;
+            
+            if (montantPaye >= commande.total) {
+              nouveauStatutPaiement = 'paye';
+              // Si entièrement payé, confirmer la commande
+              if (commande.statut === 'en_attente') {
+                nouveauStatutCommande = 'confirmee';
+              }
+              console.log(`[PaiementController] Commande entièrement payée`);
+            } else if (montantPaye > 0) {
+              nouveauStatutPaiement = 'partiellement_paye';
+              console.log(`[PaiementController] Commande partiellement payée`);
+            } else {
+              nouveauStatutPaiement = 'en_attente';
+            }
+            
+            // Mettre à jour la commande avec les nouveaux statuts et montants
+            console.log(`[PaiementController] Mise à jour vers statut_paiement: ${nouveauStatutPaiement}, statut: ${nouveauStatutCommande}`);
+            await CommandeModel.updatePaymentStatus(
+              transaction.commande_id, 
+              nouveauStatutPaiement,
+              updateData.methode_paiement || commande.methode_paiement
+            );
+            
+            // Mettre à jour le statut de la commande si nécessaire
+            if (nouveauStatutCommande !== commande.statut) {
+              await CommandeModel.updateCommandeStatus(transaction.commande_id, nouveauStatutCommande);
+            }
+            
+            // Déduire les stocks si c'est le premier paiement (frais de livraison ou paiement complet)
+            // On déduit les stocks dès le premier paiement pour permettre la préparation de la commande
+            const shouldUpdateStock = 
+              nouveauStatutPaiement === 'paye' || // Paiement complet
+              (nouveauStatutPaiement === 'partiellement_paye' && transaction.type_paiement === 'frais_livraison'); // Premier paiement (frais de livraison)
+            
+            if (shouldUpdateStock) {
+              // Vérifier si les stocks n'ont pas déjà été déduits
+              const transactionsPayees = await TransactionModel.getTransactionsByCommandeId(transaction.commande_id);
+              const autresPaiementsConfirmes = transactionsPayees.filter(
+                (t: any) => t.id !== transaction.id && t.statut === 'paye'
+              );
+              
+              if (autresPaiementsConfirmes.length === 0) {
+                // C'est le premier paiement confirmé, déduire les stocks
+                console.log(`[PaiementController] Premier paiement confirmé (${transaction.type_paiement}), mise à jour des stocks...`);
+                try {
+                  await CommandeModel.updateProductsStock(transaction.commande_id, false);
+                  console.log(`[PaiementController] Stocks mis à jour avec succès`);
+                } catch (stockError: any) {
+                  console.error(`[PaiementController] Erreur lors de la mise à jour des stocks:`, stockError);
+                  // On continue malgré l'erreur de stock (le paiement est confirmé)
+                }
+              } else {
+                console.log(`[PaiementController] Stocks déjà déduits lors d'un paiement précédent`);
+              }
+            } else {
+              console.log(`[PaiementController] Type de paiement ${transaction.type_paiement}, stocks non déduits pour l'instant`);
+            }
+            
+            console.log(`[PaiementController] Commande mise à jour avec succès`);
+          }
         } else {
           console.log(`[PaiementController] Aucune commande associée à cette transaction`);
         }
@@ -553,16 +694,23 @@ export class PaiementController {
         };
       } else {
         // Mettre à jour la transaction avec les informations disponibles
-        if (paymentSystemName && paymentSystemName !== transaction.methode_paiement) {
+        if (paymentSystemName) {
           console.log(`[PaiementController] Mise à jour du système de paiement: ${paymentSystemName}`);
-          let methode_paiement_format = '';
+          
+          // Convertir le nom du système de paiement en méthode de paiement
+          let methode_paiement: MethodePaiement | undefined;
           if (paymentSystemName === 'airtelmoney') {
-            methode_paiement_format = 'airtel_money';
-          } else if (paymentSystemName === 'moovmoney') {
-            methode_paiement_format = 'moov_money';
+            methode_paiement = 'airtel_money';
+          } else if (paymentSystemName === 'moovmoney1' || paymentSystemName === 'moovmoney') {
+            methode_paiement = 'moov_money';
+          } else {
+            methode_paiement = 'mobile_money';
           }
+          
+          console.log(`[PaiementController] Méthode de paiement convertie: ${methode_paiement}`);
+          
           await TransactionModel.updateTransaction(transaction.id, {
-            methode_paiement: methode_paiement_format as any,
+            methode_paiement: methode_paiement,
             notes: `Paiement en attente. Système de paiement: ${paymentSystemName}`
           });
         }

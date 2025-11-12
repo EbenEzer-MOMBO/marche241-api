@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { TransactionModel } from '../models/transaction.model';
+import { CommandeModel } from '../models/commande.model';
 import { StatutPaiement } from '../lib/database-types';
 
 export class TransactionController {
@@ -156,6 +157,74 @@ export class TransactionController {
     try {
       // Utiliser validatedBody s'il existe, sinon utiliser body
       const body = (req as any).validatedBody || req.body;
+      
+      console.log('[TransactionController] Création de transaction, body:', JSON.stringify(body, null, 2));
+      
+      // Si une commande est associée, déterminer automatiquement le type_paiement si non fourni ou incorrect
+      if (body.commande_id && body.montant) {
+        const commande = await CommandeModel.getCommandeById(body.commande_id);
+        
+        if (commande) {
+          console.log('[TransactionController] Commande trouvée:', {
+            id: commande.id,
+            total: commande.total,
+            frais_livraison: commande.frais_livraison,
+            montant_transaction: body.montant
+          });
+          
+          // Le montant de transaction inclut les frais de service de 2.5%
+          const FRAIS_SERVICE_POURCENTAGE = 0.025; // 2.5%
+          
+          // Fonction pour calculer le montant avec frais de service
+          const avecFraisService = (montant: number) => Math.round(montant * (1 + FRAIS_SERVICE_POURCENTAGE));
+          
+          // Déterminer le type de paiement en fonction du montant
+          const fraisLivraison = commande.frais_livraison || 0;
+          const totalCommande = commande.total;
+          const montantTransaction = body.montant;
+          
+          // Calculer les montants attendus avec frais de service
+          const fraisLivraisonAvecFrais = avecFraisService(fraisLivraison);
+          const totalCommandeAvecFrais = avecFraisService(totalCommande);
+          const soldeApresLivraisonAvecFrais = avecFraisService(totalCommande - fraisLivraison);
+          
+          console.log('[TransactionController] Analyse des montants:', {
+            fraisLivraison: fraisLivraison,
+            fraisLivraisonAvecFrais: fraisLivraisonAvecFrais,
+            totalCommande: totalCommande,
+            totalCommandeAvecFrais: totalCommandeAvecFrais,
+            soldeApresLivraisonAvecFrais: soldeApresLivraisonAvecFrais,
+            montantTransaction: montantTransaction
+          });
+          
+          // Si le montant correspond aux frais de livraison + frais de service (avec tolérance de 2)
+          if (Math.abs(montantTransaction - fraisLivraisonAvecFrais) <= 2 && fraisLivraison > 0) {
+            body.type_paiement = 'frais_livraison';
+            body.description = body.description || `Paiement des frais de livraison (${fraisLivraison} FCFA + frais de service)`;
+            console.log('[TransactionController] Type de paiement détecté: frais_livraison');
+          }
+          // Si le montant correspond au total de la commande + frais de service
+          else if (Math.abs(montantTransaction - totalCommandeAvecFrais) <= 2) {
+            body.type_paiement = 'paiement_complet';
+            body.description = body.description || `Paiement complet de la commande (${totalCommande} FCFA + frais de service)`;
+            console.log('[TransactionController] Type de paiement détecté: paiement_complet');
+          }
+          // Si le montant correspond au total moins les frais de livraison + frais de service
+          else if (Math.abs(montantTransaction - soldeApresLivraisonAvecFrais) <= 2) {
+            body.type_paiement = 'solde_apres_livraison';
+            body.description = body.description || `Paiement du solde après livraison (${totalCommande - fraisLivraison} FCFA + frais de service)`;
+            console.log('[TransactionController] Type de paiement détecté: solde_apres_livraison');
+          }
+          // Sinon, c'est un acompte ou un complément
+          else if (montantTransaction < totalCommandeAvecFrais) {
+            body.type_paiement = body.type_paiement || 'acompte';
+            // Calculer le montant réel sans frais de service (approximatif)
+            const montantReel = Math.round(montantTransaction / (1 + FRAIS_SERVICE_POURCENTAGE));
+            body.description = body.description || `Paiement partiel de ${montantReel} FCFA (+ frais de service)`;
+            console.log('[TransactionController] Type de paiement: acompte');
+          }
+        }
+      }
       
       const transaction = await TransactionModel.createTransaction(body);
       

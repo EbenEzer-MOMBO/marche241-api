@@ -8,8 +8,9 @@ export type StatutBoutique = 'active' | 'inactive' | 'en_attente' | 'suspendue';
 export type StatutCategorie = 'active' | 'inactive';
 export type StatutProduit = 'actif' | 'inactif' | 'brouillon' | 'archive';
 export type StatutCommande = 'en_attente' | 'confirmee' | 'en_preparation' | 'expedie' | 'livree' | 'annulee' | 'remboursee';
-export type StatutPaiement = 'en_attente' | 'paye' | 'echec' | 'rembourse';
+export type StatutPaiement = 'en_attente' | 'partiellement_paye' | 'paye' | 'echec' | 'rembourse';
 export type MethodePaiement = 'mobile_money' | 'airtel_money' | 'moov_money' | 'especes' | 'virement';
+export type TypePaiement = 'paiement_complet' | 'acompte' | 'frais_livraison' | 'solde_apres_livraison' | 'complement';
 export type StatutAvis = 'en_attente' | 'approuve' | 'rejete';
 
 // Interface pour les dimensions
@@ -152,6 +153,8 @@ export interface Commande {
   taxes: number;
   remise: number;
   total: number;
+  montant_paye: number; // Montant déjà payé
+  montant_restant: number; // Montant restant à payer (calculé automatiquement)
   
   // Statuts et paiement
   statut: StatutCommande;
@@ -195,6 +198,7 @@ export interface Transaction {
   montant: number; // Montant en centimes
   methode_paiement: MethodePaiement;
   statut: StatutPaiement;
+  type_paiement: TypePaiement; // Type de paiement (complet, acompte, livraison, solde)
   
   // Informations de paiement mobile
   numero_telephone?: string; // Numéro utilisé pour le paiement mobile
@@ -207,6 +211,7 @@ export interface Transaction {
   
   // Informations supplémentaires
   notes?: string; // Notes internes
+  description?: string; // Description du paiement
   
   // Relations
   commande?: Commande;
