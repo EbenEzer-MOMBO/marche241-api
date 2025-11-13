@@ -19,11 +19,111 @@ export class CommandeController {
       const body = (req as any).validatedBody || req.body;
       console.log('Body validé:', JSON.stringify(body, null, 2));
       
-      // Créer la commande
-      console.log('Préparation des données pour création de la commande');
-      
       // Extraire les articles et les autres données de la commande
       const { articles, ...commandeData } = body;
+      
+      // Vérifier la disponibilité des produits AVANT de créer la commande
+      if (articles && Array.isArray(articles) && articles.length > 0) {
+        console.log('[createCommande] Vérification de la disponibilité des produits');
+        const produitsIndisponibles: any[] = [];
+        const quantitesInsuffisantes: any[] = [];
+        
+        for (const article of articles) {
+          const produit = await ProduitModel.getProduitById(article.produit_id);
+          
+          if (!produit) {
+            produitsIndisponibles.push({
+              produit_id: article.produit_id,
+              nom: article.nom_produit || 'Produit inconnu',
+              raison: 'Produit introuvable'
+            });
+            continue;
+          }
+          
+          // Vérifier si le produit est actif
+          if (produit.statut !== 'actif') {
+            produitsIndisponibles.push({
+              produit_id: article.produit_id,
+              nom: produit.nom,
+              raison: 'Produit non disponible'
+            });
+            continue;
+          }
+          
+          // Vérifier le stock selon les variants
+          if (article.variants_selectionnes && produit.variants) {
+            console.log('[createCommande] Vérification du stock pour les variants:', article.variants_selectionnes);
+            
+            // Calculer le stock disponible pour ces variants spécifiques
+            let stockDisponible = produit.quantite_stock || 0;
+            
+            for (const [nomVariant, optionSelectionnee] of Object.entries(article.variants_selectionnes)) {
+              const variant = produit.variants.find((v: any) => v.nom === nomVariant);
+              
+              if (variant && variant.options && variant.quantites) {
+                const indexOption = variant.options.indexOf(optionSelectionnee);
+                
+                if (indexOption !== -1 && variant.quantites[indexOption] !== undefined) {
+                  const quantiteVariant = variant.quantites[indexOption];
+                  stockDisponible = Math.min(stockDisponible, quantiteVariant);
+                  console.log(`[createCommande] Stock pour ${nomVariant}=${optionSelectionnee}: ${quantiteVariant}`);
+                }
+              }
+            }
+            
+            console.log('[createCommande] Stock disponible calculé:', stockDisponible);
+            
+            // Vérifier si la quantité demandée est disponible
+            if (article.quantite > stockDisponible) {
+              quantitesInsuffisantes.push({
+                produit_id: article.produit_id,
+                nom: produit.nom,
+                quantite_commandee: article.quantite,
+                quantite_disponible: stockDisponible,
+                variants: article.variants_selectionnes
+              });
+            }
+          } else {
+            // Pas de variants, vérifier le stock global
+            const stockDisponible = produit.quantite_stock || 0;
+            
+            if (article.quantite > stockDisponible) {
+              quantitesInsuffisantes.push({
+                produit_id: article.produit_id,
+                nom: produit.nom,
+                quantite_commandee: article.quantite,
+                quantite_disponible: stockDisponible
+              });
+            }
+          }
+        }
+        
+        // Si des produits sont indisponibles ou en quantité insuffisante, rejeter la création
+        if (produitsIndisponibles.length > 0 || quantitesInsuffisantes.length > 0) {
+          console.log('[createCommande] Produits indisponibles ou quantités insuffisantes détectés');
+          
+          const erreurs: any = {
+            success: false,
+            message: 'Impossible de créer la commande : problèmes de disponibilité des produits'
+          };
+          
+          if (produitsIndisponibles.length > 0) {
+            erreurs.produits_indisponibles = produitsIndisponibles;
+          }
+          
+          if (quantitesInsuffisantes.length > 0) {
+            erreurs.quantites_insuffisantes = quantitesInsuffisantes;
+          }
+          
+          res.status(400).json(erreurs);
+          return;
+        }
+        
+        console.log('[createCommande] Tous les produits sont disponibles en quantité suffisante');
+      }
+      
+      // Créer la commande
+      console.log('Préparation des données pour création de la commande');
       
       // Ajouter les statuts et initialiser les montants
       const commandeToCreate = {
@@ -502,6 +602,90 @@ export class CommandeController {
       
       // Mettre à jour la méthode de paiement de la commande
       await CommandeModel.updatePaymentStatus(commande.id, 'en_attente', body.methode_paiement);
+      
+      // Envoyer les données vers le webhook de paiement
+      try {
+        const webhookUrl = process.env.WEBHOOK_PAYMENT_URL;
+        
+        if (webhookUrl) {
+          console.log('[initierPaiement] Envoi des données au webhook de paiement');
+          
+          // Préparer les données du webhook
+          const webhookData = {
+            type: 'payment_initialized',
+            transaction: {
+              id: transaction.id,
+              reference: transaction.reference_transaction,
+              montant: transaction.montant,
+              methode_paiement: transaction.methode_paiement,
+              type_paiement: transaction.type_paiement,
+              statut: transaction.statut,
+              numero_telephone: transaction.numero_telephone,
+              date_creation: transaction.date_creation
+            },
+            commande: {
+              id: commande.id,
+              numero_commande: commande.numero_commande,
+              statut: commande.statut,
+              statut_paiement: commande.statut_paiement,
+              sous_total: commande.sous_total,
+              frais_livraison: commande.frais_livraison,
+              taxes: commande.taxes,
+              remise: commande.remise,
+              total: commande.total,
+              montant_paye: commande.montant_paye,
+              montant_restant: commande.montant_restant,
+              date_commande: commande.date_commande,
+              client_adresse: commande.client_adresse,
+              client_ville: commande.client_ville,
+              client_commune: commande.client_commune,
+              client_instructions: commande.client_instructions
+            },
+            client: {
+              nom: commande.client_nom,
+              telephone: commande.client_telephone,
+              adresse: commande.client_adresse,
+              ville: commande.client_ville,
+              commune: commande.client_commune
+            },
+            boutique: {
+              id: commande.boutique?.id,
+              nom: commande.boutique?.nom,
+              telephone: commande.boutique?.telephone,
+              adresse: commande.boutique?.adresse
+            },
+            articles: articles.map((article: any) => ({
+              produit_id: article.produit_id,
+              nom_produit: article.nom_produit,
+              prix_unitaire: article.prix_unitaire,
+              quantite: article.quantite,
+              sous_total: article.sous_total,
+              variants_selectionnes: article.variants_selectionnes
+            })),
+            timestamp: new Date().toISOString()
+          };
+
+          const response = await fetch(webhookUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${process.env.WEBHOOK_SECRET || ''}`
+            },
+            body: JSON.stringify(webhookData)
+          });
+
+          if (response.ok) {
+            console.log('[initierPaiement] Données envoyées au webhook avec succès');
+          } else {
+            console.error(`[initierPaiement] Webhook responded with status ${response.status}`);
+          }
+        } else {
+          console.log('[initierPaiement] WEBHOOK_PAYMENT_URL non configuré, envoi ignoré');
+        }
+      } catch (webhookError: any) {
+        console.error('[initierPaiement] Erreur lors de l\'envoi au webhook:', webhookError);
+        // On continue même si le webhook échoue, le paiement est déjà initialisé
+      }
       
       // Retourner la transaction créée
       res.status(200).json({
