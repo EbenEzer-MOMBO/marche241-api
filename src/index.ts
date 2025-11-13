@@ -4,6 +4,7 @@ import os from 'os';
 import http from 'http';
 import { WebSocketService } from './services/websocket.service';
 import { MonitorService } from './services/monitor.service';
+import { CronService } from './services/cron.service';
 
 // Charger les variables d'environnement
 dotenv.config();
@@ -27,6 +28,9 @@ server.listen(port, '0.0.0.0', () => {
     const appUrl = process.env.APP_URL || `http://localhost:${port}`;
     MonitorService.initialize(appUrl);
   }
+
+  // Initialiser les tâches cron
+  CronService.init();
 
   // Afficher l'adresse IP locale pour faciliter l'accès depuis d'autres appareils
   const nets = os.networkInterfaces();
@@ -63,6 +67,7 @@ process.on('SIGTERM', () => {
   console.log('Signal SIGTERM reçu. Arrêt propre du serveur...');
   MonitorService.cleanup();
   WebSocketService.cleanup();
+  CronService.stopAll();
   server.close(() => {
     console.log('Serveur arrêté avec succès');
     process.exit(0);
