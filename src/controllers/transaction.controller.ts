@@ -69,6 +69,52 @@ export class TransactionController {
   }
 
   /**
+   * Récupère les transactions liées aux commandes d'une boutique
+   * @param req Requête HTTP
+   * @param res Réponse HTTP
+   */
+  static async getTransactionsByBoutiqueId(req: Request, res: Response): Promise<void> {
+    try {
+      const boutiqueId = parseInt(req.params.boutiqueId);
+      
+      if (isNaN(boutiqueId)) {
+        res.status(400).json({
+          success: false,
+          message: 'ID de boutique invalide'
+        });
+        return;
+      }
+      
+      // Utiliser validatedQuery s'il existe, sinon utiliser query
+      const query = (req as any).validatedQuery || req.query;
+      
+      const page = parseInt(query.page as string) || 1;
+      const limite = parseInt(query.limite as string) || 10;
+      
+      const { transactions, total } = await TransactionModel.getTransactionsByBoutiqueId(
+        boutiqueId,
+        page,
+        limite
+      );
+      
+      res.status(200).json({
+        success: true,
+        transactions,
+        total,
+        page,
+        limite,
+        total_pages: Math.ceil(total / limite)
+      });
+    } catch (error: any) {
+      res.status(500).json({
+        success: false,
+        message: 'Erreur lors de la récupération des transactions de la boutique',
+        error: error.message
+      });
+    }
+  }
+
+  /**
    * Récupère une transaction par son ID
    * @param req Requête HTTP
    * @param res Réponse HTTP

@@ -62,6 +62,50 @@ export class TransactionModel {
   }
 
   /**
+   * Récupère les transactions liées aux commandes d'une boutique avec pagination
+   * @param boutiqueId ID de la boutique
+   * @param page Numéro de la page
+   * @param limite Nombre d'éléments par page
+   */
+  static async getTransactionsByBoutiqueId(
+    boutiqueId: number, 
+    page: number = 1, 
+    limite: number = 10
+  ): Promise<{ transactions: Transaction[], total: number }> {
+    const offset = (page - 1) * limite;
+    
+    // Compter le nombre total de transactions pour cette boutique
+    const { count, error: countError } = await supabaseAdmin
+      .from('transactions')
+      .select('*, commande:commande_id!inner(boutique_id)', { count: 'exact', head: true })
+      .eq('commande.boutique_id', boutiqueId);
+    
+    if (countError) {
+      throw new Error(`Erreur lors du comptage des transactions: ${countError.message}`);
+    }
+    
+    // Récupérer les transactions avec les informations de la commande
+    const { data, error } = await supabaseAdmin
+      .from('transactions')
+      .select(`
+        *,
+        commande:commande_id!inner(*)
+      `)
+      .eq('commande.boutique_id', boutiqueId)
+      .order('date_creation', { ascending: false })
+      .range(offset, offset + limite - 1);
+    
+    if (error) {
+      throw new Error(`Erreur lors de la récupération des transactions: ${error.message}`);
+    }
+    
+    return {
+      transactions: data || [],
+      total: count || 0
+    };
+  }
+
+  /**
    * Récupère une transaction par son ID
    * @param id ID de la transaction
    */

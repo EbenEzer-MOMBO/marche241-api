@@ -4,7 +4,8 @@ import { auth, isAdmin } from '../middlewares/auth.middleware';
 import { validate, validateParams, validateQuery } from '../middlewares/validation.middleware';
 import { idParamSchema, paginationQuerySchema } from '../utils/validation.schemas';
 import { 
-  commandeIdParamSchema, 
+  commandeIdParamSchema,
+  boutiqueIdParamSchema,
   createTransactionSchema, 
   referenceParamSchema, 
   transactionStatsQuerySchema, 
@@ -91,6 +92,74 @@ router.get('/', validateQuery(paginationQuerySchema), TransactionController.getA
  * @access  Private (admin)
  */
 router.get('/stats', validateQuery(transactionStatsQuerySchema), TransactionController.getTransactionStats);
+
+/**
+ * @swagger
+ * /api/v1/transactions/boutique/{boutiqueId}:
+ *   get:
+ *     summary: Récupère les transactions d'une boutique
+ *     description: Récupère toutes les transactions associées aux commandes d'une boutique spécifique avec pagination
+ *     tags: [Transactions]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: boutiqueId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID de la boutique
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Numéro de la page
+ *       - in: query
+ *         name: limite
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *         description: Nombre d'éléments par page
+ *     responses:
+ *       200:
+ *         description: Transactions récupérées avec succès
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 transactions:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Transaction'
+ *                 total:
+ *                   type: integer
+ *                   example: 50
+ *                 page:
+ *                   type: integer
+ *                   example: 1
+ *                 limite:
+ *                   type: integer
+ *                   example: 10
+ *                 total_pages:
+ *                   type: integer
+ *                   example: 5
+ *       400:
+ *         description: ID de boutique invalide
+ *       401:
+ *         description: Non authentifié
+ *       500:
+ *         description: Erreur serveur
+ * 
+ * @route   GET /api/v1/transactions/boutique/:boutiqueId
+ * @desc    Récupère les transactions d'une boutique
+ * @access  Private
+ */
+router.get('/boutique/:boutiqueId', validateParams(boutiqueIdParamSchema), validateQuery(paginationQuerySchema), TransactionController.getTransactionsByBoutiqueId);
 
 /**
  * @swagger

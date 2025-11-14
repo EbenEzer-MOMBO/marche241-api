@@ -348,6 +348,7 @@ export class PaiementController {
         res.status(200).json({
           success: true,
           message: 'Le paiement a été confirmé avec succès',
+          status: result.billState, // État de l'API Ebilling (paid, processed, etc.)
           transaction: result.transaction
         });
       } else if (result.state === 'ready') {
@@ -583,9 +584,31 @@ export class PaiementController {
           console.log(`[PaiementController] Méthode de paiement convertie: ${methode_paiement}`);
         }
 
+        // Récupérer la commande pour déterminer le statut de la transaction
+        let statutTransaction: StatutPaiement = 'paye';
+        
+        if (transaction.commande_id) {
+          const commande = await CommandeModel.getCommandeById(transaction.commande_id);
+          
+          if (commande) {
+            // Calculer le montant total qui sera payé après cette transaction
+            const montantPayeActuel = await CommandeModel.getMontantPaye(transaction.commande_id);
+            const montantPayeApres = montantPayeActuel + transaction.montant;
+            
+            // Déterminer le statut de la transaction en fonction du montant payé
+            if (montantPayeApres >= commande.total) {
+              statutTransaction = 'paye'; // Paiement complet
+              console.log(`[PaiementController] Transaction: paiement complet (${montantPayeApres}/${commande.total})`);
+            } else {
+              statutTransaction = 'paye'; // Paiement partiel
+              console.log(`[PaiementController] Transaction: paiement partiel (${montantPayeApres}/${commande.total})`);
+            }
+          }
+        }
+        
         // Mettre à jour la transaction avec les informations du paiement
         const updateData: any = {
-          statut: 'paye' as StatutPaiement,
+          statut: statutTransaction,
           reference_operateur: billId,
           reference_transaction: psTransactionId,
           date_confirmation: new Date(),
@@ -623,18 +646,22 @@ export class PaiementController {
             let nouveauStatutPaiement: StatutPaiement;
             let nouveauStatutCommande = commande.statut;
             
-            if (montantPaye >= commande.total) {
+            // Dès qu'un paiement est confirmé, la commande est considérée comme payée
+            if (montantPaye > 0) {
               nouveauStatutPaiement = 'paye';
-              // Si entièrement payé, confirmer la commande
+              // Confirmer la commande dès le premier paiement
               if (commande.statut === 'en_attente') {
                 nouveauStatutCommande = 'confirmee';
               }
-              console.log(`[PaiementController] Commande entièrement payée`);
-            } else if (montantPaye > 0) {
-              nouveauStatutPaiement = 'partiellement_paye';
-              console.log(`[PaiementController] Commande partiellement payée`);
+              
+              if (montantPaye >= commande.total) {
+                console.log(`[PaiementController] Commande entièrement payée (${montantPaye}/${commande.total})`);
+              } else {
+                console.log(`[PaiementController] Commande partiellement payée (${montantPaye}/${commande.total})`);
+              }
             } else {
               nouveauStatutPaiement = 'en_attente';
+              console.log(`[PaiementController] Aucun paiement confirmé`);
             }
             
             // Mettre à jour la commande avec les nouveaux statuts et montants
@@ -646,38 +673,13 @@ export class PaiementController {
             );
             
             // Mettre à jour le statut de la commande si nécessaire
+            // Note: updateCommandeStatus va automatiquement déduire les stocks lors du passage à 'confirmee'
             if (nouveauStatutCommande !== commande.statut) {
+              console.log(`[PaiementController] Mise à jour du statut de la commande: ${commande.statut} -> ${nouveauStatutCommande}`);
               await CommandeModel.updateCommandeStatus(transaction.commande_id, nouveauStatutCommande);
-            }
-            
-            // Déduire les stocks si c'est le premier paiement (frais de livraison ou paiement complet)
-            // On déduit les stocks dès le premier paiement pour permettre la préparation de la commande
-            const shouldUpdateStock = 
-              nouveauStatutPaiement === 'paye' || // Paiement complet
-              (nouveauStatutPaiement === 'partiellement_paye' && transaction.type_paiement === 'frais_livraison'); // Premier paiement (frais de livraison)
-            
-            if (shouldUpdateStock) {
-              // Vérifier si les stocks n'ont pas déjà été déduits
-              const transactionsPayees = await TransactionModel.getTransactionsByCommandeId(transaction.commande_id);
-              const autresPaiementsConfirmes = transactionsPayees.filter(
-                (t: any) => t.id !== transaction.id && t.statut === 'paye'
-              );
-              
-              if (autresPaiementsConfirmes.length === 0) {
-                // C'est le premier paiement confirmé, déduire les stocks
-                console.log(`[PaiementController] Premier paiement confirmé (${transaction.type_paiement}), mise à jour des stocks...`);
-                try {
-                  await CommandeModel.updateProductsStock(transaction.commande_id, false);
-                  console.log(`[PaiementController] Stocks mis à jour avec succès`);
-                } catch (stockError: any) {
-                  console.error(`[PaiementController] Erreur lors de la mise à jour des stocks:`, stockError);
-                  // On continue malgré l'erreur de stock (le paiement est confirmé)
-                }
-              } else {
-                console.log(`[PaiementController] Stocks déjà déduits lors d'un paiement précédent`);
-              }
+              console.log(`[PaiementController] Statut de la commande mis à jour (les stocks sont déduits automatiquement lors du passage à 'confirmee')`);
             } else {
-              console.log(`[PaiementController] Type de paiement ${transaction.type_paiement}, stocks non déduits pour l'instant`);
+              console.log(`[PaiementController] Statut de la commande inchangé: ${commande.statut}`);
             }
             
             console.log(`[PaiementController] Commande mise à jour avec succès`);
@@ -690,6 +692,7 @@ export class PaiementController {
         return {
           success: true,
           message: "Le paiement a été confirmé avec succès.",
+          billState: billState, // État de l'API Ebilling (paid, processed, etc.)
           transaction: await TransactionModel.getTransactionById(transaction.id) // Récupérer la transaction mise à jour
         };
       } else {

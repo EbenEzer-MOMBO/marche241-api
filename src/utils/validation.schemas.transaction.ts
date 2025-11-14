@@ -8,6 +8,14 @@ export const commandeIdParamSchema = Joi.object({
   })
 });
 
+// Schéma pour le paramètre boutiqueId
+export const boutiqueIdParamSchema = Joi.object({
+  boutiqueId: Joi.number().integer().required().messages({
+    'number.base': 'L\'ID de la boutique doit être un nombre',
+    'any.required': 'L\'ID de la boutique est obligatoire'
+  })
+});
+
 // Schéma pour le paramètre reference
 export const referenceParamSchema = Joi.object({
   reference: Joi.string().required().messages({
