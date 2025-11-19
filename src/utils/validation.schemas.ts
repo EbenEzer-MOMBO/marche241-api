@@ -68,10 +68,10 @@ export const createBoutiqueSchema = Joi.object({
     'string.max': 'Le nom ne doit pas dépasser {#limit} caractères',
     'any.required': 'Le nom est obligatoire'
   }),
-  slug: Joi.string().min(2).max(100).pattern(/^[a-z0-9-]+$/).messages({
+  slug: Joi.string().min(2).max(100).pattern(/^[a-z0-9_-]+$/).messages({
     'string.min': 'Le slug doit contenir au moins {#limit} caractères',
     'string.max': 'Le slug ne doit pas dépasser {#limit} caractères',
-    'string.pattern.base': 'Le slug ne doit contenir que des lettres minuscules, des chiffres et des tirets'
+    'string.pattern.base': 'Le slug ne doit contenir que des lettres minuscules, des chiffres, des tirets et des underscores'
   }),
   description: Joi.string().allow(null, '').messages({
     'string.base': 'La description doit être une chaîne de caractères'
@@ -102,10 +102,10 @@ export const updateBoutiqueSchema = Joi.object({
     'string.min': 'Le nom doit contenir au moins {#limit} caractères',
     'string.max': 'Le nom ne doit pas dépasser {#limit} caractères'
   }),
-  slug: Joi.string().min(2).max(100).pattern(/^[a-z0-9-]+$/).messages({
+  slug: Joi.string().min(2).max(100).pattern(/^[a-z0-9_-]+$/).messages({
     'string.min': 'Le slug doit contenir au moins {#limit} caractères',
     'string.max': 'Le slug ne doit pas dépasser {#limit} caractères',
-    'string.pattern.base': 'Le slug ne doit contenir que des lettres minuscules, des chiffres et des tirets'
+    'string.pattern.base': 'Le slug ne doit contenir que des lettres minuscules, des chiffres, des tirets et des underscores'
   }),
   description: Joi.string().allow(null, '').messages({
     'string.base': 'La description doit être une chaîne de caractères'
@@ -125,7 +125,7 @@ export const updateBoutiqueSchema = Joi.object({
   telephone: Joi.string().allow(null, '').pattern(/^\+?[0-9]{8,15}$/).messages({
     'string.pattern.base': 'Le numéro de téléphone doit être au format international (8-15 chiffres)'
   })
-});
+}).unknown(true); // Permettre les champs supplémentaires qui ne sont pas dans le schéma
 
 export const updateBoutiqueStatusSchema = Joi.object({
   statut: Joi.string().required().valid('active', 'inactive', 'en_attente', 'suspendue').messages({

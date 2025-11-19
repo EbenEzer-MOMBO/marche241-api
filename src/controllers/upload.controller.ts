@@ -23,12 +23,22 @@ export class UploadController {
       // Récupérer le dossier de destination depuis les paramètres de requête
       const folder = req.query.folder as string || 'general';
       
+      // Convertir req.file en req.files pour que uploadFromRequest fonctionne
+      const modifiedReq = {
+        ...req,
+        files: { [req.file.fieldname]: [req.file] }
+      } as Request & { files: { [fieldname: string]: Express.Multer.File[] } };
+      
+      console.log('[UploadController] uploadImage - modifiedReq.files:', modifiedReq.files);
+      
       // Uploader le fichier vers Supabase Storage
-      const result = await uploadFromRequest(req, 'image', {
+      const result = await uploadFromRequest(modifiedReq, req.file.fieldname, {
         folder: folder,
         maxSize: 5 * 1024 * 1024, // 5MB
         allowedMimeTypes: ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
       });
+      
+      console.log('[UploadController] uploadImage - result:', result);
       
       if (!result.success) {
         return res.status(400).json({

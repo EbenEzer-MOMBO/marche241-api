@@ -8,10 +8,15 @@ export class BoutiqueController {
    */
   static async getAllBoutiques(req: Request, res: Response): Promise<void> {
     try {
+      console.log('[BoutiqueController] ===== GET ALL BOUTIQUES =====');
+      console.log('[BoutiqueController] Query params:', req.query);
+      
       const page = parseInt(req.query.page as string) || 1;
       const limite = parseInt(req.query.limite as string) || 10;
       const tri_par = req.query.tri_par as string || 'date_creation';
       const ordre = (req.query.ordre as 'ASC' | 'DESC') || 'DESC';
+
+      console.log('[BoutiqueController] Paramètres:', { page, limite, tri_par, ordre });
 
       const boutiques = await BoutiqueModel.getAllBoutiques({
         page,
@@ -20,8 +25,12 @@ export class BoutiqueController {
         ordre
       });
 
+      console.log('[BoutiqueController] Nombre de boutiques récupérées:', boutiques.donnees?.length || 0);
+      console.log('[BoutiqueController] Total:', boutiques.total);
+      
       res.status(200).json(boutiques);
     } catch (error: any) {
+      console.error('[BoutiqueController] ERREUR:', error);
       res.status(500).json({
         success: false,
         message: 'Erreur lors de la récupération des boutiques',
@@ -35,7 +44,10 @@ export class BoutiqueController {
    */
   static async getBoutiqueById(req: Request, res: Response): Promise<void> {
     try {
+      console.log('[BoutiqueController] ===== GET BOUTIQUE BY ID =====');
       const idOrSlug = req.params.id;
+      console.log('[BoutiqueController] ID ou Slug reçu:', idOrSlug);
+      
       let boutique;
       
       // Vérifier si l'ID est un nombre ou une chaîne
@@ -43,13 +55,16 @@ export class BoutiqueController {
       
       if (!isNaN(id)) {
         // Si c'est un nombre, rechercher par ID
+        console.log('[BoutiqueController] Recherche par ID:', id);
         boutique = await BoutiqueModel.getBoutiqueById(id);
       } else {
         // Sinon, rechercher par slug
+        console.log('[BoutiqueController] Recherche par slug:', idOrSlug);
         boutique = await BoutiqueModel.getBoutiqueBySlug(idOrSlug);
       }
       
       if (!boutique) {
+        console.log('[BoutiqueController] Boutique non trouvée');
         res.status(404).json({
           success: false,
           message: 'Boutique non trouvée'
@@ -57,11 +72,14 @@ export class BoutiqueController {
         return;
       }
 
+      console.log('[BoutiqueController] Boutique trouvée:', { id: boutique.id, nom: boutique.nom, slug: boutique.slug });
+      
       res.status(200).json({
         success: true,
         boutique
       });
     } catch (error: any) {
+      console.error('[BoutiqueController] ERREUR:', error);
       res.status(500).json({
         success: false,
         message: 'Erreur lors de la récupération de la boutique',

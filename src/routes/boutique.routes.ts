@@ -312,7 +312,7 @@ router.post('/', auth, validate(createBoutiqueSchema), BoutiqueController.create
  * @desc    Met à jour une boutique existante
  * @access  Private (propriétaire de la boutique)
  */
-router.put('/:id', auth, validateParams(idParamSchema), isBoutiqueOwner, validate(updateBoutiqueSchema), BoutiqueController.updateBoutique);
+router.put('/:id', auth, validateParams(idParamSchema), validate(updateBoutiqueSchema), isBoutiqueOwner, BoutiqueController.updateBoutique);
 
 /**
  * @swagger

@@ -8,19 +8,28 @@ import { ApiError } from './error.middleware';
 export const validate = (schema: any) => {
   return (req: Request, res: Response, next: NextFunction) => {
     try {
+      console.log('[ValidationMiddleware] ===== DÉBUT DE VALIDATION =====');
+      console.log('[ValidationMiddleware] URL:', req.method, req.originalUrl);
+      console.log('[ValidationMiddleware] Body reçu:', JSON.stringify(req.body, null, 2));
+      console.log('[ValidationMiddleware] Schéma utilisé:', schema?._ids?._byKey || 'Schema info not available');
+      
       const { error, value } = schema.validate(req.body, {
         abortEarly: false,
         stripUnknown: true
       });
 
       if (error) {
+        console.error('[ValidationMiddleware] ===== ERREUR DE VALIDATION =====');
         const errors = error.details.map((detail: any) => ({
           field: detail.path.join('.'),
-          message: detail.message
+          message: detail.message,
+          type: detail.type,
+          context: detail.context
         }));
         
-        console.error('[ValidationMiddleware] Erreurs de validation du corps:', JSON.stringify(errors, null, 2));
+        console.error('[ValidationMiddleware] Détails des erreurs:', JSON.stringify(errors, null, 2));
         console.error('[ValidationMiddleware] Données reçues:', JSON.stringify(req.body, null, 2));
+        console.error('[ValidationMiddleware] Erreur complète:', error.message);
 
         const apiError = new Error('Erreur de validation') as ApiError;
         apiError.statusCode = 400;
@@ -28,6 +37,9 @@ export const validate = (schema: any) => {
 
         return next(apiError);
       }
+
+      console.log('[ValidationMiddleware] ===== VALIDATION RÉUSSIE =====');
+      console.log('[ValidationMiddleware] Données validées:', JSON.stringify(value, null, 2));
 
       // Stocker les données validées dans une propriété spécifique
       (req as any).validatedBody = value;
@@ -47,9 +59,12 @@ export const validate = (schema: any) => {
         });
       }
       
-      console.log('[ValidationMiddleware] Données validées après restauration:', JSON.stringify(value, null, 2));
+      console.log('[ValidationMiddleware] Données finales après restauration:', JSON.stringify(value, null, 2));
+      console.log('[ValidationMiddleware] ===== FIN DE VALIDATION =====');
       next();
     } catch (err) {
+      console.error('[ValidationMiddleware] ===== EXCEPTION DANS VALIDATION =====');
+      console.error('[ValidationMiddleware] Exception:', err);
       next(err);
     }
   };
@@ -62,18 +77,25 @@ export const validate = (schema: any) => {
 export const validateParams = (schema: any) => {
   return (req: Request, res: Response, next: NextFunction) => {
     try {
+      console.log('[ValidationMiddleware] ===== VALIDATION DES PARAMÈTRES =====');
+      console.log('[ValidationMiddleware] URL:', req.method, req.originalUrl);
+      console.log('[ValidationMiddleware] Paramètres reçus:', JSON.stringify(req.params, null, 2));
+      
       const { error, value } = schema.validate(req.params, {
         abortEarly: false,
         stripUnknown: true
       });
 
       if (error) {
+        console.error('[ValidationMiddleware] ===== ERREUR DE VALIDATION DES PARAMÈTRES =====');
         const errors = error.details.map((detail: any) => ({
           field: detail.path.join('.'),
-          message: detail.message
+          message: detail.message,
+          type: detail.type,
+          context: detail.context
         }));
         
-        console.error('[ValidationMiddleware] Erreurs de validation des paramètres:', JSON.stringify(errors, null, 2));
+        console.error('[ValidationMiddleware] Erreurs:', JSON.stringify(errors, null, 2));
         console.error('[ValidationMiddleware] Paramètres reçus:', JSON.stringify(req.params, null, 2));
 
         const apiError = new Error('Erreur de validation des paramètres') as ApiError;
@@ -85,9 +107,11 @@ export const validateParams = (schema: any) => {
 
       // Stocker les paramètres validés dans une propriété spécifique
       (req as any).validatedParams = value;
-      console.log('[ValidationMiddleware] Paramètres validés:', JSON.stringify(value, null, 2));
+      console.log('[ValidationMiddleware] Paramètres validés avec succès:', JSON.stringify(value, null, 2));
       next();
     } catch (err) {
+      console.error('[ValidationMiddleware] ===== EXCEPTION DANS VALIDATION DES PARAMÈTRES =====');
+      console.error('[ValidationMiddleware] Exception:', err);
       next(err);
     }
   };

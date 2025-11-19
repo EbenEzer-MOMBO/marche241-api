@@ -44,6 +44,16 @@ app.use(express.urlencoded({ extended: true }));
 // Logger middleware
 app.use(requestLogger);
 
+// Middleware pour désactiver le cache pour les routes API
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api/')) {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+  }
+  next();
+});
+
 // Déterminer le chemin des fichiers statiques
 const publicPath = process.env.NODE_ENV === 'production'
   ? path.join(__dirname, 'public')

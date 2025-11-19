@@ -14,6 +14,67 @@ import {
 const router = Router();
 
 /**
+ * @swagger
+ * /api/v1/vendeurs:
+ *   get:
+ *     summary: Récupère tous les vendeurs avec pagination
+ *     description: Récupère une liste paginée de tous les vendeurs (accessible uniquement aux administrateurs)
+ *     tags: [Vendeurs]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Numéro de la page
+ *       - in: query
+ *         name: limite
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *         description: Nombre d'éléments par page
+ *       - in: query
+ *         name: tri_par
+ *         schema:
+ *           type: string
+ *           default: date_creation
+ *         description: Champ de tri
+ *       - in: query
+ *         name: ordre
+ *         schema:
+ *           type: string
+ *           enum: [ASC, DESC]
+ *           default: DESC
+ *         description: Ordre de tri
+ *     responses:
+ *       200:
+ *         description: Liste des vendeurs récupérée avec succès
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 donnees:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Vendeur'
+ *                 total:
+ *                   type: integer
+ *                 page:
+ *                   type: integer
+ *                 limite:
+ *                   type: integer
+ *                 total_pages:
+ *                   type: integer
+ *       401:
+ *         description: Non authentifié
+ *       403:
+ *         description: Non autorisé (admin requis)
+ *       500:
+ *         description: Erreur serveur
+ * 
  * @route   GET /api/v1/vendeurs
  * @desc    Récupère tous les vendeurs avec pagination
  * @access  Private (admin)
@@ -21,6 +82,43 @@ const router = Router();
 router.get('/', auth, isAdmin, validateQuery(paginationQuerySchema), VendeurController.getAllVendeurs);
 
 /**
+ * @swagger
+ * /api/v1/vendeurs/{id}:
+ *   get:
+ *     summary: Récupère un vendeur par son ID
+ *     description: Récupère les détails d'un vendeur spécifique (accessible au vendeur lui-même ou aux administrateurs)
+ *     tags: [Vendeurs]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID du vendeur
+ *     responses:
+ *       200:
+ *         description: Vendeur récupéré avec succès
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 vendeur:
+ *                   $ref: '#/components/schemas/Vendeur'
+ *       400:
+ *         description: ID de vendeur invalide
+ *       401:
+ *         description: Non authentifié
+ *       404:
+ *         description: Vendeur non trouvé
+ *       500:
+ *         description: Erreur serveur
+ * 
  * @route   GET /api/v1/vendeurs/:id
  * @desc    Récupère un vendeur par son ID
  * @access  Private (vendeur authentifié ou admin)
@@ -183,6 +281,67 @@ router.post('/inscription', validate(createVendeurSchema), VendeurController.ins
 router.post('/', validate(createVendeurSchema), VendeurController.createVendeur);
 
 /**
+ * @swagger
+ * /api/v1/vendeurs/{id}:
+ *   put:
+ *     summary: Met à jour un vendeur existant
+ *     description: Met à jour les informations d'un vendeur (accessible uniquement au vendeur lui-même)
+ *     tags: [Vendeurs]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID du vendeur à mettre à jour
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               nom:
+ *                 type: string
+ *                 minLength: 2
+ *                 maxLength: 100
+ *                 description: Nom complet du vendeur
+ *                 example: "Jean Dupont"
+ *               telephone:
+ *                 type: string
+ *                 description: Numéro de téléphone
+ *                 example: "+241 01 23 45 67"
+ *               ville:
+ *                 type: string
+ *                 description: Ville du vendeur
+ *                 example: "Libreville"
+ *     responses:
+ *       200:
+ *         description: Vendeur mis à jour avec succès
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Vendeur mis à jour avec succès"
+ *                 vendeur:
+ *                   $ref: '#/components/schemas/Vendeur'
+ *       400:
+ *         description: Données invalides
+ *       401:
+ *         description: Non authentifié
+ *       404:
+ *         description: Vendeur non trouvé
+ *       500:
+ *         description: Erreur serveur
+ * 
  * @route   PUT /api/v1/vendeurs/:id
  * @desc    Met à jour un vendeur existant
  * @access  Private (vendeur authentifié)
@@ -190,6 +349,46 @@ router.post('/', validate(createVendeurSchema), VendeurController.createVendeur)
 router.put('/:id', auth, validateParams(idParamSchema), validate(updateVendeurSchema), VendeurController.updateVendeur);
 
 /**
+ * @swagger
+ * /api/v1/vendeurs/{id}:
+ *   delete:
+ *     summary: Supprime un vendeur
+ *     description: Supprime définitivement un vendeur (accessible uniquement aux administrateurs)
+ *     tags: [Vendeurs]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID du vendeur à supprimer
+ *     responses:
+ *       200:
+ *         description: Vendeur supprimé avec succès
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Vendeur supprimé avec succès"
+ *       400:
+ *         description: ID de vendeur invalide
+ *       401:
+ *         description: Non authentifié
+ *       403:
+ *         description: Non autorisé (admin requis)
+ *       404:
+ *         description: Vendeur non trouvé
+ *       500:
+ *         description: Erreur serveur
+ * 
  * @route   DELETE /api/v1/vendeurs/:id
  * @desc    Supprime un vendeur
  * @access  Private (admin)
