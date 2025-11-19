@@ -1,11 +1,11 @@
-import cron from 'node-cron';
+import cron, { ScheduledTask } from 'node-cron';
 import { supabaseAdmin } from '../config/supabase';
 
 /**
  * Service pour gérer les tâches planifiées (cron jobs)
  */
 export class CronService {
-  private static jobs: Map<string, cron.ScheduledTask> = new Map();
+  private static jobs: Map<string, ScheduledTask> = new Map();
 
   /**
    * Initialise tous les cron jobs
