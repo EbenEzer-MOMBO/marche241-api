@@ -44,7 +44,6 @@ export class PanierController {
         let stockDisponible = produit.quantite_stock || 0;
         
         if (item.variants_selectionnes && produit.variants) {
-          console.log('[getPanier] Vérification du stock pour les variants:', item.variants_selectionnes);
           
           // item.variants_selectionnes est un objet comme {"Type": "A", "Taille": "M"}
           // produit.variants est un tableau comme [{"nom": "Type", "options": ["A", "B"], "quantites": [8, 5]}]
@@ -57,13 +56,11 @@ export class PanierController {
               
               if (indexOption !== -1 && variant.quantites[indexOption] !== undefined) {
                 const quantiteVariant = variant.quantites[indexOption];
-                console.log(`[getPanier] Stock pour ${variantNom}=${optionSelectionnee}: ${quantiteVariant}`);
                 stockDisponible = Math.min(stockDisponible, quantiteVariant);
               }
             }
           }
           
-          console.log('[getPanier] Stock disponible calculé:', stockDisponible);
         }
         
         if (stockDisponible === 0) {
@@ -173,9 +170,7 @@ export class PanierController {
   static async addToCart(req: Request, res: Response): Promise<void> {
     try {
       const { session_id, boutique_id, produit_id, quantite, variants_selectionnes } = req.body;
-      
-      console.log('[addToCart] Données reçues:', { session_id, boutique_id, produit_id, quantite, variants_selectionnes });
-      
+            
       // Vérifier que les champs obligatoires sont présents
       if (!session_id || !boutique_id || !produit_id || !quantite) {
         res.status(400).json({
@@ -206,13 +201,11 @@ export class PanierController {
         return;
       }
 
-      console.log('[addToCart] Produit trouvé:', { id: produit.id, nom: produit.nom, variants: produit.variants });
 
       // Calculer le stock disponible selon les variants
       let stockDisponible = produit.quantite_stock || 0;
       
       if (variants_selectionnes && produit.variants) {
-        console.log('[addToCart] Vérification du stock pour les variants sélectionnés');
         
         // Nouveau format: variants_selectionnes est un objet comme {"Type": "A"}
         // produit.variants est un tableau comme [{"nom": "Type", "options": ["A", "B"], "quantites": [8, 8]}]
@@ -225,14 +218,12 @@ export class PanierController {
             
             if (indexOption !== -1 && variant.quantites[indexOption] !== undefined) {
               const quantiteVariant = variant.quantites[indexOption];
-              console.log('[addToCart] Stock pour', variantNom, '=', optionSelectionnee, ':', quantiteVariant);
               stockDisponible = Math.min(stockDisponible, quantiteVariant);
             }
           }
         }
       }
 
-      console.log('[addToCart] Stock disponible calculé:', stockDisponible);
 
       // Vérifier le stock disponible
       if (stockDisponible === 0) {
@@ -256,7 +247,6 @@ export class PanierController {
           
           if (variantsIdentiques) {
             itemExistant = item;
-            console.log('[addToCart] Item identique trouvé:', item.id);
             break;
           }
         }
@@ -266,7 +256,6 @@ export class PanierController {
         // Produit identique avec mêmes variants → mettre à jour la quantité
         const nouvelleQuantite = itemExistant.quantite + quantite;
         
-        console.log('[addToCart] Mise à jour de la quantité:', itemExistant.quantite, '+', quantite, '=', nouvelleQuantite);
         
         // Vérifier que la nouvelle quantité ne dépasse pas le stock
         if (nouvelleQuantite > stockDisponible) {
@@ -288,7 +277,6 @@ export class PanierController {
         });
       } else {
         // Produit avec variants différents ou nouveau produit → ajouter un nouvel item
-        console.log('[addToCart] Ajout d\'un nouvel item au panier');
         
         // Vérifier que la quantité ne dépasse pas le stock
         if (quantite > stockDisponible) {

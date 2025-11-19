@@ -418,9 +418,14 @@ export class ProduitController {
    */
   static async getProduitsByBoutique(req: Request, res: Response): Promise<void> {
     try {
+      console.log('[ProduitController] ===== GET PRODUITS BY BOUTIQUE =====');
+      console.log('[ProduitController] Params:', req.params);
+      console.log('[ProduitController] Query:', req.query);
+      
       const boutiqueId = parseInt(req.params.boutiqueId);
       
       if (isNaN(boutiqueId)) {
+        console.log('[ProduitController] ID de boutique invalide:', req.params.boutiqueId);
         res.status(400).json({
           success: false,
           message: 'ID de boutique invalide'
@@ -436,7 +441,13 @@ export class ProduitController {
       const tri_par = (query.tri_par as string) || 'date_creation';
       const ordre = ((query.ordre as string)?.toUpperCase() === 'ASC' ? 'ASC' : 'DESC') as 'ASC' | 'DESC';
       
+      console.log('[ProduitController] Recherche des produits pour boutique:', boutiqueId);
+      console.log('[ProduitController] Paramètres pagination:', { page, limite, tri_par, ordre });
+      
       const { produits, total } = await ProduitModel.getProduitsByBoutique(boutiqueId, page, limite, tri_par, ordre);
+      
+      console.log('[ProduitController] Nombre de produits trouvés:', produits.length);
+      console.log('[ProduitController] Total de produits pour cette boutique:', total);
       
       res.status(200).json({
         success: true,
@@ -447,6 +458,7 @@ export class ProduitController {
         total_pages: Math.ceil(total / limite)
       });
     } catch (error: any) {
+      console.error('[ProduitController] ERREUR:', error);
       res.status(500).json({
         success: false,
         message: 'Erreur lors de la récupération des produits de la boutique',

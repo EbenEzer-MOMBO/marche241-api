@@ -218,8 +218,8 @@ export class TransactionController {
             montant_transaction: body.montant
           });
           
-          // Le montant de transaction inclut les frais de service de 2.5%
-          const FRAIS_SERVICE_POURCENTAGE = 0.025; // 2.5%
+          // Le montant de transaction inclut les frais de service de 4.5%
+          const FRAIS_SERVICE_POURCENTAGE = 0.045; // 4.5%
           
           // Fonction pour calculer le montant avec frais de service
           const avecFraisService = (montant: number) => Math.round(montant * (1 + FRAIS_SERVICE_POURCENTAGE));
