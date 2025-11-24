@@ -45,11 +45,12 @@ export class PaiementController {
       const totalCommande = totalArticles + fraisLivraison;
       const montantTransaction = transaction.montant;
 
-      // Frais de service de 2.5%
-      const FRAIS_SERVICE_POURCENTAGE = 0.025;
+      // Frais de service de 4.5% (cohérent avec TransactionController)
+      const FRAIS_SERVICE_POURCENTAGE = 0.045;
       const avecFraisService = (montant: number) => Math.round(montant * (1 + FRAIS_SERVICE_POURCENTAGE));
 
       console.log(`[PaiementController] Détail commande: Articles=${totalArticles}, Livraison=${fraisLivraison}, Total=${totalCommande}`);
+      console.log(`[PaiementController] Note: totalArticles inclut déjà la majoration 4.5%`);
 
       // Déterminer le montant attendu selon le type de paiement
       let montantAttendu: number;
@@ -57,18 +58,21 @@ export class PaiementController {
 
       switch (transaction.type_paiement) {
         case 'frais_livraison':
-          montantAttendu = avecFraisService(fraisLivraison);
-          typePaiementDescription = `frais de livraison (${fraisLivraison} + frais service)`;
+          // Appliquer la majoration uniquement sur les frais de livraison
+          montantAttendu = fraisLivraison > 0 ? avecFraisService(fraisLivraison) : 0;
+          typePaiementDescription = `frais de livraison (${fraisLivraison} + majoration 4.5%)`;
           break;
 
         case 'paiement_complet':
-          montantAttendu = avecFraisService(totalCommande);
-          typePaiementDescription = `paiement complet (${totalCommande} + frais service)`;
+          // totalCommande inclut déjà la majoration sur les articles, mais pas sur la livraison
+          montantAttendu = totalArticles + (fraisLivraison > 0 ? avecFraisService(fraisLivraison) : 0);
+          typePaiementDescription = `paiement complet (articles: ${totalArticles} déjà avec majoration + livraison: ${fraisLivraison > 0 ? avecFraisService(fraisLivraison) : 0})`;
           break;
 
         case 'solde_apres_livraison':
-          montantAttendu = avecFraisService(totalCommande - fraisLivraison);
-          typePaiementDescription = `solde après livraison (${totalCommande - fraisLivraison} + frais service)`;
+          // Le solde = total des articles (déjà avec majoration) sans les frais de livraison
+          montantAttendu = totalArticles;
+          typePaiementDescription = `solde après livraison (${totalArticles} déjà avec majoration)`;
           break;
 
         case 'acompte':
@@ -79,8 +83,8 @@ export class PaiementController {
 
         default:
           // Si le type de paiement n'est pas spécifié, vérifier contre le total complet
-          montantAttendu = avecFraisService(totalCommande);
-          typePaiementDescription = `total de la commande (${totalCommande} + frais service)`;
+          montantAttendu = totalArticles + (fraisLivraison > 0 ? avecFraisService(fraisLivraison) : 0);
+          typePaiementDescription = `total de la commande (articles: ${totalArticles} + livraison: ${fraisLivraison > 0 ? avecFraisService(fraisLivraison) : 0})`;
           console.warn(`[PaiementController] Type de paiement non reconnu: ${transaction.type_paiement}`);
       }
 

@@ -218,7 +218,9 @@ export class TransactionController {
             montant_transaction: body.montant
           });
           
-          // Le montant de transaction inclut les frais de service de 4.5%
+          // IMPORTANT: Le total de la commande (commande.total) inclut DÉJÀ la majoration de 4.5%
+          // appliquée sur les prix des articles dans le panier. 
+          // Nous devons donc seulement appliquer la majoration sur les frais de livraison s'ils existent.
           const FRAIS_SERVICE_POURCENTAGE = 0.045; // 4.5%
           
           // Fonction pour calculer le montant avec frais de service
@@ -226,13 +228,14 @@ export class TransactionController {
           
           // Déterminer le type de paiement en fonction du montant
           const fraisLivraison = commande.frais_livraison || 0;
-          const totalCommande = commande.total;
+          const totalCommande = commande.total; // Déjà avec majoration 4.5%
           const montantTransaction = body.montant;
           
-          // Calculer les montants attendus avec frais de service
-          const fraisLivraisonAvecFrais = avecFraisService(fraisLivraison);
-          const totalCommandeAvecFrais = avecFraisService(totalCommande);
-          const soldeApresLivraisonAvecFrais = avecFraisService(totalCommande - fraisLivraison);
+          // Calculer les montants attendus
+          // Note: commande.total inclut déjà la majoration, donc pas besoin de la réappliquer
+          const fraisLivraisonAvecFrais = fraisLivraison > 0 ? avecFraisService(fraisLivraison) : 0;
+          const totalCommandeAvecFrais = totalCommande; // Déjà avec majoration
+          const soldeApresLivraisonAvecFrais = totalCommande - fraisLivraisonAvecFrais;
           
           console.log('[TransactionController] Analyse des montants:', {
             fraisLivraison: fraisLivraison,
@@ -240,33 +243,32 @@ export class TransactionController {
             totalCommande: totalCommande,
             totalCommandeAvecFrais: totalCommandeAvecFrais,
             soldeApresLivraisonAvecFrais: soldeApresLivraisonAvecFrais,
-            montantTransaction: montantTransaction
+            montantTransaction: montantTransaction,
+            note: 'totalCommande inclut déjà la majoration 4.5%'
           });
           
           // Si le montant correspond aux frais de livraison + frais de service (avec tolérance de 2)
           if (Math.abs(montantTransaction - fraisLivraisonAvecFrais) <= 2 && fraisLivraison > 0) {
             body.type_paiement = 'frais_livraison';
-            body.description = body.description || `Paiement des frais de livraison (${fraisLivraison} FCFA + frais de service)`;
+            body.description = body.description || `Paiement des frais de livraison (${fraisLivraison} FCFA + majoration 4.5%)`;
             console.log('[TransactionController] Type de paiement détecté: frais_livraison');
           }
-          // Si le montant correspond au total de la commande + frais de service
+          // Si le montant correspond au total de la commande (déjà avec majoration)
           else if (Math.abs(montantTransaction - totalCommandeAvecFrais) <= 2) {
             body.type_paiement = 'paiement_complet';
-            body.description = body.description || `Paiement complet de la commande (${totalCommande} FCFA + frais de service)`;
+            body.description = body.description || `Paiement complet de la commande (${totalCommande} FCFA déjà avec majoration 4.5%)`;
             console.log('[TransactionController] Type de paiement détecté: paiement_complet');
           }
-          // Si le montant correspond au total moins les frais de livraison + frais de service
-          else if (Math.abs(montantTransaction - soldeApresLivraisonAvecFrais) <= 2) {
+          // Si le montant correspond au solde après paiement des frais de livraison
+          else if (Math.abs(montantTransaction - soldeApresLivraisonAvecFrais) <= 2 && fraisLivraison > 0) {
             body.type_paiement = 'solde_apres_livraison';
-            body.description = body.description || `Paiement du solde après livraison (${totalCommande - fraisLivraison} FCFA + frais de service)`;
+            body.description = body.description || `Paiement du solde après livraison (${soldeApresLivraisonAvecFrais} FCFA)`;
             console.log('[TransactionController] Type de paiement détecté: solde_apres_livraison');
           }
           // Sinon, c'est un acompte ou un complément
           else if (montantTransaction < totalCommandeAvecFrais) {
             body.type_paiement = body.type_paiement || 'acompte';
-            // Calculer le montant réel sans frais de service (approximatif)
-            const montantReel = Math.round(montantTransaction / (1 + FRAIS_SERVICE_POURCENTAGE));
-            body.description = body.description || `Paiement partiel de ${montantReel} FCFA (+ frais de service)`;
+            body.description = body.description || `Paiement partiel de ${montantTransaction} FCFA`;
             console.log('[TransactionController] Type de paiement: acompte');
           }
         }
