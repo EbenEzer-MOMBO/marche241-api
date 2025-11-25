@@ -64,10 +64,12 @@ export class ProduitModel {
    * Met à jour le stock d'un produit avec variants
    * @param produitId ID du produit
    * @param quantite Quantité à décrémenter
-   * @param variantsSelectionnes Variants sélectionnés (ex: {"Couleur": "Rouge", "Taille": "M"})
+   * @param variantsSelectionnes Variants sélectionnés 
+   *   - Nouveau format: { variant: { nom: "Rouge", ... }, options: { ... } }
+   *   - Ancien format: { "Couleur": "Rouge", "Taille": "M" }
    * @returns Le produit mis à jour
    */
-  static async updateStockWithVariants(produitId: number, quantite: number, variantsSelectionnes: Record<string, string>): Promise<Produit> {
+  static async updateStockWithVariants(produitId: number, quantite: number, variantsSelectionnes: any): Promise<Produit> {
     console.log(`[ProduitModel] Mise à jour du stock avec variants pour le produit ${produitId}`, {
       quantite,
       variantsSelectionnes
@@ -86,43 +88,139 @@ export class ProduitModel {
         throw new Error(`Produit non trouvé: ${produitId}`);
       }
 
-      if (!produit.variants || !Array.isArray(produit.variants) || produit.variants.length === 0) {
+      if (!produit.variants) {
         console.log(`[ProduitModel] Produit sans variants, mise à jour du stock global`);
         return await this.updateStock(produitId, quantite);
       }
 
       console.log(`[ProduitModel] Variants actuels:`, JSON.stringify(produit.variants, null, 2));
 
-      // Parcourir les variants pour trouver celui correspondant et mettre à jour sa quantité
+      const variantsData = produit.variants as any;
       let variantTrouve = false;
-      let nouveauxVariants = [...produit.variants];
+      let nouveauxVariantsData: any;
 
-      for (let i = 0; i < nouveauxVariants.length; i++) {
-        const variant = nouveauxVariants[i];
+      // Détecter le nouveau format: { variants: [...], options: [...] }
+      if (variantsData.variants && Array.isArray(variantsData.variants)) {
+        console.log(`[ProduitModel] Nouveau format détecté`);
         
-        // Nouveau format: { "nom": "Type", "options": ["A", "B"], "quantites": [8, 4] }
-        if (variant.nom && variant.options && variant.quantites) {
-          const nomVariant = variant.nom;
-          const valeurSelectionnee = variantsSelectionnes[nomVariant];
+        // Nouveau format
+        nouveauxVariantsData = { ...variantsData };
+        const nouveauxVariants = [...variantsData.variants];
+        
+        // Extraire le nom du variant sélectionné
+        const nomVariantSelectionne = variantsSelectionnes.variant?.nom || null;
+        
+        if (nomVariantSelectionne) {
+          console.log(`[ProduitModel] Recherche du variant: ${nomVariantSelectionne}`);
           
-          if (valeurSelectionnee) {
-            const indexOption = variant.options.indexOf(valeurSelectionnee);
-            
-            if (indexOption !== -1) {
-              const quantiteActuelle = variant.quantites[indexOption] || 0;
+          for (let i = 0; i < nouveauxVariants.length; i++) {
+            if (nouveauxVariants[i].nom === nomVariantSelectionne) {
+              const quantiteActuelle = nouveauxVariants[i].quantite || 0;
               const nouvelleQuantite = quantiteActuelle - quantite;
               
               if (nouvelleQuantite < 0) {
-                console.error(`[ProduitModel] Stock insuffisant pour le variant ${nomVariant}:${valeurSelectionnee}`);
-                throw new Error(`Stock insuffisant pour le variant ${nomVariant}: ${valeurSelectionnee} (disponible: ${quantiteActuelle}, demandé: ${quantite})`);
+                console.error(`[ProduitModel] Stock insuffisant pour le variant ${nomVariantSelectionne}`);
+                throw new Error(`Stock insuffisant pour le variant ${nomVariantSelectionne} (disponible: ${quantiteActuelle}, demandé: ${quantite})`);
               }
               
-              nouveauxVariants[i].quantites[indexOption] = nouvelleQuantite;
-              console.log(`[ProduitModel] Stock du variant ${nomVariant}:${valeurSelectionnee} mis à jour: ${quantiteActuelle} -> ${nouvelleQuantite}`);
+              nouveauxVariants[i].quantite = nouvelleQuantite;
+              console.log(`[ProduitModel] Stock du variant ${nomVariantSelectionne} mis à jour: ${quantiteActuelle} -> ${nouvelleQuantite}`);
               variantTrouve = true;
+              break;
             }
           }
         }
+        
+        nouveauxVariantsData.variants = nouveauxVariants;
+        
+        // Calculer la quantité totale
+        const quantiteTotale = nouveauxVariants.reduce((sum, v) => sum + (v.quantite || 0), 0);
+        console.log(`[ProduitModel] Nouvelle quantité totale calculée: ${quantiteTotale}`);
+        
+        // Mettre à jour le produit
+        const { data: produitMisAJour, error: updateError } = await supabaseAdmin
+          .from('produits')
+          .update({
+            variants: nouveauxVariantsData,
+            quantite_stock: quantiteTotale,
+            en_stock: quantiteTotale > 0,
+            date_modification: new Date()
+          })
+          .eq('id', produitId)
+          .select()
+          .single();
+        
+        if (updateError) {
+          console.error(`[ProduitModel] Erreur lors de la mise à jour: ${updateError.message}`);
+          throw new Error(`Erreur lors de la mise à jour du stock: ${updateError.message}`);
+        }
+
+        console.log(`[ProduitModel] Stock avec variants mis à jour avec succès (nouveau format)`);
+        return produitMisAJour;
+        
+      } else if (Array.isArray(variantsData)) {
+        // Ancien format: [{ "nom": "Type", "options": ["A", "B"], "quantites": [8, 4] }]
+        console.log(`[ProduitModel] Ancien format détecté`);
+        
+        let nouveauxVariants = [...variantsData];
+
+        for (let i = 0; i < nouveauxVariants.length; i++) {
+          const variant = nouveauxVariants[i];
+          
+          if (variant.nom && variant.options && variant.quantites) {
+            const nomVariant = variant.nom;
+            const valeurSelectionnee = variantsSelectionnes[nomVariant];
+            
+            if (valeurSelectionnee) {
+              const indexOption = variant.options.indexOf(valeurSelectionnee);
+              
+              if (indexOption !== -1) {
+                const quantiteActuelle = variant.quantites[indexOption] || 0;
+                const nouvelleQuantite = quantiteActuelle - quantite;
+                
+                if (nouvelleQuantite < 0) {
+                  console.error(`[ProduitModel] Stock insuffisant pour le variant ${nomVariant}:${valeurSelectionnee}`);
+                  throw new Error(`Stock insuffisant pour le variant ${nomVariant}: ${valeurSelectionnee} (disponible: ${quantiteActuelle}, demandé: ${quantite})`);
+                }
+                
+                nouveauxVariants[i].quantites[indexOption] = nouvelleQuantite;
+                console.log(`[ProduitModel] Stock du variant ${nomVariant}:${valeurSelectionnee} mis à jour: ${quantiteActuelle} -> ${nouvelleQuantite}`);
+                variantTrouve = true;
+              }
+            }
+          }
+        }
+
+        // Calculer la nouvelle quantité totale en stock
+        let quantiteTotale = 0;
+        for (const variant of nouveauxVariants) {
+          if (variant.quantites && Array.isArray(variant.quantites)) {
+            quantiteTotale += variant.quantites.reduce((sum: number, q: number) => sum + (q || 0), 0);
+          }
+        }
+
+        console.log(`[ProduitModel] Nouvelle quantité totale calculée: ${quantiteTotale}`);
+
+        // Mettre à jour le produit avec les nouveaux variants et la quantité totale
+        const { data: produitMisAJour, error: updateError } = await supabaseAdmin
+          .from('produits')
+          .update({
+            variants: nouveauxVariants,
+            quantite_stock: quantiteTotale,
+            en_stock: quantiteTotale > 0,
+            date_modification: new Date()
+          })
+          .eq('id', produitId)
+          .select()
+          .single();
+        
+        if (updateError) {
+          console.error(`[ProduitModel] Erreur lors de la mise à jour: ${updateError.message}`);
+          throw new Error(`Erreur lors de la mise à jour du stock: ${updateError.message}`);
+        }
+
+        console.log(`[ProduitModel] Stock avec variants mis à jour avec succès (ancien format)`);
+        return produitMisAJour;
       }
 
       if (!variantTrouve) {
@@ -130,36 +228,7 @@ export class ProduitModel {
         return await this.updateStock(produitId, quantite);
       }
 
-      // Calculer la nouvelle quantité totale en stock
-      let quantiteTotale = 0;
-      for (const variant of nouveauxVariants) {
-        if (variant.quantites && Array.isArray(variant.quantites)) {
-          quantiteTotale += variant.quantites.reduce((sum: number, q: number) => sum + (q || 0), 0);
-        }
-      }
-
-      console.log(`[ProduitModel] Nouvelle quantité totale calculée: ${quantiteTotale}`);
-
-      // Mettre à jour le produit avec les nouveaux variants et la quantité totale
-      const { data: produitMisAJour, error: updateError } = await supabaseAdmin
-        .from('produits')
-        .update({
-          variants: nouveauxVariants,
-          quantite_stock: quantiteTotale,
-          en_stock: quantiteTotale > 0,
-          date_modification: new Date()
-        })
-        .eq('id', produitId)
-        .select()
-        .single();
-      
-      if (updateError) {
-        console.error(`[ProduitModel] Erreur lors de la mise à jour: ${updateError.message}`);
-        throw new Error(`Erreur lors de la mise à jour du stock: ${updateError.message}`);
-      }
-
-      console.log(`[ProduitModel] Stock avec variants mis à jour avec succès`);
-      return produitMisAJour;
+      throw new Error('Format de variants non reconnu');
     } catch (error) {
       console.error(`[ProduitModel] Exception dans updateStockWithVariants:`, error);
       throw error;

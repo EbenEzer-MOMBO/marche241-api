@@ -8,7 +8,9 @@ export class PanierController {
    */
   static async getPanier(req: Request, res: Response): Promise<void> {
     try {
+      console.log('[PanierController] ===== GET PANIER =====');
       const sessionId = req.params.sessionId;
+      console.log('[PanierController] Session ID:', sessionId);
       
       if (!sessionId) {
         res.status(400).json({
@@ -19,6 +21,7 @@ export class PanierController {
       }
 
       const panierItems = await PanierModel.getPanierBySessionId(sessionId);
+      console.log('[PanierController] Nombre d\'items dans le panier:', panierItems.length);
       
       // Vérifier la disponibilité et le stock de chaque produit
       const panierItemsVerifies = [];
@@ -43,24 +46,40 @@ export class PanierController {
         // Calculer le stock disponible selon les variants
         let stockDisponible = produit.quantite_stock || 0;
         
+        // Nouveau format des variants dans le panier:
+        // variants_selectionnes = {
+        //   "variant": { "nom": "zzde", "prix": 34, ... },
+        //   "options": { "nombre de plats": "3" }
+        // }
+        
         if (item.variants_selectionnes && produit.variants) {
+          console.log('[PanierController] Item avec variants:', {
+            produit_id: produit.id,
+            variants_selectionnes: item.variants_selectionnes
+          });
           
-          // item.variants_selectionnes est un objet comme {"Type": "A", "Taille": "M"}
-          // produit.variants est un tableau comme [{"nom": "Type", "options": ["A", "B"], "quantites": [8, 5]}]
+          // Nouveau format du produit:
+          // variants = {
+          //   "variants": [{ "nom": "Rouge", "quantite": 10, "prix": 5000, ... }],
+          //   "options": [{ "nom": "Message personnalisé", "type": "texte", ... }]
+          // }
           
-          for (const [variantNom, optionSelectionnee] of Object.entries(item.variants_selectionnes)) {
-            const variant = produit.variants.find((v: any) => v.nom === variantNom);
+          const variantsData = produit.variants as any;
+          
+          // Vérifier si le variant sélectionné existe et a du stock
+          if (item.variants_selectionnes.variant && variantsData.variants && Array.isArray(variantsData.variants)) {
+            const variantSelectionne = item.variants_selectionnes.variant;
+            const variantProduit = variantsData.variants.find((v: any) => v.nom === variantSelectionne.nom);
             
-            if (variant && variant.quantites && Array.isArray(variant.quantites)) {
-              const indexOption = variant.options.indexOf(optionSelectionnee);
-              
-              if (indexOption !== -1 && variant.quantites[indexOption] !== undefined) {
-                const quantiteVariant = variant.quantites[indexOption];
-                stockDisponible = Math.min(stockDisponible, quantiteVariant);
-              }
+            if (variantProduit && typeof variantProduit.quantite === 'number') {
+              stockDisponible = Math.min(stockDisponible, variantProduit.quantite);
+              console.log('[PanierController] Stock du variant:', {
+                nom: variantProduit.nom,
+                quantite: variantProduit.quantite,
+                stockDisponible
+              });
             }
           }
-          
         }
         
         if (stockDisponible === 0) {
@@ -97,6 +116,10 @@ export class PanierController {
         panierItemsVerifies.push(item);
       }
 
+      console.log('[PanierController] Items vérifiés:', panierItemsVerifies.length);
+      console.log('[PanierController] Produits indisponibles:', produitsIndisponibles.length);
+      console.log('[PanierController] Quantités ajustées:', quantitesAjustees.length);
+
       // Préparer la réponse avec les informations de vérification
       const response: any = {
         success: true,
@@ -118,6 +141,7 @@ export class PanierController {
 
       res.status(200).json(response);
     } catch (error: any) {
+      console.error('[PanierController] ERREUR:', error);
       res.status(500).json({
         success: false,
         message: 'Erreur lors de la récupération du panier',
@@ -169,7 +193,9 @@ export class PanierController {
    */
   static async addToCart(req: Request, res: Response): Promise<void> {
     try {
+      console.log('[PanierController] ===== ADD TO CART =====');
       const { session_id, boutique_id, produit_id, quantite, variants_selectionnes } = req.body;
+      console.log('[PanierController] Données reçues:', { session_id, boutique_id, produit_id, quantite, variants_selectionnes });
             
       // Vérifier que les champs obligatoires sont présents
       if (!session_id || !boutique_id || !produit_id || !quantite) {
@@ -201,29 +227,53 @@ export class PanierController {
         return;
       }
 
+      console.log('[PanierController] Produit trouvé:', { id: produit.id, nom: produit.nom });
+      console.log('[PanierController] Format variants produit:', produit.variants);
 
       // Calculer le stock disponible selon les variants
       let stockDisponible = produit.quantite_stock || 0;
       
+      // Nouveau format du panier:
+      // variants_selectionnes = {
+      //   "variant": { "nom": "zzde", "prix": 34, ... },
+      //   "options": { "nombre de plats": "3" }
+      // }
+      
+      // Nouveau format du produit:
+      // variants = {
+      //   "variants": [{ "nom": "Rouge", "quantite": 10, "prix": 5000, ... }],
+      //   "options": [{ "nom": "Message personnalisé", "type": "texte", ... }]
+      // }
+      
       if (variants_selectionnes && produit.variants) {
+        const variantsData = produit.variants as any;
         
-        // Nouveau format: variants_selectionnes est un objet comme {"Type": "A"}
-        // produit.variants est un tableau comme [{"nom": "Type", "options": ["A", "B"], "quantites": [8, 8]}]
+        console.log('[PanierController] Vérification du stock avec variants');
+        console.log('[PanierController] Variants data:', variantsData);
         
-        for (const [variantNom, optionSelectionnee] of Object.entries(variants_selectionnes)) {
-          const variant = produit.variants.find((v: any) => v.nom === variantNom);
+        // Vérifier si un variant spécifique est sélectionné
+        if (variants_selectionnes.variant && variantsData.variants && Array.isArray(variantsData.variants)) {
+          const variantSelectionne = variants_selectionnes.variant;
+          console.log('[PanierController] Variant sélectionné:', variantSelectionne);
           
-          if (variant && variant.quantites && Array.isArray(variant.quantites)) {
-            const indexOption = variant.options.indexOf(optionSelectionnee);
-            
-            if (indexOption !== -1 && variant.quantites[indexOption] !== undefined) {
-              const quantiteVariant = variant.quantites[indexOption];
-              stockDisponible = Math.min(stockDisponible, quantiteVariant);
+          const variantProduit = variantsData.variants.find((v: any) => v.nom === variantSelectionne.nom);
+          
+          if (variantProduit) {
+            if (typeof variantProduit.quantite === 'number') {
+              stockDisponible = Math.min(stockDisponible, variantProduit.quantite);
+              console.log('[PanierController] Stock ajusté selon variant:', {
+                nom: variantProduit.nom,
+                quantite_variant: variantProduit.quantite,
+                stock_final: stockDisponible
+              });
             }
+          } else {
+            console.log('[PanierController] ATTENTION: Variant sélectionné non trouvé dans le produit');
           }
         }
       }
 
+      console.log('[PanierController] Stock disponible final:', stockDisponible);
 
       // Vérifier le stock disponible
       if (stockDisponible === 0) {
@@ -253,6 +303,7 @@ export class PanierController {
       }
 
       if (itemExistant) {
+        console.log('[PanierController] Item existant trouvé, mise à jour de la quantité');
         // Produit identique avec mêmes variants → mettre à jour la quantité
         const nouvelleQuantite = itemExistant.quantite + quantite;
         
@@ -269,6 +320,8 @@ export class PanierController {
 
         const updatedItem = await PanierModel.updateCartItemQuantity(itemExistant.id, nouvelleQuantite);
         
+        console.log('[PanierController] Quantité mise à jour avec succès');
+        
         res.status(200).json({
           success: true,
           message: 'Quantité mise à jour dans le panier',
@@ -276,6 +329,7 @@ export class PanierController {
           action: 'updated'
         });
       } else {
+        console.log('[PanierController] Nouvel item, ajout au panier');
         // Produit avec variants différents ou nouveau produit → ajouter un nouvel item
         
         // Vérifier que la quantité ne dépasse pas le stock
@@ -296,6 +350,8 @@ export class PanierController {
           variants_selectionnes
         });
 
+        console.log('[PanierController] Produit ajouté au panier avec succès');
+
         res.status(201).json({
           success: true,
           message: 'Produit ajouté au panier avec succès',
@@ -304,7 +360,7 @@ export class PanierController {
         });
       }
     } catch (error: any) {
-      console.error('[addToCart] Erreur:', error);
+      console.error('[PanierController] ERREUR:', error);
       res.status(500).json({
         success: false,
         message: 'Erreur lors de l\'ajout au panier',

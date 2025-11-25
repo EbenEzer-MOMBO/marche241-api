@@ -51,22 +51,43 @@ export class CommandeController {
           }
           
           // Vérifier le stock selon les variants
+          // Nouveau format: variants_selectionnes = { variant: {...}, options: {...} }
+          // Nouveau format produit: variants = { variants: [...], options: [...] }
           if (article.variants_selectionnes && produit.variants) {
             console.log('[createCommande] Vérification du stock pour les variants:', article.variants_selectionnes);
             
             // Calculer le stock disponible pour ces variants spécifiques
             let stockDisponible = produit.quantite_stock || 0;
             
-            for (const [nomVariant, optionSelectionnee] of Object.entries(article.variants_selectionnes)) {
-              const variant = produit.variants.find((v: any) => v.nom === nomVariant);
+            const variantsData = produit.variants as any;
+            
+            // Vérifier si un variant spécifique est sélectionné (nouveau format)
+            if (article.variants_selectionnes.variant && variantsData.variants && Array.isArray(variantsData.variants)) {
+              const variantSelectionne = article.variants_selectionnes.variant;
+              console.log('[createCommande] Variant sélectionné (nouveau format):', variantSelectionne);
               
-              if (variant && variant.options && variant.quantites) {
-                const indexOption = variant.options.indexOf(optionSelectionnee);
+              const variantProduit = variantsData.variants.find((v: any) => v.nom === variantSelectionne.nom);
+              
+              if (variantProduit && typeof variantProduit.quantite === 'number') {
+                stockDisponible = Math.min(stockDisponible, variantProduit.quantite);
+                console.log(`[createCommande] Stock pour variant ${variantProduit.nom}: ${variantProduit.quantite}`);
+              }
+            } else {
+              // Support de l'ancien format pour rétrocompatibilité
+              console.log('[createCommande] Ancien format de variants détecté');
+              for (const [nomVariant, optionSelectionnee] of Object.entries(article.variants_selectionnes)) {
+                if (nomVariant === 'variant' || nomVariant === 'options') continue; // Skip nouveau format
                 
-                if (indexOption !== -1 && variant.quantites[indexOption] !== undefined) {
-                  const quantiteVariant = variant.quantites[indexOption];
-                  stockDisponible = Math.min(stockDisponible, quantiteVariant);
-                  console.log(`[createCommande] Stock pour ${nomVariant}=${optionSelectionnee}: ${quantiteVariant}`);
+                const variant = produit.variants.find((v: any) => v.nom === nomVariant);
+                
+                if (variant && variant.options && variant.quantites) {
+                  const indexOption = variant.options.indexOf(optionSelectionnee);
+                  
+                  if (indexOption !== -1 && variant.quantites[indexOption] !== undefined) {
+                    const quantiteVariant = variant.quantites[indexOption];
+                    stockDisponible = Math.min(stockDisponible, quantiteVariant);
+                    console.log(`[createCommande] Stock pour ${nomVariant}=${optionSelectionnee}: ${quantiteVariant}`);
+                  }
                 }
               }
             }
@@ -506,22 +527,43 @@ export class CommandeController {
         }
         
         // Vérifier le stock selon les variants
+        // Nouveau format: variants_selectionnes = { variant: {...}, options: {...} }
+        // Nouveau format produit: variants = { variants: [...], options: [...] }
         if (article.variants_selectionnes && produit.variants) {
           console.log('[initierPaiement] Vérification du stock pour les variants:', article.variants_selectionnes);
           
           // Calculer le stock disponible pour ces variants spécifiques
           let stockDisponible = produit.quantite_stock || 0;
           
-          for (const [nomVariant, optionSelectionnee] of Object.entries(article.variants_selectionnes)) {
-            const variant = produit.variants.find((v: any) => v.nom === nomVariant);
+          const variantsData = produit.variants as any;
+          
+          // Vérifier si un variant spécifique est sélectionné (nouveau format)
+          if (article.variants_selectionnes.variant && variantsData.variants && Array.isArray(variantsData.variants)) {
+            const variantSelectionne = article.variants_selectionnes.variant;
+            console.log('[initierPaiement] Variant sélectionné (nouveau format):', variantSelectionne);
             
-            if (variant && variant.options && variant.quantites) {
-              const indexOption = variant.options.indexOf(optionSelectionnee);
+            const variantProduit = variantsData.variants.find((v: any) => v.nom === variantSelectionne.nom);
+            
+            if (variantProduit && typeof variantProduit.quantite === 'number') {
+              stockDisponible = Math.min(stockDisponible, variantProduit.quantite);
+              console.log(`[initierPaiement] Stock pour variant ${variantProduit.nom}: ${variantProduit.quantite}`);
+            }
+          } else {
+            // Support de l'ancien format pour rétrocompatibilité
+            console.log('[initierPaiement] Ancien format de variants détecté');
+            for (const [nomVariant, optionSelectionnee] of Object.entries(article.variants_selectionnes)) {
+              if (nomVariant === 'variant' || nomVariant === 'options') continue; // Skip nouveau format
               
-              if (indexOption !== -1 && variant.quantites[indexOption] !== undefined) {
-                const quantiteVariant = variant.quantites[indexOption];
-                stockDisponible = Math.min(stockDisponible, quantiteVariant);
-                console.log(`[initierPaiement] Stock pour ${nomVariant}=${optionSelectionnee}: ${quantiteVariant}`);
+              const variant = produit.variants.find((v: any) => v.nom === nomVariant);
+              
+              if (variant && variant.options && variant.quantites) {
+                const indexOption = variant.options.indexOf(optionSelectionnee);
+                
+                if (indexOption !== -1 && variant.quantites[indexOption] !== undefined) {
+                  const quantiteVariant = variant.quantites[indexOption];
+                  stockDisponible = Math.min(stockDisponible, quantiteVariant);
+                  console.log(`[initierPaiement] Stock pour ${nomVariant}=${optionSelectionnee}: ${quantiteVariant}`);
+                }
               }
             }
           }

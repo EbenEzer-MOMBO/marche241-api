@@ -27,7 +27,7 @@ export class BoutiqueController {
 
       console.log('[BoutiqueController] Nombre de boutiques récupérées:', boutiques.donnees?.length || 0);
       console.log('[BoutiqueController] Total:', boutiques.total);
-      
+
       res.status(200).json(boutiques);
     } catch (error: any) {
       console.error('[BoutiqueController] ERREUR:', error);
@@ -73,7 +73,7 @@ export class BoutiqueController {
       }
 
       console.log('[BoutiqueController] Boutique trouvée:', { id: boutique.id, nom: boutique.nom, slug: boutique.slug });
-      
+
       res.status(200).json({
         success: true,
         boutique

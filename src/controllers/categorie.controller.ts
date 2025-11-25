@@ -9,14 +9,20 @@ export class CategorieController {
    */
   static async getAllCategories(req: Request, res: Response): Promise<void> {
     try {
+      console.log('[CategorieController] ===== GET ALL CATEGORIES =====');
+      console.log('[CategorieController] Query params:', req.query);
+      
       // Utiliser validatedQuery s'il existe, sinon utiliser query
       const query = (req as any).validatedQuery || req.query;
       
       // Récupérer le paramètre boutique_id s'il existe
       const boutiqueId = query.boutique_id ? parseInt(query.boutique_id as string) : undefined;
       
+      console.log('[CategorieController] Boutique ID parsé:', boutiqueId);
+      
       // Vérifier si boutiqueId est un nombre valide
       if (query.boutique_id && isNaN(boutiqueId as number)) {
+        console.log('[CategorieController] ID de boutique invalide:', query.boutique_id);
         res.status(400).json({
           success: false,
           message: 'ID de boutique invalide'
@@ -26,11 +32,16 @@ export class CategorieController {
       
       const categories = await CategorieModel.getAllCategories(boutiqueId);
       
+      console.log('[CategorieController] Nombre de catégories retournées:', categories.length);
+      console.log('[CategorieController] Catégories globales:', categories.filter(c => !c.boutique_id).length);
+      console.log('[CategorieController] Catégories spécifiques:', categories.filter(c => c.boutique_id).length);
+      
       res.status(200).json({
         success: true,
         categories
       });
     } catch (error: any) {
+      console.error('[CategorieController] ERREUR:', error);
       res.status(500).json({
         success: false,
         message: 'Erreur lors de la récupération des catégories',

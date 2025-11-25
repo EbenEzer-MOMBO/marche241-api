@@ -14,8 +14,13 @@ export class CategorieModel {
   /**
    * Récupère toutes les catégories
    * @param boutiqueId ID de la boutique (optionnel)
+   * Si un boutiqueId est fourni, retourne les catégories globales (sans boutique_id) 
+   * ET les catégories spécifiques à cette boutique
    */
   static async getAllCategories(boutiqueId?: number): Promise<Categorie[]> {
+    console.log('[CategorieModel] ===== GET ALL CATEGORIES =====');
+    console.log('[CategorieModel] Boutique ID:', boutiqueId);
+    
     // Construire la requête avec le nombre de produits
     let query = supabaseAdmin
       .from('categories')
@@ -25,17 +30,23 @@ export class CategorieModel {
       `)
       .order('ordre_affichage', { ascending: true });
     
-    // Filtrer par boutique si spécifié
+    // Si une boutique est spécifiée, récupérer les catégories globales ET celles de la boutique
     if (boutiqueId) {
-      query = query.eq('boutique_id', boutiqueId);
+      console.log('[CategorieModel] Filtrage: catégories globales + boutique', boutiqueId);
+      query = query.or(`boutique_id.is.null,boutique_id.eq.${boutiqueId}`);
+    } else {
+      console.log('[CategorieModel] Récupération de toutes les catégories (sans filtre)');
     }
     
     // Exécuter la requête
     const { data, error } = await query;
     
     if (error) {
+      console.error('[CategorieModel] ERREUR:', error);
       throw new Error(`Erreur lors de la récupération des catégories: ${error.message}`);
     }
+    
+    console.log('[CategorieModel] Nombre de catégories récupérées:', data?.length || 0);
     
     // Transformer les données pour inclure le nombre de produits
     const categoriesWithCount = (data || []).map(categorie => ({
