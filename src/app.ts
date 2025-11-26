@@ -27,6 +27,7 @@ app.use(cors({
     'http://192.168.1.7:3000',
     'http://192.168.1.6:3000',
     'http://192.168.1.2:3000',
+    'http://192.168.1.138:3000',
     'https://marche241-production.up.railway.app',
     'https://marche241-backend-production.up.railway.app',
     'https://marche241.netlify.app',

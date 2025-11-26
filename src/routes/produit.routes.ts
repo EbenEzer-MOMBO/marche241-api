@@ -25,20 +25,29 @@ const createProduitSchema = Joi.object({
     'number.min': 'Le prix doit être positif',
     'any.required': 'Le prix est obligatoire'
   }),
-  prix_promo: Joi.number().min(0).allow(null).messages({
+  prix_promo: Joi.number().min(0).optional().allow(null).messages({
     'number.min': 'Le prix promotionnel doit être positif'
   }),
   stock: Joi.number().integer().min(0).default(0).messages({
     'number.min': 'Le stock doit être positif'
   }),
+  en_stock: Joi.number().integer().min(0).optional().messages({
+    'number.min': 'Le stock doit être positif'
+  }),
   boutique_id: Joi.number().integer().required().messages({
     'any.required': 'L\'ID de la boutique est obligatoire'
   }),
-  categorie_id: Joi.number().integer().allow(null).messages({
+  categorie_id: Joi.number().integer().optional().allow(null).messages({
     'number.base': 'L\'ID de la catégorie doit être un nombre'
   }),
-  images: Joi.array().items(Joi.string().uri()).messages({
+  images: Joi.array().items(Joi.string().uri()).optional().messages({
     'array.base': 'Les images doivent être un tableau d\'URLs'
+  }),
+  image_principale: Joi.string().uri().optional().allow(null, '').messages({
+    'string.uri': 'L\'image principale doit être une URL valide'
+  }),
+  variants: Joi.object().optional().allow(null).messages({
+    'object.base': 'Les variants doivent être un objet'
   }),
   statut: Joi.string().valid('actif', 'inactif', 'rupture_stock').default('actif')
 });
@@ -59,17 +68,26 @@ const updateProduitSchema = Joi.object({
   prix: Joi.number().min(0).messages({
     'number.min': 'Le prix doit être positif'
   }),
-  prix_promo: Joi.number().min(0).allow(null).messages({
+  prix_promo: Joi.number().min(0).optional().allow(null).messages({
     'number.min': 'Le prix promotionnel doit être positif'
   }),
   stock: Joi.number().integer().min(0).messages({
     'number.min': 'Le stock doit être positif'
   }),
-  categorie_id: Joi.number().integer().allow(null).messages({
+  en_stock: Joi.number().integer().min(0).optional().messages({
+    'number.min': 'Le stock doit être positif'
+  }),
+  categorie_id: Joi.number().integer().optional().allow(null).messages({
     'number.base': 'L\'ID de la catégorie doit être un nombre'
   }),
-  images: Joi.array().items(Joi.string().uri()).messages({
+  images: Joi.array().items(Joi.string().uri()).optional().messages({
     'array.base': 'Les images doivent être un tableau d\'URLs'
+  }),
+  image_principale: Joi.string().uri().optional().allow(null, '').messages({
+    'string.uri': 'L\'image principale doit être une URL valide'
+  }),
+  variants: Joi.object().optional().allow(null).messages({
+    'object.base': 'Les variants doivent être un objet'
   }),
   statut: Joi.string().valid('actif', 'inactif', 'rupture_stock')
 });

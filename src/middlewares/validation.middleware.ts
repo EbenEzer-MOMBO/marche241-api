@@ -41,6 +41,17 @@ export const validate = (schema: any) => {
       console.log('[ValidationMiddleware] ===== VALIDATION RÉUSSIE =====');
       console.log('[ValidationMiddleware] Données validées:', JSON.stringify(value, null, 2));
 
+      // Normaliser les noms de champs (en_stock → quantite_stock pour compatibilité)
+      if (value.en_stock !== undefined && value.stock === 0) {
+        value.quantite_stock = value.en_stock;
+        delete value.en_stock;
+        console.log('[ValidationMiddleware] Normalisation: en_stock → quantite_stock:', value.quantite_stock);
+      } else if (value.stock !== undefined) {
+        value.quantite_stock = value.stock;
+        delete value.stock;
+        console.log('[ValidationMiddleware] Normalisation: stock → quantite_stock:', value.quantite_stock);
+      }
+
       // Stocker les données validées dans une propriété spécifique
       (req as any).validatedBody = value;
       
