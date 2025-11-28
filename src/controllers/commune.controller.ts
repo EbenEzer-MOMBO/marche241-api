@@ -12,10 +12,10 @@ export class CommuneController {
     try {
       // Utiliser validatedQuery s'il existe, sinon utiliser query
       const query = (req as any).validatedQuery || req.query;
-      
+
       // Récupérer le paramètre boutique_id s'il existe
       const boutiqueId = query.boutique_id ? parseInt(query.boutique_id as string) : undefined;
-      
+
       // Vérifier si boutiqueId est un nombre valide
       if (query.boutique_id && isNaN(boutiqueId as number)) {
         res.status(400).json({
@@ -24,10 +24,10 @@ export class CommuneController {
         });
         return;
       }
-      
+
       // Récupérer les communes
       const communes = await CommuneModel.getAllCommunes(boutiqueId);
-      
+
       res.status(200).json({
         success: true,
         communes
@@ -49,7 +49,7 @@ export class CommuneController {
   static async getCommunesByBoutiqueId(req: Request, res: Response): Promise<void> {
     try {
       const boutiqueId = parseInt(req.params.boutiqueId);
-      
+
       if (isNaN(boutiqueId)) {
         res.status(400).json({
           success: false,
@@ -57,9 +57,9 @@ export class CommuneController {
         });
         return;
       }
-      
+
       const communes = await CommuneModel.getCommunesByBoutiqueId(boutiqueId);
-      
+
       res.status(200).json({
         success: true,
         communes
@@ -81,7 +81,7 @@ export class CommuneController {
   static async getActiveCommunesByBoutiqueId(req: Request, res: Response): Promise<void> {
     try {
       const boutiqueId = parseInt(req.params.boutiqueId);
-      
+
       if (isNaN(boutiqueId)) {
         res.status(400).json({
           success: false,
@@ -89,9 +89,9 @@ export class CommuneController {
         });
         return;
       }
-      
+
       const communes = await CommuneModel.getActiveCommunesByBoutiqueId(boutiqueId);
-      
+
       res.status(200).json({
         success: true,
         communes
@@ -114,10 +114,10 @@ export class CommuneController {
     try {
       // Utiliser validatedQuery s'il existe, sinon utiliser query
       const query = (req as any).validatedQuery || req.query;
-      
+
       // Récupérer le paramètre boutique_id s'il existe
       const boutiqueId = query.boutique_id ? parseInt(query.boutique_id as string) : undefined;
-      
+
       // Vérifier si boutiqueId est un nombre valide
       if (query.boutique_id && isNaN(boutiqueId as number)) {
         res.status(400).json({
@@ -126,10 +126,10 @@ export class CommuneController {
         });
         return;
       }
-      
+
       // Récupérer les communes actives
       const communes = await CommuneModel.getActiveCommunes(boutiqueId);
-      
+
       res.status(200).json({
         success: true,
         communes
@@ -151,7 +151,7 @@ export class CommuneController {
   static async getCommuneById(req: Request, res: Response): Promise<void> {
     try {
       const id = parseInt(req.params.id);
-      
+
       if (isNaN(id)) {
         res.status(400).json({
           success: false,
@@ -159,9 +159,9 @@ export class CommuneController {
         });
         return;
       }
-      
+
       const commune = await CommuneModel.getCommuneById(id);
-      
+
       if (!commune) {
         res.status(404).json({
           success: false,
@@ -169,7 +169,7 @@ export class CommuneController {
         });
         return;
       }
-      
+
       res.status(200).json({
         success: true,
         commune
@@ -189,17 +189,17 @@ export class CommuneController {
    * @param res Réponse HTTP
    */
   static async createCommune(req: Request, res: Response): Promise<void> {
+    // Utiliser validatedBody s'il existe, sinon utiliser body
+    const body = (req as any).validatedBody || req.body;
+
     try {
-      // Utiliser validatedBody s'il existe, sinon utiliser body
-      const body = (req as any).validatedBody || req.body;
-      
       console.log('[createCommune] Données reçues:', body);
       console.log('[createCommune] Utilisateur authentifié:', req.user ? { id: req.user.id, email: req.user.email } : 'non authentifié');
-      
+
       const commune = await CommuneModel.createCommune(body);
-      
+
       console.log('[createCommune] Commune créée:', commune);
-      
+
       res.status(201).json({
         success: true,
         message: 'Commune créée avec succès',
@@ -208,6 +208,36 @@ export class CommuneController {
     } catch (error: any) {
       console.error('[createCommune] Erreur:', error);
       console.error('[createCommune] Stack:', error.stack);
+
+      // Gérer les erreurs de contrainte d'unicité (duplicate key)
+      if (error.message && (
+        error.message.includes('duplicate key') ||
+        error.message.includes('livraison_boutique_id_nom_commune_key') ||
+        error.message.includes('unique constraint')
+      )) {
+        res.status(409).json({
+          success: false,
+          message: `Une commune avec le nom "${body.nom_commune}" existe déjà pour cette boutique`,
+          error: error.message
+        });
+        return;
+      }
+
+      // Gérer les erreurs de validation
+      if (error.message && (
+        error.message.includes('invalide') ||
+        error.message.includes('requis') ||
+        error.message.includes('obligatoire')
+      )) {
+        res.status(400).json({
+          success: false,
+          message: error.message,
+          error: error.message
+        });
+        return;
+      }
+
+      // Erreur serveur générique
       res.status(500).json({
         success: false,
         message: 'Erreur lors de la création de la commune',
@@ -224,7 +254,7 @@ export class CommuneController {
   static async updateCommune(req: Request, res: Response): Promise<void> {
     try {
       const id = parseInt(req.params.id);
-      
+
       if (isNaN(id)) {
         res.status(400).json({
           success: false,
@@ -232,10 +262,10 @@ export class CommuneController {
         });
         return;
       }
-      
+
       // Vérifier si la commune existe
       const existingCommune = await CommuneModel.getCommuneById(id);
-      
+
       if (!existingCommune) {
         res.status(404).json({
           success: false,
@@ -243,18 +273,49 @@ export class CommuneController {
         });
         return;
       }
-      
+
       // Utiliser validatedBody s'il existe, sinon utiliser body
       const body = (req as any).validatedBody || req.body;
-      
+
       const updatedCommune = await CommuneModel.updateCommune(id, body);
-      
+
       res.status(200).json({
         success: true,
         message: 'Commune mise à jour avec succès',
         commune: updatedCommune
       });
     } catch (error: any) {
+      console.error('[updateCommune] Erreur:', error);
+
+      // Gérer les erreurs de contrainte d'unicité (duplicate key)
+      if (error.message && (
+        error.message.includes('duplicate key') ||
+        error.message.includes('livraison_boutique_id_nom_commune_key') ||
+        error.message.includes('unique constraint')
+      )) {
+        res.status(409).json({
+          success: false,
+          message: `Une commune avec ce nom existe déjà pour cette boutique`,
+          error: error.message
+        });
+        return;
+      }
+
+      // Gérer les erreurs de validation
+      if (error.message && (
+        error.message.includes('invalide') ||
+        error.message.includes('requis') ||
+        error.message.includes('obligatoire')
+      )) {
+        res.status(400).json({
+          success: false,
+          message: error.message,
+          error: error.message
+        });
+        return;
+      }
+
+      // Erreur serveur générique
       res.status(500).json({
         success: false,
         message: 'Erreur lors de la mise à jour de la commune',
@@ -271,7 +332,7 @@ export class CommuneController {
   static async toggleCommuneStatus(req: Request, res: Response): Promise<void> {
     try {
       const id = parseInt(req.params.id);
-      
+
       if (isNaN(id)) {
         res.status(400).json({
           success: false,
@@ -279,10 +340,10 @@ export class CommuneController {
         });
         return;
       }
-      
+
       // Vérifier si la commune existe
       const existingCommune = await CommuneModel.getCommuneById(id);
-      
+
       if (!existingCommune) {
         res.status(404).json({
           success: false,
@@ -290,13 +351,13 @@ export class CommuneController {
         });
         return;
       }
-      
+
       // Utiliser validatedBody s'il existe, sinon utiliser body
       const body = (req as any).validatedBody || req.body;
       const isActive = body.est_active !== undefined ? body.est_active : !existingCommune.est_active;
-      
+
       const updatedCommune = await CommuneModel.toggleCommuneStatus(id, isActive);
-      
+
       res.status(200).json({
         success: true,
         message: `Commune ${isActive ? 'activée' : 'désactivée'} avec succès`,
@@ -319,7 +380,7 @@ export class CommuneController {
   static async deleteCommune(req: Request, res: Response): Promise<void> {
     try {
       const id = parseInt(req.params.id);
-      
+
       if (isNaN(id)) {
         res.status(400).json({
           success: false,
@@ -327,10 +388,10 @@ export class CommuneController {
         });
         return;
       }
-      
+
       // Vérifier si la commune existe
       const existingCommune = await CommuneModel.getCommuneById(id);
-      
+
       if (!existingCommune) {
         res.status(404).json({
           success: false,
@@ -338,9 +399,9 @@ export class CommuneController {
         });
         return;
       }
-      
+
       await CommuneModel.deleteCommune(id);
-      
+
       res.status(200).json({
         success: true,
         message: 'Commune supprimée avec succès'
