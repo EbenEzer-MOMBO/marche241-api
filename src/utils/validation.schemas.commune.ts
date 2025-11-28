@@ -19,8 +19,9 @@ export const createCommuneSchema = Joi.object({
     'string.max': 'Le nom de la commune ne doit pas dépasser {#limit} caractères',
     'any.required': 'Le nom de la commune est obligatoire'
   }),
-  code_postal: Joi.string().allow(null, '').messages({
-    'string.base': 'Le code postal doit être une chaîne de caractères'
+  code_postal: Joi.string().allow(null, '').max(10).messages({
+    'string.base': 'Le code postal doit être une chaîne de caractères',
+    'string.max': 'Le code postal ne doit pas dépasser {#limit} caractères'
   }),
   tarif_livraison: Joi.number().required().min(0).messages({
     'number.base': 'Le tarif de livraison doit être un nombre',
@@ -51,8 +52,9 @@ export const updateCommuneSchema = Joi.object({
     'string.min': 'Le nom de la commune doit contenir au moins {#limit} caractères',
     'string.max': 'Le nom de la commune ne doit pas dépasser {#limit} caractères'
   }),
-  code_postal: Joi.string().allow(null, '').messages({
-    'string.base': 'Le code postal doit être une chaîne de caractères'
+  code_postal: Joi.string().allow(null, '').max(10).messages({
+    'string.base': 'Le code postal doit être une chaîne de caractères',
+    'string.max': 'Le code postal ne doit pas dépasser {#limit} caractères'
   }),
   tarif_livraison: Joi.number().min(0).messages({
     'number.base': 'Le tarif de livraison doit être un nombre',

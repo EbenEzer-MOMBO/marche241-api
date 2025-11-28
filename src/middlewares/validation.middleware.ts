@@ -13,6 +13,13 @@ export const validate = (schema: any) => {
       console.log('[ValidationMiddleware] Body reçu:', JSON.stringify(req.body, null, 2));
       console.log('[ValidationMiddleware] Schéma utilisé:', schema?._ids?._byKey || 'Schema info not available');
       
+      // Tronquer le code_postal à 10 caractères AVANT la validation
+      if (req.body.code_postal && typeof req.body.code_postal === 'string' && req.body.code_postal.length > 10) {
+        const originalCodePostal = req.body.code_postal;
+        req.body.code_postal = req.body.code_postal.substring(0, 10);
+        console.log('[ValidationMiddleware] Troncature code_postal:', originalCodePostal, '→', req.body.code_postal);
+      }
+      
       const { error, value } = schema.validate(req.body, {
         abortEarly: false,
         stripUnknown: true
