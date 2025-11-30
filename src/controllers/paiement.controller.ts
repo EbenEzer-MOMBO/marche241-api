@@ -36,21 +36,20 @@ export class PaiementController {
         return { isValid: false, message: `Aucun article trouvé pour la commande ${commandeId}` };
       }
 
-      // Calculer le total des articles
+      // Calculer le total des articles (prix HT sans majoration)
       const totalArticles = articles.reduce((sum, article) => {
         return sum + (article.prix_unitaire * article.quantite);
       }, 0);
 
       const fraisLivraison = commande.frais_livraison || 0;
-      const totalCommande = totalArticles + fraisLivraison;
+      const totalCommandeHT = totalArticles + fraisLivraison; // Total HT (sans majoration)
       const montantTransaction = transaction.montant;
 
-      // Frais de service de 4.5% (cohérent avec TransactionController)
+      // Frais de service de 4.5% appliqués sur le total (articles + livraison)
       const FRAIS_SERVICE_POURCENTAGE = 0.045;
       const avecFraisService = (montant: number) => Math.round(montant * (1 + FRAIS_SERVICE_POURCENTAGE));
 
-      console.log(`[PaiementController] Détail commande: Articles=${totalArticles}, Livraison=${fraisLivraison}, Total=${totalCommande}`);
-      console.log(`[PaiementController] Note: totalArticles inclut déjà la majoration 4.5%`);
+      console.log(`[PaiementController] Détail commande: Articles=${totalArticles}, Livraison=${fraisLivraison}, Total HT=${totalCommandeHT}`);
 
       // Déterminer le montant attendu selon le type de paiement
       let montantAttendu: number;
@@ -58,21 +57,24 @@ export class PaiementController {
 
       switch (transaction.type_paiement) {
         case 'frais_livraison':
-          // Appliquer la majoration uniquement sur les frais de livraison
+          // Paiement livraison seule : livraison + majoration 4.5%
+          // Exemple : 2000 + 90 = 2090 FCFA
           montantAttendu = fraisLivraison > 0 ? avecFraisService(fraisLivraison) : 0;
-          typePaiementDescription = `frais de livraison (${fraisLivraison} + majoration 4.5%)`;
+          typePaiementDescription = `frais de livraison (${fraisLivraison} + 4.5% = ${montantAttendu})`;
           break;
 
         case 'paiement_complet':
-          // totalCommande inclut déjà la majoration sur les articles, mais pas sur la livraison
-          montantAttendu = totalArticles + (fraisLivraison > 0 ? avecFraisService(fraisLivraison) : 0);
-          typePaiementDescription = `paiement complet (articles: ${totalArticles} déjà avec majoration + livraison: ${fraisLivraison > 0 ? avecFraisService(fraisLivraison) : 0})`;
+          // Paiement complet : (articles + livraison) + majoration 4.5%
+          // Exemple : (8000 + 2000) + 450 = 10450 FCFA
+          montantAttendu = avecFraisService(totalCommandeHT);
+          typePaiementDescription = `paiement complet ((${totalArticles} + ${fraisLivraison}) + 4.5% = ${montantAttendu})`;
           break;
 
         case 'solde_apres_livraison':
-          // Le solde = total des articles (déjà avec majoration) sans les frais de livraison
-          montantAttendu = totalArticles;
-          typePaiementDescription = `solde après livraison (${totalArticles} déjà avec majoration)`;
+          // Le solde après paiement de la livraison = articles + majoration sur articles
+          // Exemple : 8000 + 360 = 8360 FCFA
+          montantAttendu = avecFraisService(totalArticles);
+          typePaiementDescription = `solde après livraison (${totalArticles} + 4.5% = ${montantAttendu})`;
           break;
 
         case 'acompte':
@@ -83,8 +85,8 @@ export class PaiementController {
 
         default:
           // Si le type de paiement n'est pas spécifié, vérifier contre le total complet
-          montantAttendu = totalArticles + (fraisLivraison > 0 ? avecFraisService(fraisLivraison) : 0);
-          typePaiementDescription = `total de la commande (articles: ${totalArticles} + livraison: ${fraisLivraison > 0 ? avecFraisService(fraisLivraison) : 0})`;
+          montantAttendu = avecFraisService(totalCommandeHT);
+          typePaiementDescription = `total de la commande ((${totalArticles} + ${fraisLivraison}) + 4.5% = ${montantAttendu})`;
           console.warn(`[PaiementController] Type de paiement non reconnu: ${transaction.type_paiement}`);
       }
 
