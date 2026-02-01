@@ -412,4 +412,151 @@ router.delete('/:id', auth, validateParams(idParamSchema), isBoutiqueOwner, Bout
  */
 router.patch('/:id/statut', auth, validateParams(idParamSchema), isAdmin, validate(updateBoutiqueStatusSchema), BoutiqueController.updateBoutiqueStatus);
 
+/**
+ * @swagger
+ * /api/v1/boutiques/{id}/stats:
+ *   get:
+ *     summary: Récupère les statistiques de vues d'une boutique
+ *     description: Récupère les statistiques détaillées des vues d'une boutique (accessible au propriétaire)
+ *     tags: [Boutiques]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID de la boutique
+ *     responses:
+ *       200:
+ *         description: Statistiques récupérées avec succès
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 boutique_id:
+ *                   type: integer
+ *                   example: 1
+ *                 nom_boutique:
+ *                   type: string
+ *                   example: "Ma Boutique"
+ *                 statistiques:
+ *                   type: object
+ *                   properties:
+ *                     nombre_vues_total:
+ *                       type: integer
+ *                       description: Nombre total de vues uniques
+ *                       example: 1250
+ *                     vues_totales:
+ *                       type: integer
+ *                       description: Nombre total de vues enregistrées
+ *                       example: 1250
+ *                     vues_aujourd_hui:
+ *                       type: integer
+ *                       description: Vues du jour
+ *                       example: 45
+ *                     vues_7_jours:
+ *                       type: integer
+ *                       description: Vues des 7 derniers jours
+ *                       example: 320
+ *                     vues_30_jours:
+ *                       type: integer
+ *                       description: Vues des 30 derniers jours
+ *                       example: 890
+ *       400:
+ *         description: ID de boutique invalide
+ *       401:
+ *         description: Non authentifié
+ *       404:
+ *         description: Boutique non trouvée
+ *       500:
+ *         description: Erreur serveur
+ * 
+ * @route   GET /api/v1/boutiques/:id/stats
+ * @desc    Récupère les statistiques de vues d'une boutique
+ * @access  Private (propriétaire de la boutique)
+ */
+router.get('/:id/stats', auth, validateParams(idParamSchema), isBoutiqueOwner, BoutiqueController.getBoutiqueStats);
+
+/**
+ * @swagger
+ * /api/v1/boutiques/{id}/produits/top-vues:
+ *   get:
+ *     summary: Récupère les produits les plus vus d'une boutique
+ *     description: Récupère les produits avec le plus grand nombre de vues pour une boutique donnée
+ *     tags: [Boutiques]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID de la boutique
+ *       - in: query
+ *         name: limite
+ *         schema:
+ *           type: integer
+ *           default: 5
+ *         description: Nombre de produits à retourner (max 20)
+ *     responses:
+ *       200:
+ *         description: Produits les plus vus récupérés avec succès
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 boutique_id:
+ *                   type: integer
+ *                   example: 57
+ *                 nom_boutique:
+ *                   type: string
+ *                   example: "Ma Boutique"
+ *                 limite:
+ *                   type: integer
+ *                   example: 5
+ *                 produits:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                         example: 123
+ *                       nom:
+ *                         type: string
+ *                         example: "iPhone 15 Pro"
+ *                       slug:
+ *                         type: string
+ *                         example: "iphone-15-pro"
+ *                       prix:
+ *                         type: number
+ *                         example: 850000
+ *                       nombre_vues:
+ *                         type: integer
+ *                         example: 350
+ *                       image_principale:
+ *                         type: string
+ *                         example: "https://example.com/image.jpg"
+ *       400:
+ *         description: ID de boutique invalide
+ *       404:
+ *         description: Boutique non trouvée
+ *       500:
+ *         description: Erreur serveur
+ * 
+ * @route   GET /api/v1/boutiques/:id/produits/top-vues
+ * @desc    Récupère les produits les plus vus d'une boutique
+ * @access  Public
+ */
+router.get('/:id/produits/top-vues', validateParams(idParamSchema), BoutiqueController.getTopVuesProduits);
+
 export default router;

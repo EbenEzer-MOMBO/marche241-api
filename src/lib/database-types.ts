@@ -63,6 +63,7 @@ export interface Boutique {
   description?: string;
   vendeur_id: number;
   logo?: string;
+  banniere?: string; // URL de l'image de bannière
   couleur_primaire: string;
   couleur_secondaire: string;
   adresse?: string;
@@ -73,6 +74,7 @@ export interface Boutique {
   nombre_produits: number;
   note_moyenne: number;
   nombre_avis: number;
+  nombre_vues: number; // Nombre de vues uniques de la boutique
   
   // Relations
   vendeur?: Vendeur;

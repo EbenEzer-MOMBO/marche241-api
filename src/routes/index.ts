@@ -11,6 +11,7 @@ import commandeRoutes from './commande.routes';
 import whatsappRoutes from './whatsapp.routes';
 import uploadRoutes from './upload.routes';
 import cronRoutes from './cron.routes';
+import { CronController } from '../controllers/cron.controller';
 
 const router = Router();
 
@@ -52,6 +53,17 @@ router.use(`${apiPrefix}/upload`, uploadRoutes);
 
 // Routes pour les tâches cron
 router.use(`${apiPrefix}/cron`, cronRoutes);
+
+// ============================================
+// ROUTES PUBLIQUES À LA RACINE (pour cPanel)
+// ============================================
+
+// Route de santé à la racine
+router.get('/health', CronController.healthCheck);
+
+// Route pour exécuter les tâches cron depuis cPanel
+// Exemple: curl https://votre-api.onrender.com/cron/tasks?key=votre_cle_secrete
+router.get('/cron/tasks', CronController.executeAllTasks);
 
 // Ajouter d'autres routes ici au fur et à mesure
 

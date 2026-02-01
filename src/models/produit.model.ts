@@ -716,6 +716,33 @@ export class ProduitModel {
   }
 
   /**
+   * Récupère les produits les plus vus d'une boutique
+   */
+  static async getTopVuesProduitsByBoutique(boutiqueId: number, limite: number = 5): Promise<Produit[]> {
+    console.log(`[ProduitModel] Récupération des ${limite} produits les plus vus pour la boutique ${boutiqueId}`);
+    
+    const { data, error } = await supabaseAdmin
+      .from('produits')
+      .select(`
+        *,
+        boutique:boutique_id(id, nom, slug, logo),
+        categorie:categorie_id(id, nom, slug)
+      `)
+      .eq('boutique_id', boutiqueId)
+      .eq('statut', 'actif')
+      .order('nombre_vues', { ascending: false })
+      .limit(limite);
+    
+    if (error) {
+      console.error(`[ProduitModel] Erreur lors de la récupération des produits les plus vus:`, error.message);
+      throw new Error(`Erreur lors de la récupération des produits les plus vus: ${error.message}`);
+    }
+    
+    console.log(`[ProduitModel] ${data?.length || 0} produits trouvés`);
+    return this.transformProduitsForResponse(data || []);
+  }
+
+  /**
    * Récupère tous les produits d'une boutique avec pagination
    */
   static async getProduitsByBoutique(boutiqueId: number, page: number = 1, limite: number = 10, tri_par: string = 'date_creation', ordre: 'ASC' | 'DESC' = 'DESC'): Promise<{ produits: Produit[], total: number }> {

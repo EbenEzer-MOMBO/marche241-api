@@ -184,5 +184,107 @@ router.post('/jobs/:jobName/stop', auth, isAdmin, CronController.stopCronJob);
  */
 router.post('/jobs/:jobName/start', auth, isAdmin, CronController.startCronJob);
 
+/**
+ * @swagger
+ * /api/v1/cron/tasks:
+ *   get:
+ *     summary: Exécute toutes les tâches cron planifiées
+ *     description: |
+ *       Route publique pour exécuter toutes les tâches cron.
+ *       À appeler depuis un cron job externe (cPanel, etc.)
+ *       
+ *       Tâches exécutées:
+ *       - Retirer le statut "nouveau" des produits > 7 jours
+ *       - Nettoyer les anciennes vues (> 90 jours)
+ *     tags: [Cron]
+ *     parameters:
+ *       - in: query
+ *         name: key
+ *         schema:
+ *           type: string
+ *         description: Clé secrète optionnelle (définie dans CRON_SECRET_KEY)
+ *     responses:
+ *       200:
+ *         description: Toutes les tâches exécutées avec succès
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Toutes les tâches ont été exécutées avec succès"
+ *                 executed_at:
+ *                   type: string
+ *                   format: date-time
+ *                 total_duration_ms:
+ *                   type: integer
+ *                   example: 1250
+ *                 tasks:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       task:
+ *                         type: string
+ *                       success:
+ *                         type: boolean
+ *                       result:
+ *                         type: object
+ *                       duration:
+ *                         type: integer
+ *       207:
+ *         description: Certaines tâches ont échoué
+ *       401:
+ *         description: Clé d'authentification invalide
+ *       500:
+ *         description: Erreur serveur
+ * 
+ * @route   GET /api/v1/cron/tasks
+ * @desc    Exécute toutes les tâches cron planifiées
+ * @access  Public (avec clé optionnelle)
+ */
+router.get('/tasks', CronController.executeAllTasks);
+
+/**
+ * @swagger
+ * /api/v1/cron/health:
+ *   get:
+ *     summary: Vérifie l'état de santé du serveur
+ *     description: Route simple pour vérifier que le serveur est en ligne
+ *     tags: [Cron]
+ *     responses:
+ *       200:
+ *         description: Serveur en ligne
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 status:
+ *                   type: string
+ *                   example: "ok"
+ *                 timestamp:
+ *                   type: string
+ *                   format: date-time
+ *                 uptime:
+ *                   type: number
+ *                   description: Temps de fonctionnement en secondes
+ *                 message:
+ *                   type: string
+ *                   example: "Serveur en ligne"
+ * 
+ * @route   GET /api/v1/cron/health
+ * @desc    Vérifie l'état de santé du serveur
+ * @access  Public
+ */
+router.get('/health', CronController.healthCheck);
+
 export default router;
 

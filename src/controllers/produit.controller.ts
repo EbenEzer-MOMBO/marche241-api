@@ -1,5 +1,18 @@
 import { Request, Response } from 'express';
 import { ProduitModel } from '../models/produit.model';
+import { VueModel } from '../models/vue.model';
+
+/**
+ * Utilitaire pour extraire l'IP réelle du client
+ */
+function getClientIp(req: Request): string {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (forwarded) {
+    const ips = (typeof forwarded === 'string' ? forwarded : forwarded[0]).split(',');
+    return ips[0].trim();
+  }
+  return req.socket?.remoteAddress || req.ip || 'unknown';
+}
 
 export class ProduitController {
   /**
@@ -61,6 +74,31 @@ export class ProduitController {
         return;
       }
       
+      // Enregistrer la vue (en arrière-plan, ne pas bloquer la réponse)
+      const clientIp = getClientIp(req);
+      const userAgent = req.headers['user-agent'] || undefined;
+      const referer = req.headers['referer'] || undefined;
+      
+      // Vue du produit
+      VueModel.enregistrerVue('produit', produit.id, clientIp, userAgent, referer)
+        .then(nouvelleVue => {
+          if (nouvelleVue) {
+            console.log(`[ProduitController] Nouvelle vue enregistrée pour produit ${produit.id}`);
+          }
+        })
+        .catch(err => console.error('[ProduitController] Erreur tracking vue produit:', err));
+
+      // Vue de la boutique (voir un produit = visiter la boutique)
+      if (produit.boutique_id) {
+        VueModel.enregistrerVue('boutique', produit.boutique_id, clientIp, userAgent, referer)
+          .then(nouvelleVue => {
+            if (nouvelleVue) {
+              console.log(`[ProduitController] Nouvelle vue enregistrée pour boutique ${produit.boutique_id}`);
+            }
+          })
+          .catch(err => console.error('[ProduitController] Erreur tracking vue boutique:', err));
+      }
+
       res.status(200).json({
         success: true,
         produit
@@ -91,6 +129,31 @@ export class ProduitController {
         return;
       }
       
+      // Enregistrer la vue (en arrière-plan)
+      const clientIp = getClientIp(req);
+      const userAgent = req.headers['user-agent'] || undefined;
+      const referer = req.headers['referer'] || undefined;
+      
+      // Vue du produit
+      VueModel.enregistrerVue('produit', produit.id, clientIp, userAgent, referer)
+        .then(nouvelleVue => {
+          if (nouvelleVue) {
+            console.log(`[ProduitController] Nouvelle vue enregistrée pour produit ${produit.id}`);
+          }
+        })
+        .catch(err => console.error('[ProduitController] Erreur tracking vue produit:', err));
+
+      // Vue de la boutique (voir un produit = visiter la boutique)
+      if (produit.boutique_id) {
+        VueModel.enregistrerVue('boutique', produit.boutique_id, clientIp, userAgent, referer)
+          .then(nouvelleVue => {
+            if (nouvelleVue) {
+              console.log(`[ProduitController] Nouvelle vue enregistrée pour boutique ${produit.boutique_id}`);
+            }
+          })
+          .catch(err => console.error('[ProduitController] Erreur tracking vue boutique:', err));
+      }
+
       res.status(200).json({
         success: true,
         produit
@@ -462,6 +525,52 @@ export class ProduitController {
       res.status(500).json({
         success: false,
         message: 'Erreur lors de la récupération des produits de la boutique',
+        error: error.message
+      });
+    }
+  }
+
+  /**
+   * Récupère les statistiques de vues d'un produit
+   */
+  static async getProduitStats(req: Request, res: Response): Promise<void> {
+    try {
+      const id = parseInt(req.params.id);
+      
+      if (isNaN(id)) {
+        res.status(400).json({
+          success: false,
+          message: 'ID de produit invalide'
+        });
+        return;
+      }
+      
+      // Vérifier si le produit existe
+      const produit = await ProduitModel.getProduitById(id);
+      if (!produit) {
+        res.status(404).json({
+          success: false,
+          message: 'Produit non trouvé'
+        });
+        return;
+      }
+
+      // Récupérer les statistiques de vues
+      const statsVues = await VueModel.getStatsVues('produit', id);
+
+      res.status(200).json({
+        success: true,
+        produit_id: id,
+        nom_produit: produit.nom,
+        statistiques: {
+          nombre_vues_total: produit.nombre_vues || 0,
+          ...statsVues
+        }
+      });
+    } catch (error: any) {
+      res.status(500).json({
+        success: false,
+        message: 'Erreur lors de la récupération des statistiques',
         error: error.message
       });
     }

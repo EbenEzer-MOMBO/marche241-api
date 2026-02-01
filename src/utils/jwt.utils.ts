@@ -11,7 +11,7 @@ export const generateToken = (vendeur: Vendeur): string => {
   
   // Utiliser une valeur par défaut sans passer par process.env pour éviter les problèmes de type
   const options: SignOptions = {
-    expiresIn: '7d'
+    expiresIn: '30d'
   };
   
   return jwt.sign(

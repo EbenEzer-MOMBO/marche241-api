@@ -83,6 +83,9 @@ export const createBoutiqueSchema = Joi.object({
   logo: Joi.string().allow(null, '').max(255).messages({
     'string.max': 'L\'URL du logo ne doit pas dépasser {#limit} caractères'
   }),
+  banniere: Joi.string().allow(null, '').messages({
+    'string.base': 'L\'URL de la bannière doit être une chaîne de caractères'
+  }),
   couleur_primaire: Joi.string().pattern(/^#[0-9A-Fa-f]{6}$/).allow(null, '').messages({
     'string.pattern.base': 'La couleur primaire doit être au format hexadécimal (#RRGGBB)'
   }),
@@ -112,6 +115,9 @@ export const updateBoutiqueSchema = Joi.object({
   }),
   logo: Joi.string().allow(null, '').max(255).messages({
     'string.max': 'L\'URL du logo ne doit pas dépasser {#limit} caractères'
+  }),
+  banniere: Joi.string().allow(null, '').messages({
+    'string.base': 'L\'URL de la bannière doit être une chaîne de caractères'
   }),
   couleur_primaire: Joi.string().pattern(/^#[0-9A-Fa-f]{6}$/).allow(null, '').messages({
     'string.pattern.base': 'La couleur primaire doit être au format hexadécimal (#RRGGBB)'

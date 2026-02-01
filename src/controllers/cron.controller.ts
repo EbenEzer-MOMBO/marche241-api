@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { CronService } from '../services/cron.service';
+import { VueModel } from '../models/vue.model';
 
 /**
  * Contrôleur pour gérer les tâches cron
@@ -162,6 +163,128 @@ export class CronController {
         error: error.message
       });
     }
+  }
+
+  /**
+   * Route publique pour exécuter toutes les tâches cron planifiées
+   * À appeler depuis un cron job externe (cPanel, etc.)
+   * 
+   * GET /api/v1/cron/tasks
+   * 
+   * Paramètres query optionnels:
+   * - key: Clé secrète pour sécuriser l'accès (optionnel)
+   */
+  static async executeAllTasks(req: Request, res: Response): Promise<void> {
+    const startTime = Date.now();
+    console.log('[CronController] ===== EXÉCUTION DES TÂCHES CRON =====');
+    console.log('[CronController] Date:', new Date().toISOString());
+    
+    const results: {
+      task: string;
+      success: boolean;
+      result?: any;
+      error?: string;
+      duration?: number;
+    }[] = [];
+
+    // Vérification optionnelle de la clé secrète
+    const cronKey = process.env.CRON_SECRET_KEY;
+    const providedKey = req.query.key as string;
+    
+    if (cronKey && providedKey !== cronKey) {
+      console.log('[CronController] Clé invalide ou manquante');
+      res.status(401).json({
+        success: false,
+        message: 'Clé d\'authentification invalide'
+      });
+      return;
+    }
+
+    try {
+      // Tâche 1: Retirer le statut "nouveau" des produits anciens
+      const task1Start = Date.now();
+      try {
+        console.log('[CronController] Tâche 1: Retirer statut nouveau des produits');
+        const result = await CronService.executeRetirerStatutNouveauManually();
+        results.push({
+          task: 'retirer_statut_nouveau',
+          success: true,
+          result: { produits_mis_a_jour: result.count },
+          duration: Date.now() - task1Start
+        });
+        console.log(`[CronController] Tâche 1 terminée: ${result.count} produit(s) mis à jour`);
+      } catch (error: any) {
+        console.error('[CronController] Erreur tâche 1:', error.message);
+        results.push({
+          task: 'retirer_statut_nouveau',
+          success: false,
+          error: error.message,
+          duration: Date.now() - task1Start
+        });
+      }
+
+      // Tâche 2: Nettoyer les anciennes vues (> 90 jours)
+      const task2Start = Date.now();
+      try {
+        console.log('[CronController] Tâche 2: Nettoyer les anciennes vues');
+        const vuesSupprimees = await VueModel.nettoyerAnciennesVues(90);
+        results.push({
+          task: 'nettoyer_anciennes_vues',
+          success: true,
+          result: { vues_supprimees: vuesSupprimees },
+          duration: Date.now() - task2Start
+        });
+        console.log(`[CronController] Tâche 2 terminée: ${vuesSupprimees} vue(s) supprimée(s)`);
+      } catch (error: any) {
+        console.error('[CronController] Erreur tâche 2:', error.message);
+        results.push({
+          task: 'nettoyer_anciennes_vues',
+          success: false,
+          error: error.message,
+          duration: Date.now() - task2Start
+        });
+      }
+
+      const totalDuration = Date.now() - startTime;
+      const allSuccess = results.every(r => r.success);
+      
+      console.log('[CronController] ===== FIN DES TÂCHES CRON =====');
+      console.log(`[CronController] Durée totale: ${totalDuration}ms`);
+      console.log(`[CronController] Succès: ${allSuccess ? 'OUI' : 'PARTIEL'}`);
+
+      res.status(allSuccess ? 200 : 207).json({
+        success: allSuccess,
+        message: allSuccess ? 'Toutes les tâches ont été exécutées avec succès' : 'Certaines tâches ont échoué',
+        executed_at: new Date().toISOString(),
+        total_duration_ms: totalDuration,
+        tasks: results
+      });
+    } catch (error: any) {
+      console.error('[CronController] Erreur globale:', error);
+      
+      res.status(500).json({
+        success: false,
+        message: 'Erreur lors de l\'exécution des tâches',
+        error: error.message,
+        executed_at: new Date().toISOString(),
+        total_duration_ms: Date.now() - startTime,
+        tasks: results
+      });
+    }
+  }
+
+  /**
+   * Route de santé simple pour vérifier que le serveur est en ligne
+   * GET /api/v1/health ou /health
+   */
+  static async healthCheck(req: Request, res: Response): Promise<void> {
+    res.status(200).json({
+      success: true,
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      message: 'Serveur en ligne'
+    });
   }
 }
 

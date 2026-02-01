@@ -597,4 +597,75 @@ router.post('/', auth, validate(createProduitSchema), ProduitController.createPr
 router.put('/:id', auth, validateParams(idParamSchema), validate(updateProduitSchema), ProduitController.updateProduit);
 router.delete('/:id', auth, validateParams(idParamSchema), ProduitController.deleteProduit);
 
+/**
+ * @swagger
+ * /api/v1/produits/{id}/stats:
+ *   get:
+ *     summary: Récupère les statistiques de vues d'un produit
+ *     description: Récupère les statistiques détaillées des vues d'un produit (accessible au propriétaire)
+ *     tags: [Produits]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID du produit
+ *     responses:
+ *       200:
+ *         description: Statistiques récupérées avec succès
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 produit_id:
+ *                   type: integer
+ *                   example: 1
+ *                 nom_produit:
+ *                   type: string
+ *                   example: "iPhone 15 Pro"
+ *                 statistiques:
+ *                   type: object
+ *                   properties:
+ *                     nombre_vues_total:
+ *                       type: integer
+ *                       description: Nombre total de vues uniques
+ *                       example: 350
+ *                     vues_totales:
+ *                       type: integer
+ *                       description: Nombre total de vues enregistrées
+ *                       example: 350
+ *                     vues_aujourd_hui:
+ *                       type: integer
+ *                       description: Vues du jour
+ *                       example: 12
+ *                     vues_7_jours:
+ *                       type: integer
+ *                       description: Vues des 7 derniers jours
+ *                       example: 85
+ *                     vues_30_jours:
+ *                       type: integer
+ *                       description: Vues des 30 derniers jours
+ *                       example: 220
+ *       400:
+ *         description: ID de produit invalide
+ *       401:
+ *         description: Non authentifié
+ *       404:
+ *         description: Produit non trouvé
+ *       500:
+ *         description: Erreur serveur
+ * 
+ * @route   GET /api/v1/produits/:id/stats
+ * @desc    Récupère les statistiques de vues d'un produit
+ * @access  Private (propriétaire)
+ */
+router.get('/:id/stats', auth, validateParams(idParamSchema), ProduitController.getProduitStats);
+
 export default router;
