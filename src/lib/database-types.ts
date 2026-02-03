@@ -75,6 +75,7 @@ export interface Boutique {
   note_moyenne: number;
   nombre_avis: number;
   nombre_vues: number; // Nombre de vues uniques de la boutique
+  is_full_payment_activated: boolean; // Si true, accepte les paiements complets, sinon seulement la livraison
   
   // Relations
   vendeur?: Vendeur;
