@@ -13,12 +13,12 @@ export class TransactionController {
     try {
       // Utiliser validatedQuery s'il existe, sinon utiliser query
       const query = (req as any).validatedQuery || req.query;
-      
+
       const page = parseInt(query.page as string) || 1;
       const limite = parseInt(query.limite as string) || 10;
-      
+
       const { transactions, total } = await TransactionModel.getAllTransactions(page, limite);
-      
+
       res.status(200).json({
         success: true,
         transactions,
@@ -44,7 +44,7 @@ export class TransactionController {
   static async getTransactionsByCommandeId(req: Request, res: Response): Promise<void> {
     try {
       const commandeId = parseInt(req.params.commandeId);
-      
+
       if (isNaN(commandeId)) {
         res.status(400).json({
           success: false,
@@ -52,9 +52,9 @@ export class TransactionController {
         });
         return;
       }
-      
+
       const transactions = await TransactionModel.getTransactionsByCommandeId(commandeId);
-      
+
       res.status(200).json({
         success: true,
         transactions
@@ -76,7 +76,7 @@ export class TransactionController {
   static async getTransactionsByBoutiqueId(req: Request, res: Response): Promise<void> {
     try {
       const boutiqueId = parseInt(req.params.boutiqueId);
-      
+
       if (isNaN(boutiqueId)) {
         res.status(400).json({
           success: false,
@@ -84,19 +84,19 @@ export class TransactionController {
         });
         return;
       }
-      
+
       // Utiliser validatedQuery s'il existe, sinon utiliser query
       const query = (req as any).validatedQuery || req.query;
-      
+
       const page = parseInt(query.page as string) || 1;
       const limite = parseInt(query.limite as string) || 10;
-      
+
       const { transactions, total } = await TransactionModel.getTransactionsByBoutiqueId(
         boutiqueId,
         page,
         limite
       );
-      
+
       res.status(200).json({
         success: true,
         transactions,
@@ -122,7 +122,7 @@ export class TransactionController {
   static async getTransactionById(req: Request, res: Response): Promise<void> {
     try {
       const id = parseInt(req.params.id);
-      
+
       if (isNaN(id)) {
         res.status(400).json({
           success: false,
@@ -130,9 +130,9 @@ export class TransactionController {
         });
         return;
       }
-      
+
       const transaction = await TransactionModel.getTransactionById(id);
-      
+
       if (!transaction) {
         res.status(404).json({
           success: false,
@@ -140,7 +140,7 @@ export class TransactionController {
         });
         return;
       }
-      
+
       res.status(200).json({
         success: true,
         transaction
@@ -162,7 +162,7 @@ export class TransactionController {
   static async getTransactionByReference(req: Request, res: Response): Promise<void> {
     try {
       const { reference } = req.params;
-      
+
       if (!reference) {
         res.status(400).json({
           success: false,
@@ -170,9 +170,9 @@ export class TransactionController {
         });
         return;
       }
-      
+
       const transaction = await TransactionModel.getTransactionByReference(reference);
-      
+
       if (!transaction) {
         res.status(404).json({
           success: false,
@@ -180,7 +180,7 @@ export class TransactionController {
         });
         return;
       }
-      
+
       res.status(200).json({
         success: true,
         transaction
@@ -203,13 +203,13 @@ export class TransactionController {
     try {
       // Utiliser validatedBody s'il existe, sinon utiliser body
       const body = (req as any).validatedBody || req.body;
-      
+
       console.log('[TransactionController] Création de transaction, body:', JSON.stringify(body, null, 2));
-      
+
       // Si une commande est associée, déterminer automatiquement le type_paiement si non fourni ou incorrect
       if (body.commande_id && body.montant) {
         const commande = await CommandeModel.getCommandeById(body.commande_id);
-        
+
         if (commande) {
           console.log('[TransactionController] Commande trouvée:', {
             id: commande.id,
@@ -217,26 +217,26 @@ export class TransactionController {
             frais_livraison: commande.frais_livraison,
             montant_transaction: body.montant
           });
-          
-          // IMPORTANT: Le total de la commande (commande.total) inclut DÉJÀ la majoration de 4.5%
+
+          // IMPORTANT: Le total de la commande (commande.total) inclut DÉJÀ la majoration de 10%
           // appliquée sur les prix des articles dans le panier. 
           // Nous devons donc seulement appliquer la majoration sur les frais de livraison s'ils existent.
-          const FRAIS_SERVICE_POURCENTAGE = 0.045; // 4.5%
-          
+          const FRAIS_SERVICE_POURCENTAGE = 0.10; // 10%
+
           // Fonction pour calculer le montant avec frais de service
           const avecFraisService = (montant: number) => Math.round(montant * (1 + FRAIS_SERVICE_POURCENTAGE));
-          
+
           // Déterminer le type de paiement en fonction du montant
           const fraisLivraison = commande.frais_livraison || 0;
           const totalCommande = commande.total; // Déjà avec majoration 4.5%
           const montantTransaction = body.montant;
-          
+
           // Calculer les montants attendus
           // Note: commande.total inclut déjà la majoration, donc pas besoin de la réappliquer
           const fraisLivraisonAvecFrais = fraisLivraison > 0 ? avecFraisService(fraisLivraison) : 0;
           const totalCommandeAvecFrais = totalCommande; // Déjà avec majoration
           const soldeApresLivraisonAvecFrais = totalCommande - fraisLivraisonAvecFrais;
-          
+
           console.log('[TransactionController] Analyse des montants:', {
             fraisLivraison: fraisLivraison,
             fraisLivraisonAvecFrais: fraisLivraisonAvecFrais,
@@ -244,19 +244,19 @@ export class TransactionController {
             totalCommandeAvecFrais: totalCommandeAvecFrais,
             soldeApresLivraisonAvecFrais: soldeApresLivraisonAvecFrais,
             montantTransaction: montantTransaction,
-            note: 'totalCommande inclut déjà la majoration 4.5%'
+            note: 'totalCommande inclut déjà la majoration 10%'
           });
-          
+
           // Si le montant correspond aux frais de livraison + frais de service (avec tolérance de 2)
           if (Math.abs(montantTransaction - fraisLivraisonAvecFrais) <= 2 && fraisLivraison > 0) {
             body.type_paiement = 'frais_livraison';
-            body.description = body.description || `Paiement des frais de livraison (${fraisLivraison} FCFA + majoration 4.5%)`;
+            body.description = body.description || `Paiement des frais de livraison (${fraisLivraison} FCFA + majoration 10%)`;
             console.log('[TransactionController] Type de paiement détecté: frais_livraison');
           }
           // Si le montant correspond au total de la commande (déjà avec majoration)
           else if (Math.abs(montantTransaction - totalCommandeAvecFrais) <= 2) {
             body.type_paiement = 'paiement_complet';
-            body.description = body.description || `Paiement complet de la commande (${totalCommande} FCFA déjà avec majoration 4.5%)`;
+            body.description = body.description || `Paiement complet de la commande (${totalCommande} FCFA déjà avec majoration 10%)`;
             console.log('[TransactionController] Type de paiement détecté: paiement_complet');
           }
           // Si le montant correspond au solde après paiement des frais de livraison
@@ -273,9 +273,9 @@ export class TransactionController {
           }
         }
       }
-      
+
       const transaction = await TransactionModel.createTransaction(body);
-      
+
       res.status(201).json({
         success: true,
         message: 'Transaction créée avec succès',
@@ -298,7 +298,7 @@ export class TransactionController {
   static async updateTransactionStatus(req: Request, res: Response): Promise<void> {
     try {
       const id = parseInt(req.params.id);
-      
+
       if (isNaN(id)) {
         res.status(400).json({
           success: false,
@@ -306,10 +306,10 @@ export class TransactionController {
         });
         return;
       }
-      
+
       // Vérifier si la transaction existe
       const existingTransaction = await TransactionModel.getTransactionById(id);
-      
+
       if (!existingTransaction) {
         res.status(404).json({
           success: false,
@@ -317,15 +317,15 @@ export class TransactionController {
         });
         return;
       }
-      
+
       // Utiliser validatedBody s'il existe, sinon utiliser body
       const body = (req as any).validatedBody || req.body;
-      
+
       const { statut, reference_operateur, notes } = body;
-      
+
       // Définir les valeurs valides de StatutPaiement
       const statutsValides = ['en_attente', 'paye', 'echec', 'rembourse'];
-      
+
       if (!statutsValides.includes(statut)) {
         res.status(400).json({
           success: false,
@@ -333,14 +333,14 @@ export class TransactionController {
         });
         return;
       }
-      
+
       const updatedTransaction = await TransactionModel.updateTransactionStatus(
-        id, 
-        statut as StatutPaiement, 
-        reference_operateur, 
+        id,
+        statut as StatutPaiement,
+        reference_operateur,
         notes
       );
-      
+
       res.status(200).json({
         success: true,
         message: 'Statut de la transaction mis à jour avec succès',
@@ -363,7 +363,7 @@ export class TransactionController {
   static async updateTransaction(req: Request, res: Response): Promise<void> {
     try {
       const id = parseInt(req.params.id);
-      
+
       if (isNaN(id)) {
         res.status(400).json({
           success: false,
@@ -371,10 +371,10 @@ export class TransactionController {
         });
         return;
       }
-      
+
       // Vérifier si la transaction existe
       const existingTransaction = await TransactionModel.getTransactionById(id);
-      
+
       if (!existingTransaction) {
         res.status(404).json({
           success: false,
@@ -382,12 +382,12 @@ export class TransactionController {
         });
         return;
       }
-      
+
       // Utiliser validatedBody s'il existe, sinon utiliser body
       const body = (req as any).validatedBody || req.body;
-      
+
       const updatedTransaction = await TransactionModel.updateTransaction(id, body);
-      
+
       res.status(200).json({
         success: true,
         message: 'Transaction mise à jour avec succès',
@@ -411,10 +411,10 @@ export class TransactionController {
     try {
       // Utiliser validatedQuery s'il existe, sinon utiliser query
       const query = (req as any).validatedQuery || req.query;
-      
+
       let startDate: Date | undefined;
       let endDate: Date | undefined;
-      
+
       if (query.start_date) {
         startDate = new Date(query.start_date as string);
         if (isNaN(startDate.getTime())) {
@@ -425,7 +425,7 @@ export class TransactionController {
           return;
         }
       }
-      
+
       if (query.end_date) {
         endDate = new Date(query.end_date as string);
         if (isNaN(endDate.getTime())) {
@@ -436,9 +436,9 @@ export class TransactionController {
           return;
         }
       }
-      
+
       const stats = await TransactionModel.getTransactionStats(startDate, endDate);
-      
+
       res.status(200).json({
         success: true,
         stats

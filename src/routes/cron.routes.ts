@@ -286,5 +286,24 @@ router.get('/tasks', CronController.executeAllTasks);
  */
 router.get('/health', CronController.healthCheck);
 
+/**
+ * @swagger
+ * /api/v1/cron/expirer-transactions/execute:
+ *   get:
+ *     summary: Exécute manuellement la tâche d'expiration des transactions
+ *     description: Expire les transactions en attente depuis plus d'1 heure et annule les commandes associées
+ *     tags: [Cron]
+ *     responses:
+ *       200:
+ *         description: Tâche exécutée avec succès
+ *       500:
+ *         description: Erreur serveur
+ * 
+ * @route   GET /api/v1/cron/expirer-transactions/execute
+ * @desc    Expire les transactions en attente manuellement
+ * @access  Public
+ */
+router.get('/expirer-transactions/execute', CronController.executeExpirerTransactions);
+
 export default router;
 

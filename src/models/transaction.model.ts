@@ -10,16 +10,16 @@ export class TransactionModel {
   static async getAllTransactions(page: number = 1, limite: number = 10): Promise<{ transactions: Transaction[], total: number }> {
     // Calculer l'offset pour la pagination
     const offset = (page - 1) * limite;
-    
+
     // Récupérer le nombre total de transactions
     const { count, error: countError } = await supabaseAdmin
       .from('transactions')
       .select('*', { count: 'exact', head: true });
-    
+
     if (countError) {
       throw new Error(`Erreur lors du comptage des transactions: ${countError.message}`);
     }
-    
+
     // Récupérer les transactions avec pagination
     const { data, error } = await supabaseAdmin
       .from('transactions')
@@ -29,11 +29,11 @@ export class TransactionModel {
       `)
       .order('date_creation', { ascending: false })
       .range(offset, offset + limite - 1);
-    
+
     if (error) {
       throw new Error(`Erreur lors de la récupération des transactions: ${error.message}`);
     }
-    
+
     return {
       transactions: data || [],
       total: count || 0
@@ -53,11 +53,11 @@ export class TransactionModel {
       `)
       .eq('commande_id', commandeId)
       .order('date_creation', { ascending: false });
-    
+
     if (error) {
       throw new Error(`Erreur lors de la récupération des transactions de la commande: ${error.message}`);
     }
-    
+
     return data || [];
   }
 
@@ -68,22 +68,22 @@ export class TransactionModel {
    * @param limite Nombre d'éléments par page
    */
   static async getTransactionsByBoutiqueId(
-    boutiqueId: number, 
-    page: number = 1, 
+    boutiqueId: number,
+    page: number = 1,
     limite: number = 10
   ): Promise<{ transactions: Transaction[], total: number }> {
     const offset = (page - 1) * limite;
-    
+
     // Compter le nombre total de transactions pour cette boutique
     const { count, error: countError } = await supabaseAdmin
       .from('transactions')
       .select('*, commande:commande_id!inner(boutique_id)', { count: 'exact', head: true })
       .eq('commande.boutique_id', boutiqueId);
-    
+
     if (countError) {
       throw new Error(`Erreur lors du comptage des transactions: ${countError.message}`);
     }
-    
+
     // Récupérer les transactions avec les informations de la commande
     const { data, error } = await supabaseAdmin
       .from('transactions')
@@ -94,11 +94,11 @@ export class TransactionModel {
       .eq('commande.boutique_id', boutiqueId)
       .order('date_creation', { ascending: false })
       .range(offset, offset + limite - 1);
-    
+
     if (error) {
       throw new Error(`Erreur lors de la récupération des transactions: ${error.message}`);
     }
-    
+
     return {
       transactions: data || [],
       total: count || 0
@@ -118,11 +118,11 @@ export class TransactionModel {
       `)
       .eq('id', id)
       .single();
-    
+
     if (error && error.code !== 'PGRST116') {
       throw new Error(`Erreur lors de la récupération de la transaction: ${error.message}`);
     }
-    
+
     return data;
   }
 
@@ -139,11 +139,11 @@ export class TransactionModel {
       `)
       .eq('reference_transaction', reference)
       .single();
-    
+
     if (error && error.code !== 'PGRST116') {
       throw new Error(`Erreur lors de la récupération de la transaction: ${error.message}`);
     }
-    
+
     return data;
   }
 
@@ -153,7 +153,7 @@ export class TransactionModel {
    */
   static async findByReferenceOperateur(referenceOperateur: string): Promise<Transaction | null> {
     console.log(`[TransactionModel] Recherche de transaction avec reference_operateur: ${referenceOperateur}`);
-    
+
     try {
       const { data, error } = await supabaseAdmin
         .from('transactions')
@@ -163,7 +163,7 @@ export class TransactionModel {
         `)
         .eq('reference_operateur', referenceOperateur)
         .single();
-      
+
       if (error) {
         if (error.code === 'PGRST116') {
           // PGRST116 signifie "Aucun résultat trouvé"
@@ -174,13 +174,13 @@ export class TransactionModel {
           throw new Error(`Erreur lors de la récupération de la transaction: ${error.message}`);
         }
       }
-      
+
       if (data) {
         console.log(`[TransactionModel] Transaction trouvée avec ID: ${data.id}, commande_id: ${data.commande_id}`);
       } else {
         console.log(`[TransactionModel] Aucune transaction trouvée avec reference_operateur: ${referenceOperateur}`);
       }
-      
+
       return data;
     } catch (error) {
       console.error(`[TransactionModel] Exception dans findByReferenceOperateur:`, error);
@@ -198,11 +198,11 @@ export class TransactionModel {
       .insert([transaction])
       .select()
       .single();
-    
+
     if (error) {
       throw new Error(`Erreur lors de la création de la transaction: ${error.message}`);
     }
-    
+
     return data;
   }
 
@@ -214,42 +214,42 @@ export class TransactionModel {
    * @param notes Notes internes (optionnel)
    */
   static async updateTransactionStatus(
-    id: number, 
-    statut: StatutPaiement, 
-    referenceOperateur?: string, 
+    id: number,
+    statut: StatutPaiement,
+    referenceOperateur?: string,
     notes?: string
   ): Promise<Transaction> {
-    const updateData: any = { 
+    const updateData: any = {
       statut,
       date_modification: new Date()
     };
-    
+
     // Ajouter la date de confirmation si le statut est "payé"
     if (statut === 'paye') {
       updateData.date_confirmation = new Date();
     }
-    
+
     // Ajouter la référence opérateur si fournie
     if (referenceOperateur) {
       updateData.reference_operateur = referenceOperateur;
     }
-    
+
     // Ajouter les notes si fournies
     if (notes) {
       updateData.notes = notes;
     }
-    
+
     const { data, error } = await supabaseAdmin
       .from('transactions')
       .update(updateData)
       .eq('id', id)
       .select()
       .single();
-    
+
     if (error) {
       throw new Error(`Erreur lors de la mise à jour du statut de la transaction: ${error.message}`);
     }
-    
+
     return data;
   }
 
@@ -259,19 +259,19 @@ export class TransactionModel {
    * @param transaction Données à mettre à jour
    */
   static async updateTransaction(
-    id: number, 
+    id: number,
     transaction: Partial<Omit<Transaction, 'id' | 'date_creation' | 'date_modification'>>
   ): Promise<Transaction> {
     // Filtrer les valeurs vides et undefined pour éviter les erreurs d'enum
     const cleanedTransaction: any = {};
-    
+
     for (const [key, value] of Object.entries(transaction)) {
       // Ne garder que les valeurs non vides
       if (value !== '' && value !== null && value !== undefined) {
         cleanedTransaction[key] = value;
       }
     }
-    
+
     const { data, error } = await supabaseAdmin
       .from('transactions')
       .update({
@@ -281,11 +281,11 @@ export class TransactionModel {
       .eq('id', id)
       .select()
       .single();
-    
+
     if (error) {
       throw new Error(`Erreur lors de la mise à jour de la transaction: ${error.message}`);
     }
-    
+
     return data;
   }
 
@@ -299,23 +299,23 @@ export class TransactionModel {
     let query = supabaseAdmin
       .from('transactions')
       .select('statut, methode_paiement, montant');
-    
+
     // Ajouter les filtres de date si spécifiés
     if (startDate) {
       query = query.gte('date_creation', startDate.toISOString());
     }
-    
+
     if (endDate) {
       query = query.lte('date_creation', endDate.toISOString());
     }
-    
+
     // Exécuter la requête
     const { data, error } = await query;
-    
+
     if (error) {
       throw new Error(`Erreur lors de la récupération des statistiques de transactions: ${error.message}`);
     }
-    
+
     // Calculer les statistiques
     const stats = {
       total: data.length,
@@ -324,28 +324,124 @@ export class TransactionModel {
       byMethod: {} as Record<string, number>,
       successRate: 0
     };
-    
+
     // Compter par statut
     data.forEach(t => {
       const statut = t.statut as string;
       const methode = t.methode_paiement as string;
-      
+
       if (!stats.byStatus[statut]) {
         stats.byStatus[statut] = 0;
       }
       stats.byStatus[statut]++;
-      
+
       if (!stats.byMethod[methode]) {
         stats.byMethod[methode] = 0;
       }
       stats.byMethod[methode]++;
     });
-    
+
     // Calculer le taux de réussite
     const payeStatus = 'processed';
     const successCount = stats.byStatus[payeStatus] || 0;
     stats.successRate = stats.total > 0 ? (successCount / stats.total) * 100 : 0;
-    
+
     return stats;
+  }
+
+  /**
+   * Expire les transactions en attente créées il y a plus de 1 heure
+   * Met à jour le statut de la transaction en 'echec' et annule la commande associée
+   * @returns Nombre de transactions expirées et liste des transactions
+   */
+  static async expirerTransactionsEnAttente(): Promise<{ count: number, transactions: Transaction[] }> {
+    try {
+      console.log('[TransactionModel] Recherche des transactions en attente à expirer...');
+
+      // Récupérer les transactions en attente créées il y a plus d'1 heure
+      const { data: transactionsAExpirer, error: fetchError } = await supabaseAdmin
+        .from('transactions')
+        .select(`
+          *,
+          commande:commande_id(*)
+        `)
+        .eq('statut', 'en_attente')
+        .lt('date_creation', new Date(Date.now() - 60 * 60 * 1000).toISOString()); // 1 heure
+
+      if (fetchError) {
+        console.error('[TransactionModel] Erreur lors de la récupération des transactions:', fetchError);
+        throw new Error(`Erreur lors de la récupération des transactions à expirer: ${fetchError.message}`);
+      }
+
+      if (!transactionsAExpirer || transactionsAExpirer.length === 0) {
+        console.log('[TransactionModel] Aucune transaction à expirer');
+        return { count: 0, transactions: [] };
+      }
+
+      console.log(`[TransactionModel] ${transactionsAExpirer.length} transaction(s) à expirer trouvée(s)`);
+
+      const transactionsExpirees: Transaction[] = [];
+
+      // Expirer chaque transaction
+      for (const transaction of transactionsAExpirer) {
+        try {
+          console.log(`[TransactionModel] Expiration de la transaction ${transaction.id} (commande: ${transaction.commande_id})`);
+
+          // Mettre à jour le statut de la transaction en 'echec'
+          const { data: transactionUpdated, error: updateError } = await supabaseAdmin
+            .from('transactions')
+            .update({
+              statut: 'echec' as StatutPaiement,
+              notes: 'Transaction expirée automatiquement après 1 heure',
+              date_modification: new Date()
+            })
+            .eq('id', transaction.id)
+            .select()
+            .single();
+
+          if (updateError) {
+            console.error(`[TransactionModel] Erreur lors de la mise à jour de la transaction ${transaction.id}:`, updateError);
+            continue;
+          }
+
+          // Si une commande est associée, l'annuler
+          if (transaction.commande_id) {
+            console.log(`[TransactionModel] Annulation de la commande ${transaction.commande_id}`);
+
+            const { error: commandeError } = await supabaseAdmin
+              .from('commandes')
+              .update({
+                statut: 'annulee',
+                date_modification: new Date()
+              })
+              .eq('id', transaction.commande_id);
+
+            if (commandeError) {
+              console.error(`[TransactionModel] Erreur lors de l'annulation de la commande ${transaction.commande_id}:`, commandeError);
+            } else {
+              console.log(`[TransactionModel] Commande ${transaction.commande_id} annulée avec succès`);
+            }
+          }
+
+          transactionsExpirees.push(transactionUpdated);
+          console.log(`[TransactionModel] Transaction ${transaction.id} expirée avec succès`);
+
+        } catch (error: any) {
+          console.error(`[TransactionModel] Erreur lors de l'expiration de la transaction ${transaction.id}:`, error);
+          // Continuer avec les autres transactions même en cas d'erreur
+        }
+      }
+
+      console.log(`[TransactionModel] ${transactionsExpirees.length} transaction(s) expirée(s) avec succès`);
+
+      return {
+        count: transactionsExpirees.length,
+        transactions: transactionsExpirees
+      };
+
+    } catch (error: any) {
+      console.error('[TransactionModel] Exception dans expirerTransactionsEnAttente:', error);
+      throw error;
+    }
   }
 }

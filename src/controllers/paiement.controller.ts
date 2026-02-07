@@ -45,8 +45,8 @@ export class PaiementController {
       const totalCommandeHT = totalArticles + fraisLivraison; // Total HT (sans majoration)
       const montantTransaction = transaction.montant;
 
-      // Frais de service de 4.5% appliqués sur le total (articles + livraison)
-      const FRAIS_SERVICE_POURCENTAGE = 0.045;
+      // Frais de service de 10% appliqués sur le total (articles + livraison)
+      const FRAIS_SERVICE_POURCENTAGE = 0.10;
       const avecFraisService = (montant: number) => Math.round(montant * (1 + FRAIS_SERVICE_POURCENTAGE));
 
       console.log(`[PaiementController] Détail commande: Articles=${totalArticles}, Livraison=${fraisLivraison}, Total HT=${totalCommandeHT}`);
@@ -57,24 +57,24 @@ export class PaiementController {
 
       switch (transaction.type_paiement) {
         case 'frais_livraison':
-          // Paiement livraison seule : livraison + majoration 4.5%
-          // Exemple : 2000 + 90 = 2090 FCFA
+          // Paiement livraison seule : livraison + majoration 10%
+          // Exemple : 2000 + 200 = 2200 FCFA
           montantAttendu = fraisLivraison > 0 ? avecFraisService(fraisLivraison) : 0;
-          typePaiementDescription = `frais de livraison (${fraisLivraison} + 4.5% = ${montantAttendu})`;
+          typePaiementDescription = `frais de livraison (${fraisLivraison} + 10% = ${montantAttendu})`;
           break;
 
         case 'paiement_complet':
-          // Paiement complet : (articles + livraison) + majoration 4.5%
-          // Exemple : (8000 + 2000) + 450 = 10450 FCFA
+          // Paiement complet : (articles + livraison) + majoration 10%
+          // Exemple : (8000 + 2000) + 1000 = 11000 FCFA
           montantAttendu = avecFraisService(totalCommandeHT);
-          typePaiementDescription = `paiement complet ((${totalArticles} + ${fraisLivraison}) + 4.5% = ${montantAttendu})`;
+          typePaiementDescription = `paiement complet ((${totalArticles} + ${fraisLivraison}) + 10% = ${montantAttendu})`;
           break;
 
         case 'solde_apres_livraison':
           // Le solde après paiement de la livraison = articles + majoration sur articles
-          // Exemple : 8000 + 360 = 8360 FCFA
+          // Exemple : 8000 + 800 = 8800 FCFA
           montantAttendu = avecFraisService(totalArticles);
-          typePaiementDescription = `solde après livraison (${totalArticles} + 4.5% = ${montantAttendu})`;
+          typePaiementDescription = `solde après livraison (${totalArticles} + 10% = ${montantAttendu})`;
           break;
 
         case 'acompte':
@@ -86,7 +86,7 @@ export class PaiementController {
         default:
           // Si le type de paiement n'est pas spécifié, vérifier contre le total complet
           montantAttendu = avecFraisService(totalCommandeHT);
-          typePaiementDescription = `total de la commande ((${totalArticles} + ${fraisLivraison}) + 4.5% = ${montantAttendu})`;
+          typePaiementDescription = `total de la commande ((${totalArticles} + ${fraisLivraison}) + 10% = ${montantAttendu})`;
           console.warn(`[PaiementController] Type de paiement non reconnu: ${transaction.type_paiement}`);
       }
 
@@ -592,15 +592,15 @@ export class PaiementController {
 
         // Récupérer la commande pour déterminer le statut de la transaction
         let statutTransaction: StatutPaiement = 'paye';
-        
+
         if (transaction.commande_id) {
           const commande = await CommandeModel.getCommandeById(transaction.commande_id);
-          
+
           if (commande) {
             // Calculer le montant total qui sera payé après cette transaction
             const montantPayeActuel = await CommandeModel.getMontantPaye(transaction.commande_id);
             const montantPayeApres = montantPayeActuel + transaction.montant;
-            
+
             // Déterminer le statut de la transaction en fonction du montant payé
             if (montantPayeApres >= commande.total) {
               statutTransaction = 'paye'; // Paiement complet
@@ -611,7 +611,7 @@ export class PaiementController {
             }
           }
         }
-        
+
         // Mettre à jour la transaction avec les informations du paiement
         const updateData: any = {
           statut: statutTransaction,
@@ -632,26 +632,26 @@ export class PaiementController {
         // Mettre à jour l'état de la commande et recalculer les montants
         if (transaction.commande_id) {
           console.log(`[PaiementController] Mise à jour de la commande ${transaction.commande_id}...`);
-          
+
           // Le trigger SQL va automatiquement recalculer montant_paye et montant_restant
           // On doit juste forcer une mise à jour pour déclencher le trigger
           const commande = await CommandeModel.getCommandeById(transaction.commande_id);
-          
+
           if (commande) {
             // Récupérer le total des paiements confirmés
             const montantPaye = await CommandeModel.getMontantPaye(transaction.commande_id);
             const montantRestant = commande.total - montantPaye;
-            
+
             console.log(`[PaiementController] Montants de la commande:`, {
               total: commande.total,
               montant_paye: montantPaye,
               montant_restant: montantRestant
             });
-            
+
             // Déterminer le nouveau statut de paiement
             let nouveauStatutPaiement: StatutPaiement;
             let nouveauStatutCommande = commande.statut;
-            
+
             // Dès qu'un paiement est confirmé, la commande est considérée comme payée
             if (montantPaye > 0) {
               nouveauStatutPaiement = 'paye';
@@ -659,7 +659,7 @@ export class PaiementController {
               if (commande.statut === 'en_attente') {
                 nouveauStatutCommande = 'confirmee';
               }
-              
+
               if (montantPaye >= commande.total) {
                 console.log(`[PaiementController] Commande entièrement payée (${montantPaye}/${commande.total})`);
               } else {
@@ -669,15 +669,15 @@ export class PaiementController {
               nouveauStatutPaiement = 'en_attente';
               console.log(`[PaiementController] Aucun paiement confirmé`);
             }
-            
+
             // Mettre à jour la commande avec les nouveaux statuts et montants
             console.log(`[PaiementController] Mise à jour vers statut_paiement: ${nouveauStatutPaiement}, statut: ${nouveauStatutCommande}`);
             await CommandeModel.updatePaymentStatus(
-              transaction.commande_id, 
+              transaction.commande_id,
               nouveauStatutPaiement,
               updateData.methode_paiement || commande.methode_paiement
             );
-            
+
             // Mettre à jour le statut de la commande si nécessaire
             // Note: updateCommandeStatus va automatiquement déduire les stocks lors du passage à 'confirmee'
             if (nouveauStatutCommande !== commande.statut) {
@@ -687,7 +687,7 @@ export class PaiementController {
             } else {
               console.log(`[PaiementController] Statut de la commande inchangé: ${commande.statut}`);
             }
-            
+
             console.log(`[PaiementController] Commande mise à jour avec succès`);
           }
         } else {
@@ -705,7 +705,7 @@ export class PaiementController {
         // Mettre à jour la transaction avec les informations disponibles
         if (paymentSystemName) {
           console.log(`[PaiementController] Mise à jour du système de paiement: ${paymentSystemName}`);
-          
+
           // Convertir le nom du système de paiement en méthode de paiement
           let methode_paiement: MethodePaiement | undefined;
           if (paymentSystemName === 'airtelmoney') {
@@ -715,9 +715,9 @@ export class PaiementController {
           } else {
             methode_paiement = 'mobile_money';
           }
-          
+
           console.log(`[PaiementController] Méthode de paiement convertie: ${methode_paiement}`);
-          
+
           await TransactionModel.updateTransaction(transaction.id, {
             methode_paiement: methode_paiement,
             notes: `Paiement en attente. Système de paiement: ${paymentSystemName}`

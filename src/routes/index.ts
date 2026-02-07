@@ -65,6 +65,10 @@ router.get('/health', CronController.healthCheck);
 // Exemple: curl https://votre-api.onrender.com/cron/tasks?key=votre_cle_secrete
 router.get('/cron/tasks', CronController.executeAllTasks);
 
+// Route pour expirer manuellement les transactions en attente
+// Exemple: curl https://votre-api.onrender.com/cron/expirer-transactions
+router.get('/cron/expirer-transactions', CronController.executeExpirerTransactions);
+
 // Ajouter d'autres routes ici au fur et à mesure
 
 export default router;

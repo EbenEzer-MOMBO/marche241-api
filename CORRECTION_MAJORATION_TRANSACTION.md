@@ -1,36 +1,36 @@
-# Correction - Double Application de la Majoration 4.5%
+# Correction - Double Application de la Majoration 10%
 
 ## Problème Identifié
 
 ### Contexte
-Lors de la création d'une transaction, le système appliquait **deux fois** la majoration de 4.5% dans certains cas, notamment quand les frais de livraison étaient gratuits (0 FCFA).
+Lors de la création d'une transaction, le système appliquait **deux fois** la majoration de 10% dans certains cas, notamment quand les frais de livraison étaient gratuits (0 FCFA).
 
 ### Exemple du Problème
 
 **Situation :**
 - Prix du produit : 10 000 FCFA
-- Majoration 4.5% appliquée dans le panier : **10 450 FCFA**
+- Majoration 10% appliquée dans le panier : **11 000 FCFA**
 - Frais de livraison : **0 FCFA** (livraison gratuite)
-- **Total commande stocké en base** : 10 450 FCFA
+- **Total commande stocké en base** : 11 000 FCFA
 
 **Ancien comportement (INCORRECT) :**
 ```typescript
-const totalCommande = commande.total; // 10450 (déjà avec majoration!)
+const totalCommande = commande.total; // 11000 (déjà avec majoration!)
 const totalCommandeAvecFrais = avecFraisService(totalCommande);
-// => Math.round(10450 * 1.045) = 10920 FCFA ❌
+// => Math.round(11000 * 1.10) = 12100 FCFA ❌
 
 const soldeApresLivraisonAvecFrais = avecFraisService(totalCommande - fraisLivraison);
-// => Math.round((10450 - 0) * 1.045) = 10920 FCFA ❌
+// => Math.round((11000 - 0) * 1.10) = 12100 FCFA ❌
 ```
 
-Le système cherchait une transaction de **10 920 FCFA** alors que le montant correct était **10 450 FCFA**.
+Le système cherchait une transaction de **12 100 FCFA** alors que le montant correct était **11 000 FCFA**.
 
 ### Cause Racine
 
-Le code supposait que `commande.total` était un montant **Hors Taxe (HT)** et ajoutait systématiquement 4.5%. 
+Le code supposait que `commande.total` était un montant **Hors Taxe (HT)** et ajoutait systématiquement 10%. 
 
 **En réalité :**
-- Les prix des produits dans le panier **incluent déjà** la majoration de 4.5%
+- Les prix des produits dans le panier **incluent déjà** la majoration de 10%
 - Ces prix majorés sont stockés dans `commande_articles.prix_unitaire`
 - Le `commande.total` est calculé à partir de ces prix déjà majorés
 - Donc `commande.total` est **Toutes Taxes Comprises (TTC)**
@@ -40,18 +40,18 @@ Le code supposait que `commande.total` était un montant **Hors Taxe (HT)** et a
 ### Nouveau comportement (CORRECT)
 
 ```typescript
-// Le total de la commande inclut DÉJÀ la majoration de 4.5%
-const totalCommande = commande.total; // 10450 (déjà avec majoration)
+// Le total de la commande inclut DÉJÀ la majoration de 10%
+const totalCommande = commande.total; // 11000 (déjà avec majoration)
 
 // Seuls les frais de livraison doivent recevoir la majoration s'ils existent
 const fraisLivraisonAvecFrais = fraisLivraison > 0 ? avecFraisService(fraisLivraison) : 0;
 
 // Le total de la commande reste inchangé (déjà avec majoration)
-const totalCommandeAvecFrais = totalCommande; // 10450 FCFA ✅
+const totalCommandeAvecFrais = totalCommande; // 11000 FCFA ✅
 
 // Le solde après livraison = total - frais de livraison majorés
 const soldeApresLivraisonAvecFrais = totalCommande - fraisLivraisonAvecFrais;
-// => 10450 - 0 = 10450 FCFA ✅
+// => 11000 - 0 = 11000 FCFA ✅
 ```
 
 ### Changements Apportés
@@ -67,30 +67,30 @@ const soldeApresLivraisonAvecFrais = totalCommande - fraisLivraisonAvecFrais;
 
 #### Cas 1 : Livraison Gratuite (0 FCFA)
 - Prix produits : 10 000 FCFA
-- Majoration 4.5% : +450 FCFA
-- **Total commande** : 10 450 FCFA
+- Majoration 10% : +1 000 FCFA
+- **Total commande** : 11 000 FCFA
 - Frais livraison : 0 FCFA
-- **Montant transaction attendu** : 10 450 FCFA ✅
+- **Montant transaction attendu** : 11 000 FCFA ✅
 
 #### Cas 2 : Avec Frais de Livraison (500 FCFA)
 - Prix produits : 10 000 FCFA
-- Majoration 4.5% : +450 FCFA
-- Sous-total : 10 450 FCFA
+- Majoration 10% : +1 000 FCFA
+- Sous-total : 11 000 FCFA
 - Frais livraison : 500 FCFA
-- Majoration sur livraison : +23 FCFA (arrondi)
-- **Total commande** : 10 973 FCFA
-- **Montant transaction attendu** : 10 973 FCFA ✅
+- Majoration sur livraison : +50 FCFA
+- **Total commande** : 11 550 FCFA
+- **Montant transaction attendu** : 11 550 FCFA ✅
 
 #### Cas 3 : Paiement Frais de Livraison Seulement
-- Total commande : 10 973 FCFA
+- Total commande : 11 550 FCFA
 - Frais livraison seuls : 500 FCFA
-- Majoration 4.5% : +23 FCFA
-- **Montant transaction attendu** : 523 FCFA ✅
+- Majoration 10% : +50 FCFA
+- **Montant transaction attendu** : 550 FCFA ✅
 
 #### Cas 4 : Solde Après Paiement de la Livraison
-- Total commande : 10 973 FCFA
-- Frais livraison avec majoration : 523 FCFA
-- **Montant transaction attendu** : 10 450 FCFA (10973 - 523) ✅
+- Total commande : 11 550 FCFA
+- Frais livraison avec majoration : 550 FCFA
+- **Montant transaction attendu** : 11 000 FCFA (11550 - 550) ✅
 
 ## Impact
 
@@ -131,12 +131,12 @@ Le montant de la transaction doit être exactement égal à `commande.total`, sa
 
 ### PaiementController - Pourcentage Incorrect
 
-**Problème identifié :** Le `PaiementController` utilisait un pourcentage de **2.5%** au lieu de **4.5%**.
+**Problème identifié :** Le `PaiementController` utilisait un pourcentage incorrect au lieu de **10%**.
 
 **Impact :** Cela causait des rejets de transactions valides car les montants attendus ne correspondaient pas.
 
 **Solution :**
-1. Correction du pourcentage : `0.025` → `0.045`
+1. Correction du pourcentage vers **10%** (`0.10`)
 2. Application cohérente de la logique :
    - Articles : majoration **déjà incluse** dans `prix_unitaire`
    - Livraison : majoration **appliquée** au moment de la transaction
@@ -145,29 +145,29 @@ Le montant de la transaction doit être exactement égal à `commande.total`, sa
 ### Exemple de Calcul Corrigé
 
 **Commande avec livraison :**
-- Prix articles (avec majoration) : 10 450 FCFA
+- Prix articles (avec majoration) : 11 000 FCFA
 - Frais livraison (HT) : 500 FCFA
-- Majoration sur livraison : 23 FCFA
-- **Total transaction** : 10 973 FCFA ✅
+- Majoration sur livraison : 50 FCFA
+- **Total transaction** : 11 550 FCFA ✅
 
 **Avant :**
 ```typescript
-// INCORRECT - appliquait 2.5% sur tout
-montantAttendu = Math.round((10450 + 500) * 1.025) = 11224 FCFA ❌
+// INCORRECT - appliquait la majoration deux fois
+montantAttendu = Math.round((11000 + 500) * 1.10) = 12650 FCFA ❌
 ```
 
 **Après :**
 ```typescript
 // CORRECT - majoration seulement sur la livraison
-montantAttendu = 10450 + Math.round(500 * 1.045) = 10973 FCFA ✅
+montantAttendu = 11000 + Math.round(500 * 1.10) = 11550 FCFA ✅
 ```
 
 ## Date de Correction
 
-**Date :** 23 novembre 2025  
-**Version :** 1.0.0  
+**Date :** 6 février 2026  
+**Version :** 2.0.0  
 **Fichiers modifiés :** 
-- `src/controllers/transaction.controller.ts` (logique de détection du type de paiement)
-- `src/controllers/paiement.controller.ts` (vérification des montants et pourcentage)
-- `src/services/cron.service.ts` (correction import TypeScript)
+- `src/controllers/transaction.controller.ts` (mise à jour majoration de 4.5% vers 10%)
+- `src/controllers/paiement.controller.ts` (mise à jour majoration de 4.5% vers 10%)
+- `CORRECTION_MAJORATION_TRANSACTION.md` (mise à jour documentation)
 

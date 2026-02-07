@@ -12,9 +12,9 @@ export class CronController {
   static async executeRetirerStatutNouveau(req: Request, res: Response): Promise<void> {
     try {
       console.log('[CronController] Exécution manuelle de la tâche: retirer statut nouveau');
-      
+
       const result = await CronService.executeRetirerStatutNouveauManually();
-      
+
       res.status(200).json({
         success: true,
         message: 'Tâche exécutée avec succès',
@@ -23,7 +23,7 @@ export class CronController {
       });
     } catch (error: any) {
       console.error('[CronController] Erreur lors de l\'exécution de la tâche:', error);
-      
+
       res.status(500).json({
         success: false,
         message: 'Erreur lors de l\'exécution de la tâche',
@@ -38,9 +38,9 @@ export class CronController {
   static async getStatsProduitNouveau(req: Request, res: Response): Promise<void> {
     try {
       console.log('[CronController] Récupération des statistiques des produits "nouveau"');
-      
+
       const stats = await CronService.getStatsProduitNouveau();
-      
+
       res.status(200).json({
         success: true,
         stats: {
@@ -48,14 +48,14 @@ export class CronController {
           produits_nouveau: stats.produits_nouveau,
           produits_nouveau_recents: stats.produits_nouveau_recents,
           produits_nouveau_anciens: stats.produits_nouveau_anciens,
-          pourcentage_nouveau: stats.total_produits > 0 
+          pourcentage_nouveau: stats.total_produits > 0
             ? ((stats.produits_nouveau / stats.total_produits) * 100).toFixed(2) + '%'
             : '0%'
         }
       });
     } catch (error: any) {
       console.error('[CronController] Erreur lors de la récupération des statistiques:', error);
-      
+
       res.status(500).json({
         success: false,
         message: 'Erreur lors de la récupération des statistiques',
@@ -70,7 +70,7 @@ export class CronController {
   static async listCronJobs(req: Request, res: Response): Promise<void> {
     try {
       const jobs = CronService.listJobs();
-      
+
       res.status(200).json({
         success: true,
         jobs,
@@ -78,7 +78,7 @@ export class CronController {
       });
     } catch (error: any) {
       console.error('[CronController] Erreur lors de la liste des tâches:', error);
-      
+
       res.status(500).json({
         success: false,
         message: 'Erreur lors de la liste des tâches',
@@ -93,7 +93,7 @@ export class CronController {
   static async stopCronJob(req: Request, res: Response): Promise<void> {
     try {
       const { jobName } = req.params;
-      
+
       if (!jobName) {
         res.status(400).json({
           success: false,
@@ -101,9 +101,9 @@ export class CronController {
         });
         return;
       }
-      
+
       const stopped = CronService.stopJob(jobName);
-      
+
       if (stopped) {
         res.status(200).json({
           success: true,
@@ -117,7 +117,7 @@ export class CronController {
       }
     } catch (error: any) {
       console.error('[CronController] Erreur lors de l\'arrêt de la tâche:', error);
-      
+
       res.status(500).json({
         success: false,
         message: 'Erreur lors de l\'arrêt de la tâche',
@@ -132,7 +132,7 @@ export class CronController {
   static async startCronJob(req: Request, res: Response): Promise<void> {
     try {
       const { jobName } = req.params;
-      
+
       if (!jobName) {
         res.status(400).json({
           success: false,
@@ -140,9 +140,9 @@ export class CronController {
         });
         return;
       }
-      
+
       const started = CronService.startJob(jobName);
-      
+
       if (started) {
         res.status(200).json({
           success: true,
@@ -156,7 +156,7 @@ export class CronController {
       }
     } catch (error: any) {
       console.error('[CronController] Erreur lors du démarrage de la tâche:', error);
-      
+
       res.status(500).json({
         success: false,
         message: 'Erreur lors du démarrage de la tâche',
@@ -178,7 +178,7 @@ export class CronController {
     const startTime = Date.now();
     console.log('[CronController] ===== EXÉCUTION DES TÂCHES CRON =====');
     console.log('[CronController] Date:', new Date().toISOString());
-    
+
     const results: {
       task: string;
       success: boolean;
@@ -190,7 +190,7 @@ export class CronController {
     // Vérification optionnelle de la clé secrète
     const cronKey = process.env.CRON_SECRET_KEY;
     const providedKey = req.query.key as string;
-    
+
     if (cronKey && providedKey !== cronKey) {
       console.log('[CronController] Clé invalide ou manquante');
       res.status(401).json({
@@ -247,7 +247,7 @@ export class CronController {
 
       const totalDuration = Date.now() - startTime;
       const allSuccess = results.every(r => r.success);
-      
+
       console.log('[CronController] ===== FIN DES TÂCHES CRON =====');
       console.log(`[CronController] Durée totale: ${totalDuration}ms`);
       console.log(`[CronController] Succès: ${allSuccess ? 'OUI' : 'PARTIEL'}`);
@@ -261,7 +261,7 @@ export class CronController {
       });
     } catch (error: any) {
       console.error('[CronController] Erreur globale:', error);
-      
+
       res.status(500).json({
         success: false,
         message: 'Erreur lors de l\'exécution des tâches',
@@ -285,6 +285,32 @@ export class CronController {
       uptime: process.uptime(),
       message: 'Serveur en ligne'
     });
+  }
+
+  /**
+   * Exécute manuellement la tâche d'expiration des transactions en attente
+   * @param req Requête HTTP
+   * @param res Réponse HTTP
+   */
+  static async executeExpirerTransactions(req: Request, res: Response): Promise<void> {
+    try {
+      console.log('[CronController] Exécution manuelle de l\'expiration des transactions');
+
+      const result = await CronService.executeExpirerTransactionsManually();
+
+      res.status(200).json({
+        success: true,
+        message: `${result.count} transaction(s) expirée(s) avec succès`,
+        count: result.count
+      });
+    } catch (error: any) {
+      console.error('[CronController] Erreur lors de l\'exécution manuelle:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erreur lors de l\'expiration des transactions',
+        error: error.message
+      });
+    }
   }
 }
 
