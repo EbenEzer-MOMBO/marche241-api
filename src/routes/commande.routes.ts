@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { CommandeController } from '../controllers/commande.controller';
-import { auth, isBoutiqueOwner } from '../middlewares/auth.middleware';
+import { auth, isBoutiqueOwner, isCommandeOwner } from '../middlewares/auth.middleware';
 import { validate, validateParams, validateQuery } from '../middlewares/validation.middleware';
 import { idParamSchema, paginationQuerySchema } from '../utils/validation.schemas';
 import { 
@@ -195,7 +195,7 @@ router.get('/boutique/:boutiqueId', auth, validateParams(boutiqueIdParamSchema),
  * @desc    Met à jour le statut d'une commande
  * @access  Private (propriétaire de la boutique)
  */
-router.patch('/:id/status', auth, validateParams(idParamSchema), validate(updateCommandeStatusSchema), isBoutiqueOwner, CommandeController.updateCommandeStatus);
+router.patch('/:id/status', auth, validateParams(idParamSchema), validate(updateCommandeStatusSchema), isCommandeOwner, CommandeController.updateCommandeStatus);
 
 /**
  * @swagger
@@ -237,7 +237,7 @@ router.patch('/:id/status', auth, validateParams(idParamSchema), validate(update
  * @desc    Met à jour le statut de paiement d'une commande
  * @access  Private (propriétaire de la boutique)
  */
-router.patch('/:id/payment-status', auth, validateParams(idParamSchema), validate(updatePaymentStatusSchema), isBoutiqueOwner, CommandeController.updatePaymentStatus);
+router.patch('/:id/payment-status', auth, validateParams(idParamSchema), validate(updatePaymentStatusSchema), isCommandeOwner, CommandeController.updatePaymentStatus);
 
 /**
  * @swagger

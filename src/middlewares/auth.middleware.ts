@@ -199,6 +199,78 @@ export const isBoutiqueOwner = async (req: Request, res: Response, next: NextFun
   }
 };
 
+// Middleware pour vérifier si l'utilisateur est propriétaire de la boutique associée à une commande
+export const isCommandeOwner = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.vendeur) {
+      console.log('[isCommandeOwner] Pas de vendeur authentifié');
+      return res.status(401).json({
+        success: false,
+        message: 'Authentification requise'
+      });
+    }
+    
+    // Récupérer l'ID de la commande depuis les params
+    const commandeId = parseInt(req.params.id);
+    
+    if (isNaN(commandeId)) {
+      console.log('[isCommandeOwner] ID de commande invalide:', req.params.id);
+      return res.status(400).json({
+        success: false,
+        message: 'ID de commande invalide'
+      });
+    }
+    
+    console.log('[isCommandeOwner] Vérification pour commande_id:', commandeId, 'vendeur_id:', req.vendeur.id);
+    
+    // Importer le modèle de commande
+    const { CommandeModel } = require('../models/commande.model');
+    
+    const commande = await CommandeModel.getCommandeById(commandeId);
+    
+    if (!commande) {
+      console.log('[isCommandeOwner] Commande non trouvée:', commandeId);
+      return res.status(404).json({
+        success: false,
+        message: 'Commande non trouvée'
+      });
+    }
+    
+    console.log('[isCommandeOwner] Commande trouvée - boutique_id:', commande.boutique_id);
+    
+    // Vérifier que le vendeur est propriétaire de la boutique de la commande
+    const { BoutiqueModel } = require('../models/boutique.model');
+    const boutique = await BoutiqueModel.getBoutiqueById(commande.boutique_id);
+    
+    if (!boutique) {
+      console.log('[isCommandeOwner] Boutique de la commande non trouvée:', commande.boutique_id);
+      return res.status(404).json({
+        success: false,
+        message: 'Boutique associée à la commande non trouvée'
+      });
+    }
+    
+    console.log('[isCommandeOwner] Boutique trouvée - vendeur_id boutique:', boutique.vendeur_id, 'vendeur_id requête:', req.vendeur.id);
+    
+    if (boutique.vendeur_id !== req.vendeur.id && !req.isAdmin) {
+      console.log('[isCommandeOwner] Accès refusé - pas le propriétaire de la boutique');
+      return res.status(403).json({
+        success: false,
+        message: 'Accès refusé, vous n\'êtes pas propriétaire de la boutique associée à cette commande'
+      });
+    }
+    
+    // Attacher la commande à la requête pour éviter de la recharger dans le contrôleur
+    (req as any).commande = commande;
+    
+    console.log('[isCommandeOwner] Vérification réussie');
+    next();
+  } catch (error) {
+    console.error('[isCommandeOwner] Erreur:', error);
+    next(error);
+  }
+};
+
 // Middleware pour vérifier si l'utilisateur est propriétaire de la boutique associée à une commune
 export const isCommuneOwner = async (req: Request, res: Response, next: NextFunction) => {
   try {

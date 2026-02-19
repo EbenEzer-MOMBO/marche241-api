@@ -5,71 +5,30 @@ const router = Router();
 
 /**
  * @swagger
- * /api/v1/whatsapp/confirmation-commande:
- *   post:
- *     summary: Envoie une confirmation de commande via WhatsApp
+ * /api/v1/whatsapp/status:
+ *   get:
+ *     summary: Vérifie le statut de la configuration WhatsApp GREEN-API
  *     tags: [WhatsApp]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - numeroCommande
- *               - nomClient
- *               - montantTotal
- *               - telephoneClient
- *               - produits
- *             properties:
- *               numeroCommande:
- *                 type: string
- *                 description: Numéro unique de la commande
- *                 example: "CMD-2024-001"
- *               nomClient:
- *                 type: string
- *                 description: Nom complet du client
- *                 example: "Jean Dupont"
- *               montantTotal:
- *                 type: number
- *                 description: Montant total de la commande en FCFA
- *                 example: 15000
- *               dateCommande:
- *                 type: string
- *                 description: Date de la commande (optionnel, date actuelle par défaut)
- *                 example: "20/09/2024"
- *               telephoneClient:
- *                 type: string
- *                 description: Numéro WhatsApp du client
- *                 example: "+24177123456"
- *               adresseLivraison:
- *                 type: string
- *                 description: Adresse de livraison (optionnel)
- *                 example: "123 Rue de la Paix, Libreville"
- *               produits:
- *                 type: array
- *                 description: Liste des produits commandés
- *                 items:
- *                   type: object
- *                   properties:
- *                     nom:
- *                       type: string
- *                       example: "Bananes plantains"
- *                     quantite:
- *                       type: number
- *                       example: 2
- *                     prix:
- *                       type: number
- *                       example: 1500
  *     responses:
  *       200:
- *         description: Confirmation envoyée avec succès
- *       400:
- *         description: Données invalides
- *       500:
- *         description: Erreur serveur
+ *         description: Statut de la configuration
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     configured:
+ *                       type: boolean
+ *                     provider:
+ *                       type: string
+ *                       example: "GREEN-API"
  */
-router.post('/confirmation-commande', WhatsAppController.envoyerConfirmationCommande);
+router.get('/status', WhatsAppController.getStatus);
 
 /**
  * @swagger
@@ -99,13 +58,37 @@ router.post('/confirmation-commande', WhatsAppController.envoyerConfirmationComm
  *                 example: "CMD-2024-001"
  *               nouveauStatut:
  *                 type: string
- *                 enum: [en_preparation, prete, en_livraison, livree, annulee]
+ *                 enum: [confirmee, en_preparation, expedie, livree, annulee, remboursee]
  *                 description: Nouveau statut de la commande
- *                 example: "en_preparation"
+ *                 example: "confirmee"
  *               nomClient:
  *                 type: string
  *                 description: Nom du client
  *                 example: "Jean Dupont"
+ *               boutiqueName:
+ *                 type: string
+ *                 description: Nom de la boutique
+ *                 example: "Ma Boutique"
+ *               total:
+ *                 type: number
+ *                 description: Montant total de la commande
+ *                 example: 15000
+ *               fraisLivraison:
+ *                 type: number
+ *                 description: Frais de livraison
+ *                 example: 2000
+ *               clientAdresse:
+ *                 type: string
+ *                 description: Adresse du client
+ *               clientVille:
+ *                 type: string
+ *                 description: Ville du client
+ *               clientCommune:
+ *                 type: string
+ *                 description: Commune du client
+ *               motifAnnulation:
+ *                 type: string
+ *                 description: Motif d'annulation (si statut = annulee)
  *     responses:
  *       200:
  *         description: Notification envoyée avec succès
@@ -152,9 +135,9 @@ router.post('/envoyer-message', WhatsAppController.envoyerMessage);
 
 /**
  * @swagger
- * /api/v1/whatsapp/valider-numero:
+ * /api/v1/whatsapp/notifier-vendeur:
  *   post:
- *     summary: Valide un numéro de téléphone WhatsApp
+ *     summary: Notifie un vendeur d'une nouvelle commande
  *     tags: [WhatsApp]
  *     requestBody:
  *       required: true
@@ -163,43 +146,47 @@ router.post('/envoyer-message', WhatsAppController.envoyerMessage);
  *           schema:
  *             type: object
  *             required:
- *               - telephone
+ *               - telephoneVendeur
+ *               - numeroCommande
+ *               - nomClient
+ *               - total
+ *               - nombreArticles
  *             properties:
- *               telephone:
+ *               telephoneVendeur:
  *                 type: string
- *                 description: Numéro de téléphone à valider
+ *                 description: Numéro WhatsApp du vendeur
  *                 example: "+24177123456"
+ *               numeroCommande:
+ *                 type: string
+ *                 description: Numéro de la commande
+ *                 example: "CMD-2024-001"
+ *               nomClient:
+ *                 type: string
+ *                 description: Nom du client
+ *                 example: "Jean Dupont"
+ *               total:
+ *                 type: number
+ *                 description: Montant total de la commande
+ *                 example: 15000
+ *               nombreArticles:
+ *                 type: number
+ *                 description: Nombre d'articles dans la commande
+ *                 example: 3
  *     responses:
  *       200:
- *         description: Validation effectuée
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                 data:
- *                   type: object
- *                   properties:
- *                     numeroOriginal:
- *                       type: string
- *                     numeroFormate:
- *                       type: string
- *                     estValide:
- *                       type: boolean
+ *         description: Notification envoyée avec succès
  *       400:
  *         description: Données invalides
  *       500:
  *         description: Erreur serveur
  */
-router.post('/valider-numero', WhatsAppController.validerNumero);
+router.post('/notifier-vendeur', WhatsAppController.notifierVendeurNouvelleCommande);
 
 /**
  * @swagger
  * /api/v1/whatsapp/test:
  *   post:
- *     summary: Test la configuration WhatsApp avec un message de démonstration
+ *     summary: Test la configuration WhatsApp GREEN-API avec un message de démonstration
  *     tags: [WhatsApp]
  *     requestBody:
  *       required: true
@@ -223,49 +210,5 @@ router.post('/valider-numero', WhatsAppController.validerNumero);
  *         description: Erreur de configuration ou d'envoi
  */
 router.post('/test', WhatsAppController.testConfiguration);
-
-/**
- * @swagger
- * /api/v1/whatsapp/webhook:
- *   get:
- *     summary: Endpoint de vérification du webhook WhatsApp
- *     tags: [WhatsApp]
- *     parameters:
- *       - in: query
- *         name: hub.mode
- *         schema:
- *           type: string
- *         description: Mode de vérification
- *       - in: query
- *         name: hub.verify_token
- *         schema:
- *           type: string
- *         description: Token de vérification
- *       - in: query
- *         name: hub.challenge
- *         schema:
- *           type: string
- *         description: Challenge à retourner
- *     responses:
- *       200:
- *         description: Webhook vérifié avec succès
- *   post:
- *     summary: Reçoit les notifications WhatsApp
- *     tags: [WhatsApp]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             description: Payload de notification WhatsApp
- *     responses:
- *       200:
- *         description: Notification traitée avec succès
- *       500:
- *         description: Erreur serveur
- */
-router.get('/webhook', WhatsAppController.webhook);
-router.post('/webhook', WhatsAppController.webhook);
 
 export default router;

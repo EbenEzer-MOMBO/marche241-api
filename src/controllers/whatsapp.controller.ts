@@ -1,163 +1,7 @@
 import { Request, Response } from 'express';
-import { WhatsAppService, CommandeConfirmation } from '../services/whatsapp.service';
+import { WhatsAppService } from '../services/whatsapp.service';
 
 export class WhatsAppController {
-  /**
-   * Envoie une confirmation de commande via WhatsApp
-   */
-  static async envoyerConfirmationCommande(req: Request, res: Response): Promise<void> {
-    try {
-      const {
-        numeroCommande,
-        nomClient,
-        montantTotal,
-        dateCommande,
-        produits,
-        adresseLivraison,
-        telephoneClient
-      } = req.body;
-
-      // Validation des champs obligatoires
-      if (!numeroCommande || !nomClient || !montantTotal || !telephoneClient || !produits) {
-        res.status(400).json({
-          success: false,
-          message: 'Les champs numeroCommande, nomClient, montantTotal, telephoneClient et produits sont obligatoires'
-        });
-        return;
-      }
-
-      // Validation du numéro de téléphone
-      if (!WhatsAppService.validerNumeroWhatsApp(telephoneClient)) {
-        res.status(400).json({
-          success: false,
-          message: 'Le numéro de téléphone WhatsApp n\'est pas valide. Format attendu: +241XXXXXXXXX'
-        });
-        return;
-      }
-
-      // Validation du montant
-      if (typeof montantTotal !== 'number' || montantTotal <= 0) {
-        res.status(400).json({
-          success: false,
-          message: 'Le montant total doit être un nombre positif'
-        });
-        return;
-      }
-
-      // Validation des produits
-      if (!Array.isArray(produits) || produits.length === 0) {
-        res.status(400).json({
-          success: false,
-          message: 'La liste des produits ne peut pas être vide'
-        });
-        return;
-      }
-
-      // Validation de chaque produit
-      for (const produit of produits) {
-        if (!produit.nom || !produit.quantite || !produit.prix) {
-          res.status(400).json({
-            success: false,
-            message: 'Chaque produit doit avoir un nom, une quantité et un prix'
-          });
-          return;
-        }
-      }
-
-      const commandeData: CommandeConfirmation = {
-        numeroCommande,
-        nomClient,
-        montantTotal,
-        dateCommande: dateCommande || new Date().toLocaleDateString('fr-FR'),
-        produits,
-        adresseLivraison,
-        telephoneClient: WhatsAppService.formaterNumeroWhatsApp(telephoneClient)
-      };
-
-      // Tentative d'envoi avec template d'abord, puis fallback sur message texte
-      let resultat;
-      try {
-        resultat = await WhatsAppService.envoyerConfirmationCommande(commandeData);
-      } catch (templateError: any) {
-        console.log('Échec du template, utilisation du message texte:', templateError.message);
-        resultat = await WhatsAppService.envoyerConfirmationCommandeTexte(commandeData);
-      }
-
-      res.status(200).json({
-        success: true,
-        message: 'Confirmation de commande envoyée avec succès via WhatsApp',
-        data: {
-          messageId: resultat.messages?.[0]?.id,
-          numeroDestination: commandeData.telephoneClient,
-          numeroCommande: numeroCommande
-        }
-      });
-
-    } catch (error: any) {
-      console.error('Erreur lors de l\'envoi de la confirmation WhatsApp:', error.message);
-      res.status(500).json({
-        success: false,
-        message: 'Erreur lors de l\'envoi de la confirmation WhatsApp',
-        error: error.message
-      });
-    }
-  }
-
-  /**
-   * Envoie une notification de changement de statut de commande
-   */
-  static async envoyerNotificationStatut(req: Request, res: Response): Promise<void> {
-    try {
-      const { telephone, numeroCommande, nouveauStatut, nomClient } = req.body;
-
-      // Validation des champs obligatoires
-      if (!telephone || !numeroCommande || !nouveauStatut || !nomClient) {
-        res.status(400).json({
-          success: false,
-          message: 'Les champs telephone, numeroCommande, nouveauStatut et nomClient sont obligatoires'
-        });
-        return;
-      }
-
-      // Validation du numéro de téléphone
-      if (!WhatsAppService.validerNumeroWhatsApp(telephone)) {
-        res.status(400).json({
-          success: false,
-          message: 'Le numéro de téléphone WhatsApp n\'est pas valide'
-        });
-        return;
-      }
-
-      const telephoneFormate = WhatsAppService.formaterNumeroWhatsApp(telephone);
-
-      const resultat = await WhatsAppService.envoyerNotificationStatut(
-        telephoneFormate,
-        numeroCommande,
-        nouveauStatut,
-        nomClient
-      );
-
-      res.status(200).json({
-        success: true,
-        message: 'Notification de statut envoyée avec succès via WhatsApp',
-        data: {
-          messageId: resultat.messages?.[0]?.id,
-          numeroDestination: telephoneFormate,
-          numeroCommande: numeroCommande,
-          nouveauStatut: nouveauStatut
-        }
-      });
-
-    } catch (error: any) {
-      console.error('Erreur lors de l\'envoi de la notification de statut:', error.message);
-      res.status(500).json({
-        success: false,
-        message: 'Erreur lors de l\'envoi de la notification de statut',
-        error: error.message
-      });
-    }
-  }
-
   /**
    * Envoie un message WhatsApp personnalisé
    */
@@ -174,34 +18,22 @@ export class WhatsAppController {
         return;
       }
 
-      // Validation du numéro de téléphone
-      if (!WhatsAppService.validerNumeroWhatsApp(telephone)) {
-        res.status(400).json({
+      const messageId = await WhatsAppService.sendMessage(telephone, message);
+
+      if (!messageId) {
+        res.status(500).json({
           success: false,
-          message: 'Le numéro de téléphone WhatsApp n\'est pas valide'
+          message: 'Échec de l\'envoi du message. Vérifiez la configuration GREEN-API.'
         });
         return;
       }
-
-      const telephoneFormate = WhatsAppService.formaterNumeroWhatsApp(telephone);
-
-      const messageWhatsApp = {
-        messaging_product: 'whatsapp' as const,
-        to: telephoneFormate,
-        type: 'text' as const,
-        text: {
-          body: message
-        }
-      };
-
-      const resultat = await WhatsAppService.sendMessage(messageWhatsApp);
 
       res.status(200).json({
         success: true,
         message: 'Message envoyé avec succès via WhatsApp',
         data: {
-          messageId: resultat.messages?.[0]?.id,
-          numeroDestination: telephoneFormate
+          messageId,
+          numeroDestination: WhatsAppService.formatPhoneNumber(telephone)
         }
       });
 
@@ -216,44 +48,147 @@ export class WhatsAppController {
   }
 
   /**
-   * Valide un numéro de téléphone WhatsApp
+   * Envoie une notification de changement de statut de commande
    */
-  static async validerNumero(req: Request, res: Response): Promise<void> {
+  static async envoyerNotificationStatut(req: Request, res: Response): Promise<void> {
     try {
-      const { telephone } = req.body;
+      const { 
+        telephone, 
+        numeroCommande, 
+        nouveauStatut, 
+        nomClient,
+        boutiqueName,
+        boutiqueTelephone,
+        total,
+        fraisLivraison,
+        clientAdresse,
+        clientVille,
+        clientCommune,
+        motifAnnulation
+      } = req.body;
 
-      if (!telephone) {
+      // Validation des champs obligatoires
+      if (!telephone || !numeroCommande || !nouveauStatut || !nomClient) {
         res.status(400).json({
           success: false,
-          message: 'Le champ telephone est obligatoire'
+          message: 'Les champs telephone, numeroCommande, nouveauStatut et nomClient sont obligatoires'
         });
         return;
       }
 
-      const estValide = WhatsAppService.validerNumeroWhatsApp(telephone);
-      const numeroFormate = estValide ? WhatsAppService.formaterNumeroWhatsApp(telephone) : null;
+      const messageId = await WhatsAppService.sendOrderStatusNotification(
+        nouveauStatut,
+        {
+          clientNom: nomClient,
+          clientTelephone: telephone,
+          numeroCommande,
+          boutiqueName: boutiqueName || 'La boutique',
+          boutiqueTelephone,
+          total: total || 0,
+          fraisLivraison: fraisLivraison || 0,
+          clientAdresse,
+          clientVille,
+          clientCommune,
+          motifAnnulation
+        }
+      );
+
+      if (!messageId) {
+        res.status(200).json({
+          success: true,
+          message: 'Notification non envoyée (service non configuré ou statut sans message défini)',
+          data: {
+            numeroDestination: telephone,
+            numeroCommande,
+            nouveauStatut
+          }
+        });
+        return;
+      }
 
       res.status(200).json({
         success: true,
+        message: 'Notification de statut envoyée avec succès via WhatsApp',
         data: {
-          numeroOriginal: telephone,
-          numeroFormate: numeroFormate,
-          estValide: estValide
+          messageId,
+          numeroDestination: WhatsAppService.formatPhoneNumber(telephone),
+          numeroCommande,
+          nouveauStatut
         }
       });
 
     } catch (error: any) {
-      console.error('Erreur lors de la validation du numéro:', error.message);
+      console.error('Erreur lors de l\'envoi de la notification de statut:', error.message);
       res.status(500).json({
         success: false,
-        message: 'Erreur lors de la validation du numéro',
+        message: 'Erreur lors de l\'envoi de la notification de statut',
         error: error.message
       });
     }
   }
 
   /**
-   * Endpoint de test pour vérifier la configuration WhatsApp
+   * Notifie un vendeur d'une nouvelle commande
+   */
+  static async notifierVendeurNouvelleCommande(req: Request, res: Response): Promise<void> {
+    try {
+      const { 
+        telephoneVendeur, 
+        numeroCommande, 
+        nomClient, 
+        total, 
+        nombreArticles 
+      } = req.body;
+
+      // Validation des champs obligatoires
+      if (!telephoneVendeur || !numeroCommande || !nomClient || total === undefined || nombreArticles === undefined) {
+        res.status(400).json({
+          success: false,
+          message: 'Les champs telephoneVendeur, numeroCommande, nomClient, total et nombreArticles sont obligatoires'
+        });
+        return;
+      }
+
+      const messageId = await WhatsAppService.notifyVendeurNewOrder(
+        telephoneVendeur,
+        {
+          numeroCommande,
+          clientNom: nomClient,
+          total,
+          nombreArticles
+        }
+      );
+
+      if (!messageId) {
+        res.status(500).json({
+          success: false,
+          message: 'Échec de l\'envoi de la notification. Vérifiez la configuration GREEN-API.'
+        });
+        return;
+      }
+
+      res.status(200).json({
+        success: true,
+        message: 'Notification vendeur envoyée avec succès',
+        data: {
+          messageId,
+          numeroDestination: WhatsAppService.formatPhoneNumber(telephoneVendeur),
+          numeroCommande
+        }
+      });
+
+    } catch (error: any) {
+      console.error('Erreur lors de l\'envoi de la notification vendeur:', error.message);
+      res.status(500).json({
+        success: false,
+        message: 'Erreur lors de l\'envoi de la notification vendeur',
+        error: error.message
+      });
+    }
+  }
+
+  /**
+   * Endpoint de test pour vérifier la configuration WhatsApp GREEN-API
    */
   static async testConfiguration(req: Request, res: Response): Promise<void> {
     try {
@@ -267,69 +202,42 @@ export class WhatsAppController {
         return;
       }
 
-      // Test avec des données de commande fictives
-      const commandeTest: any = {
-        numeroCommande: `TEST-${Date.now()}`,
-        nomClient: 'Client Test',
-        montantTotal: 5000,
-        dateCommande: new Date().toLocaleDateString('fr-FR'),
-        telephoneClient: telephone,
-        produits: [
-          {
-            nom: 'Produit Test',
-            quantite: 1,
-            prix: 5000
-          }
-        ],
-        adresseLivraison: 'Adresse de test',
-        nomBoutique: 'Marché 241'
-      };
+      // Vérifier si le service est configuré
+      if (!WhatsAppService.isConfigured()) {
+        res.status(500).json({
+          success: false,
+          message: 'Service WhatsApp non configuré',
+          details: 'Vérifiez les variables GREEN_API_ID_INSTANCE et GREEN_API_TOKEN'
+        });
+        return;
+      }
 
-      // Préparation de la liste des produits formatée
-      const produitsFormatte = commandeTest.produits
-        .map((p: any) => `• ${p.nom} (x${p.quantite}) - ${p.prix} FCFA`)
-        .join('\n');
+      // Envoyer un message de test
+      const messageTest = `🧪 *Test Marché 241*
 
-      // Test avec le template commande_validee et les variables attendues
-      const messageTest = {
-        messaging_product: 'whatsapp' as const,
-        to: WhatsAppService.formaterNumeroWhatsApp(telephone),
-        type: 'template' as const,
-        template: {
-          name: 'commande_validation',
-          language: {
-            code: 'fr'
-          },
-          components: [{
-            type: 'body',
-            parameters: [
-              { type: 'text', text: commandeTest.nomClient },                // customer_name
-              { type: 'text', text: commandeTest.numeroCommande },            // order_number
-              { type: 'text', text: commandeTest.montantTotal.toString() },    // total_amount
-              { type: 'text', text: commandeTest.dateCommande },              // order_date
-              { type: 'text', text: produitsFormatte },                        // product_list
-              { type: 'text', text: commandeTest.nomBoutique }                // shop_name1
-            ]
-          }]
-        }
-      };
+Ce message confirme que la configuration WhatsApp GREEN-API fonctionne correctement.
 
-      let resultat;
-      try {
-        resultat = await WhatsAppService.sendMessage(messageTest);
-      } catch (error: any) {
-        throw new Error(`Échec du test: ${error.message}`);
+📅 Date: ${new Date().toLocaleString('fr-FR')}
+✅ Statut: Connecté`;
+
+      const messageId = await WhatsAppService.sendMessage(telephone, messageTest);
+
+      if (!messageId) {
+        res.status(500).json({
+          success: false,
+          message: 'Échec du test. Message non envoyé.',
+          details: 'Vérifiez les logs pour plus de détails.'
+        });
+        return;
       }
 
       res.status(200).json({
         success: true,
-        message: 'Test WhatsApp réussi ! Message de confirmation envoyé.',
+        message: 'Test WhatsApp réussi ! Message envoyé.',
         data: {
-          messageId: resultat.messages?.[0]?.id,
-          numeroDestination: WhatsAppService.formaterNumeroWhatsApp(telephone),
-          commandeTest: commandeTest,
-          templateUtilise: 'commande_validee',
-          parametresTemplate: messageTest.template.components[0].parameters
+          messageId,
+          numeroDestination: WhatsAppService.formatPhoneNumber(telephone),
+          provider: 'GREEN-API'
         }
       });
 
@@ -339,69 +247,34 @@ export class WhatsAppController {
         success: false,
         message: 'Échec du test WhatsApp',
         error: error.message,
-        details: 'Vérifiez votre configuration WHATSAPP_ACCESS_TOKEN et WHATSAPP_PHONE_NUMBER_ID'
+        details: 'Vérifiez votre configuration GREEN_API_ID_INSTANCE et GREEN_API_TOKEN'
       });
     }
   }
 
   /**
-   * Webhook pour recevoir les notifications WhatsApp
+   * Vérifie le statut de la configuration WhatsApp
    */
-  static async webhook(req: Request, res: Response): Promise<void> {
+  static async getStatus(req: Request, res: Response): Promise<void> {
     try {
-      const body = req.body;
+      const isConfigured = WhatsAppService.isConfigured();
 
-      // Vérification du token de validation (pour la configuration initiale)
-      if (req.query['hub.mode'] === 'subscribe' && req.query['hub.verify_token'] === process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN) {
-        console.log('Webhook WhatsApp vérifié avec succès');
-        res.status(200).send(req.query['hub.challenge']);
-        return;
-      }
-
-      // Traitement des notifications WhatsApp
-      if (body.object === 'whatsapp_business_account') {
-        body.entry?.forEach((entry: any) => {
-          entry.changes?.forEach((change: any) => {
-            if (change.field === 'messages') {
-              const messages = change.value.messages;
-              const statuses = change.value.statuses;
-
-              // Traitement des messages reçus
-              if (messages) {
-                messages.forEach((message: any) => {
-                  console.log('Message reçu:', {
-                    from: message.from,
-                    id: message.id,
-                    timestamp: message.timestamp,
-                    type: message.type,
-                    text: message.text?.body
-                  });
-                });
-              }
-
-              // Traitement des statuts de livraison
-              if (statuses) {
-                statuses.forEach((status: any) => {
-                  console.log('Statut de message:', {
-                    id: status.id,
-                    status: status.status,
-                    timestamp: status.timestamp,
-                    recipient_id: status.recipient_id
-                  });
-                });
-              }
-            }
-          });
-        });
-      }
-
-      res.status(200).json({ success: true });
+      res.status(200).json({
+        success: true,
+        data: {
+          configured: isConfigured,
+          provider: 'GREEN-API',
+          apiUrl: process.env.GREEN_API_URL || 'https://api.green-api.com',
+          instanceConfigured: !!process.env.GREEN_API_ID_INSTANCE,
+          tokenConfigured: !!process.env.GREEN_API_TOKEN
+        }
+      });
 
     } catch (error: any) {
-      console.error('Erreur dans le webhook WhatsApp:', error.message);
+      console.error('Erreur lors de la vérification du statut:', error.message);
       res.status(500).json({
         success: false,
-        message: 'Erreur lors du traitement du webhook',
+        message: 'Erreur lors de la vérification du statut',
         error: error.message
       });
     }

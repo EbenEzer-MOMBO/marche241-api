@@ -1,282 +1,278 @@
-import axios from 'axios';
-import dotenv from 'dotenv';
+/**
+ * Service d'envoi de messages WhatsApp via GREEN-API
+ * Documentation: https://green-api.com/en/docs/api/sending/SendMessage/
+ */
 
-dotenv.config();
-
-export interface WhatsAppMessage {
-  messaging_product: 'whatsapp';
-  to: string;
-  type: 'template' | 'text';
-  template?: {
-    name: string;
-    language: {
-      code: string;
-    };
-    components?: Array<{
-      type: string;
-      parameters: Array<{
-        type: string;
-        text: string;
-      }>;
-    }>;
-  };
-  text?: {
-    body: string;
-  };
+interface WhatsAppMessageResponse {
+  idMessage: string;
 }
 
-export interface CommandeConfirmation {
+interface WhatsAppError {
+  code: number;
+  message: string;
+}
+
+// Pied de page commun pour tous les messages de statut
+const getFooter = (data: MessageData): string => `
+───────────────
+*${data.boutiqueName}* 🛍️${data.boutiqueTelephone ? `
+Contacter la boutique: ${data.boutiqueTelephone}` : ''}
+_Équipe Marché241_`;
+
+// Messages personnalisés pour chaque statut de commande
+const MESSAGES_STATUT: Record<string, (data: MessageData) => string> = {
+  confirmee: (data) => `✅ *Commande confirmée !*
+
+Bonjour ${data.clientNom},
+
+Votre commande *#${data.numeroCommande}* a été confirmée par la boutique *${data.boutiqueName}*.
+
+📦 *Détails :*
+• Montant total : ${data.total} FCFA
+• Livraison : ${data.fraisLivraison} FCFA
+
+Le vendeur prépare votre commande. Vous serez notifié(e) lors de l'expédition.
+
+Merci pour votre confiance ! 🙏${getFooter(data)}`,
+
+  en_preparation: (data) => `🔧 *Commande en préparation*
+
+Bonjour ${data.clientNom},
+
+Votre commande *#${data.numeroCommande}* est en cours de préparation chez *${data.boutiqueName}*.
+
+Nous vous tiendrons informé(e) de l'avancement.
+
+Bonne journée ! ${getFooter(data)}`,
+
+  expedie: (data) => `🚚 *Commande expédiée !*
+
+Bonjour ${data.clientNom},
+
+Excellente nouvelle ! Votre commande *#${data.numeroCommande}* a été expédiée.
+
+📍 *Adresse de livraison :*
+${data.clientAdresse}
+${data.clientCommune ? data.clientCommune : ''}
+
+Le livreur vous contactera bientôt pour la livraison.
+
+À très vite ! ${getFooter(data)}`,
+
+  livree: (data) => `🎁 *Commande livrée !*
+
+Bonjour ${data.clientNom},
+
+Votre commande *${data.numeroCommande}* a été livrée avec succès !
+
+Nous espérons que vous êtes satisfait(e) de votre achat chez *${data.boutiqueName}*.
+
+N'hésitez pas à laisser un avis pour aider d'autres clients.
+
+Merci et à bientôt ! ${getFooter(data)}`,
+
+  annulee: (data) => `❌ *Commande annulée*
+
+Bonjour ${data.clientNom},
+
+Nous vous informons que votre commande *${data.numeroCommande}* a été annulée.
+
+${data.motifAnnulation ? `📝 *Motif :* ${data.motifAnnulation}` : ''}
+
+Si vous avez effectué un paiement, le remboursement sera traité sous 48h.
+
+Nous restons à votre disposition.${getFooter(data)}`,
+
+  remboursee: (data) => `💰 *Commande remboursée*
+
+Bonjour ${data.clientNom},
+
+Le remboursement de votre commande *${data.numeroCommande}* a été effectué.
+
+💵 *Montant remboursé :* ${data.montantRembourse || data.total} FCFA
+
+Le montant sera crédité sur votre compte dans un délai de 24 à 72h selon votre opérateur.
+
+Merci de votre compréhension.${getFooter(data)}`
+};
+
+interface MessageData {
+  clientNom: string;
+  clientTelephone: string;
   numeroCommande: string;
-  nomClient: string;
-  montantTotal: number;
-  dateCommande: string;
-  produits: Array<{
-    nom: string;
-    quantite: number;
-    prix: number;
-  }>;
-  adresseLivraison?: string;
-  telephoneClient: string;
+  boutiqueName: string;
+  boutiqueTelephone?: string;
+  total: number;
+  fraisLivraison: number;
+  clientAdresse?: string;
+  clientVille?: string;
+  clientCommune?: string;
+  motifAnnulation?: string;
+  montantRembourse?: number;
 }
 
 export class WhatsAppService {
-  private static readonly BASE_URL = 'https://graph.facebook.com/v22.0';
-  private static readonly PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID || '810774175447324';
-  private static readonly ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
+  private static idInstance = process.env.GREEN_API_ID_INSTANCE;
+  private static apiTokenInstance = process.env.GREEN_API_TOKEN;
+  private static apiUrl = process.env.GREEN_API_URL || 'https://api.green-api.com';
 
   /**
-   * Envoie un message WhatsApp générique
+   * Vérifie si le service WhatsApp est configuré
    */
-  static async sendMessage(message: WhatsAppMessage): Promise<any> {
-    try {
-      if (!this.PHONE_NUMBER_ID || !this.ACCESS_TOKEN) {
-        throw new Error('Configuration WhatsApp manquante. Vérifiez WHATSAPP_PHONE_NUMBER_ID et WHATSAPP_ACCESS_TOKEN');
-      }
+  static isConfigured(): boolean {
+    return !!(this.idInstance && this.apiTokenInstance);
+  }
 
-      const url = `${this.BASE_URL}/${this.PHONE_NUMBER_ID}/messages`;
-      
-      const response = await axios.post(url, message, {
+  /**
+   * Formate un numéro de téléphone pour WhatsApp
+   * @param phone Numéro de téléphone (avec ou sans indicatif)
+   * @returns Numéro formaté pour WhatsApp (ex: 241XXXXXXXX@c.us)
+   */
+  static formatPhoneNumber(phone: string): string {
+    // Supprimer tous les caractères non numériques sauf le +
+    let cleaned = phone.replace(/[^\d+]/g, '');
+    
+    // Supprimer le + s'il existe
+    cleaned = cleaned.replace('+', '');
+    
+    // Si le numéro commence par 0, le remplacer par l'indicatif Gabon (241)
+    if (cleaned.startsWith('0')) {
+      cleaned = '241' + cleaned.substring(1);
+    }
+    
+    // Si le numéro n'a pas d'indicatif (moins de 11 chiffres), ajouter 241
+    if (cleaned.length <= 9) {
+      cleaned = '241' + cleaned;
+    }
+    
+    return `${cleaned}@c.us`;
+  }
+
+  /**
+   * Envoie un message WhatsApp
+   * @param phone Numéro de téléphone du destinataire
+   * @param message Contenu du message
+   * @returns ID du message envoyé ou null en cas d'erreur
+   */
+  static async sendMessage(phone: string, message: string): Promise<string | null> {
+    if (!this.isConfigured()) {
+      console.warn('[WhatsAppService] Service non configuré. Variables GREEN_API_ID_INSTANCE et GREEN_API_TOKEN requises.');
+      return null;
+    }
+
+    const chatId = this.formatPhoneNumber(phone);
+    const url = `${this.apiUrl}/waInstance${this.idInstance}/sendMessage/${this.apiTokenInstance}`;
+
+    console.log(`[WhatsAppService] Envoi de message à ${chatId}`);
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
         headers: {
-          'Authorization': `Bearer ${this.ACCESS_TOKEN}`,
           'Content-Type': 'application/json'
-        }
+        },
+        body: JSON.stringify({
+          chatId,
+          message
+        })
       });
 
-      return response.data;
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`[WhatsAppService] Erreur HTTP ${response.status}: ${errorText}`);
+        return null;
+      }
+
+      const data = await response.json() as WhatsAppMessageResponse;
+      console.log(`[WhatsAppService] Message envoyé avec succès. ID: ${data.idMessage}`);
+      return data.idMessage;
     } catch (error: any) {
-      console.error('Erreur lors de l\'envoi du message WhatsApp:', error.response?.data || error.message);
-      throw new Error(`Échec de l'envoi WhatsApp: ${error.response?.data?.error?.message || error.message}`);
-    }
-  }
-
-  /**
-   * Envoie un message de confirmation de commande via template WhatsApp
-   */
-  static async envoyerConfirmationCommande(commande: CommandeConfirmation): Promise<any> {
-    try {
-      // Formatage du numéro de téléphone (suppression des espaces et caractères spéciaux)
-      const numeroFormate = commande.telephoneClient.replace(/[^\d+]/g, '');
-      
-      // Construction de la liste des produits
-      const listeProduits = commande.produits
-        .map(p => `• ${p.nom} (x${p.quantite}) - ${p.prix.toLocaleString('fr-FR')} FCFA`)
-        .join('\n');
-
-      // Message template pour confirmation de commande
-      const message: WhatsAppMessage = {
-        messaging_product: 'whatsapp',
-        to: numeroFormate,
-        type: 'template',
-        template: {
-          name: 'confirmation_commande', // Nom du template à créer dans WhatsApp Business
-          language: {
-            code: 'fr'
-          },
-          components: [
-            {
-              type: 'body',
-              parameters: [
-                {
-                  type: 'text',
-                  text: commande.nomClient
-                },
-                {
-                  type: 'text',
-                  text: commande.numeroCommande
-                },
-                {
-                  type: 'text',
-                  text: commande.montantTotal.toLocaleString('fr-FR') + ' FCFA'
-                },
-                {
-                  type: 'text',
-                  text: listeProduits
-                },
-                {
-                  type: 'text',
-                  text: commande.dateCommande
-                }
-              ]
-            }
-          ]
-        }
-      };
-
-      return await this.sendMessage(message);
-    } catch (error: any) {
-      console.error('Erreur lors de l\'envoi de la confirmation de commande:', error.message);
-      throw error;
-    }
-  }
-
-  /**
-   * Envoie un message texte simple (pour les comptes sans templates approuvés)
-   */
-  static async envoyerConfirmationCommandeTexte(commande: CommandeConfirmation): Promise<any> {
-    try {
-      const numeroFormate = commande.telephoneClient.replace(/[^\d+]/g, '');
-      
-      const listeProduits = commande.produits
-        .map(p => `• ${p.nom} (x${p.quantite}) - ${p.prix.toLocaleString('fr-FR')} FCFA`)
-        .join('\n');
-
-      const messageTexte = `🛍️ *Marché 241 - Confirmation de commande*
-
-Bonjour ${commande.nomClient},
-
-Votre commande a été confirmée avec succès !
-
-📋 *Détails de la commande :*
-• Numéro : ${commande.numeroCommande}
-• Date : ${commande.dateCommande}
-• Montant total : ${commande.montantTotal.toLocaleString('fr-FR')} FCFA
-
-🛒 *Produits commandés :*
-${listeProduits}
-
-${commande.adresseLivraison ? `📍 *Adresse de livraison :*\n${commande.adresseLivraison}\n\n` : ''}📞 Nous vous contacterons bientôt pour organiser la livraison.
-
-Merci de votre confiance !
-L'équipe Marché 241`;
-
-      const message: WhatsAppMessage = {
-        messaging_product: 'whatsapp',
-        to: numeroFormate,
-        type: 'text',
-        text: {
-          body: messageTexte
-        }
-      };
-
-      return await this.sendMessage(message);
-    } catch (error: any) {
-      console.error('Erreur lors de l\'envoi du message texte:', error.message);
-      throw error;
+      console.error('[WhatsAppService] Erreur lors de l\'envoi du message:', error.message);
+      return null;
     }
   }
 
   /**
    * Envoie une notification de changement de statut de commande
+   * @param statut Nouveau statut de la commande
+   * @param data Données de la commande
+   * @returns ID du message envoyé ou null
    */
-  static async envoyerNotificationStatut(
-    telephone: string, 
-    numeroCommande: string, 
-    nouveauStatut: string, 
-    nomClient: string
-  ): Promise<any> {
-    try {
-      const numeroFormate = telephone.replace(/[^\d+]/g, '');
-      
-      let messageStatut = '';
-      let emoji = '';
-      
-      switch (nouveauStatut.toLowerCase()) {
-        case 'en_preparation':
-          emoji = '👨‍🍳';
-          messageStatut = 'Votre commande est en cours de préparation';
-          break;
-        case 'prete':
-          emoji = '✅';
-          messageStatut = 'Votre commande est prête !';
-          break;
-        case 'en_livraison':
-          emoji = '🚚';
-          messageStatut = 'Votre commande est en cours de livraison';
-          break;
-        case 'livree':
-          emoji = '🎉';
-          messageStatut = 'Votre commande a été livrée avec succès !';
-          break;
-        case 'annulee':
-          emoji = '❌';
-          messageStatut = 'Votre commande a été annulée';
-          break;
-        default:
-          emoji = '📋';
-          messageStatut = `Statut de votre commande : ${nouveauStatut}`;
-      }
-
-      const messageTexte = `${emoji} *Marché 241 - Mise à jour de commande*
-
-Bonjour ${nomClient},
-
-${messageStatut}
-
-📋 Commande : ${numeroCommande}
-
-${nouveauStatut.toLowerCase() === 'livree' ? 
-  'Merci de votre confiance ! N\'hésitez pas à nous laisser un avis.' : 
-  'Nous vous tiendrons informé(e) de l\'évolution de votre commande.'
-}
-
-L'équipe Marché 241`;
-
-      const message: WhatsAppMessage = {
-        messaging_product: 'whatsapp',
-        to: numeroFormate,
-        type: 'text',
-        text: {
-          body: messageTexte
-        }
-      };
-
-      return await this.sendMessage(message);
-    } catch (error: any) {
-      console.error('Erreur lors de l\'envoi de la notification de statut:', error.message);
-      throw error;
+  static async sendOrderStatusNotification(
+    statut: string,
+    data: MessageData
+  ): Promise<string | null> {
+    // Vérifier si un message est défini pour ce statut
+    const messageGenerator = MESSAGES_STATUT[statut];
+    
+    if (!messageGenerator) {
+      console.log(`[WhatsAppService] Pas de message défini pour le statut: ${statut}`);
+      return null;
     }
+
+    const message = messageGenerator(data);
+    return this.sendMessage(data.clientTelephone, message);
   }
 
   /**
-   * Valide un numéro de téléphone WhatsApp
+   * Envoie un message personnalisé
+   * @param phone Numéro de téléphone
+   * @param templateName Nom du template (optionnel)
+   * @param customMessage Message personnalisé
    */
-  static validerNumeroWhatsApp(numero: string): boolean {
-    // Supprime tous les caractères non numériques
-    const numeroNettoye = numero.replace(/[^\d]/g, '');
-    
-    // Valide les formats gabonais
-    // Format local: 8 chiffres (ex: 77123456)
-    // Format international: 11 chiffres commençant par 241 (ex: 24177123456)
-    return (numeroNettoye.length === 8 && /^[0-9]{8}$/.test(numeroNettoye)) ||
-           (numeroNettoye.length === 11 && numeroNettoye.startsWith('241'));
+  static async sendCustomMessage(
+    phone: string,
+    customMessage: string
+  ): Promise<string | null> {
+    return this.sendMessage(phone, customMessage);
   }
 
   /**
-   * Formate un numéro de téléphone pour WhatsApp
+   * Envoie une notification au vendeur pour une nouvelle commande
    */
-  static formaterNumeroWhatsApp(numero: string): string {
-    // Supprime tous les caractères non numériques (y compris le +)
-    let numeroFormate = numero.replace(/[^\d]/g, '');
-    
-    // Pour le Gabon, s'assurer que le numéro commence par 241
-    if (numeroFormate.startsWith('0')) {
-      // Remplacer le 0 initial par 241 pour les numéros locaux
-      numeroFormate = '241' + numeroFormate.substring(1);
-    } else if (!numeroFormate.startsWith('241') && numeroFormate.length === 8) {
-      // Ajouter le code pays 241 si c'est un numéro local à 8 chiffres
-      numeroFormate = '241' + numeroFormate;
+  static async notifyVendeurNewOrder(
+    vendeurTelephone: string,
+    data: {
+      numeroCommande: string;
+      clientNom: string;
+      total: number;
+      nombreArticles: number;
     }
-    
-    return numeroFormate;
+  ): Promise<string | null> {
+    const message = `🛒 *Nouvelle commande !*
+
+Vous avez reçu une nouvelle commande *#${data.numeroCommande}*.
+
+👤 *Client :* ${data.clientNom}
+📦 *Articles :* ${data.nombreArticles}
+💰 *Total :* ${data.total} FCFA
+
+Connectez-vous à votre espace vendeur pour traiter cette commande.`;
+
+    return this.sendMessage(vendeurTelephone, message);
+  }
+
+  /**
+   * Envoie une notification de paiement reçu
+   */
+  static async notifyPaymentReceived(
+    phone: string,
+    data: {
+      numeroCommande: string;
+      montant: number;
+      typePaiement: string;
+    }
+  ): Promise<string | null> {
+    const message = `💳 *Paiement reçu !*
+
+Votre paiement de *${data.montant} FCFA* pour la commande *#${data.numeroCommande}* a été confirmé.
+
+Type : ${data.typePaiement === 'paiement_complet' ? 'Paiement complet' : 
+        data.typePaiement === 'frais_livraison' ? 'Frais de livraison' : 
+        data.typePaiement === 'solde_apres_livraison' ? 'Solde après livraison' : data.typePaiement}
+
+Merci pour votre confiance ! 🙏`;
+
+    return this.sendMessage(phone, message);
   }
 }

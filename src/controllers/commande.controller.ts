@@ -3,6 +3,7 @@ import { CommandeModel } from '../models/commande.model';
 import { TransactionModel } from '../models/transaction.model';
 import { ProduitModel } from '../models/produit.model';
 import { StatutCommande, StatutPaiement, MethodePaiement } from '../lib/database-types';
+import { WhatsAppService } from '../services/whatsapp.service';
 
 export class CommandeController {
   /**
@@ -395,6 +396,39 @@ export class CommandeController {
       }
       
       const updatedCommande = await CommandeModel.updateCommandeStatus(id, body.statut as StatutCommande);
+      
+      // Envoyer une notification WhatsApp au client
+      if (updatedCommande.client_telephone) {
+        try {
+          console.log(`[CommandeController] Envoi notification WhatsApp pour statut: ${body.statut}`);
+          
+          const messageId = await WhatsAppService.sendOrderStatusNotification(
+            body.statut,
+            {
+              clientNom: updatedCommande.client_nom || 'Client',
+              clientTelephone: updatedCommande.client_telephone,
+              numeroCommande: updatedCommande.numero_commande,
+              boutiqueName: updatedCommande.boutique?.nom || 'La boutique',
+              boutiqueTelephone: updatedCommande.boutique?.telephone,
+              total: updatedCommande.total,
+              fraisLivraison: updatedCommande.frais_livraison || 0,
+              clientAdresse: updatedCommande.client_adresse,
+              clientVille: updatedCommande.client_ville,
+              clientCommune: updatedCommande.client_commune,
+              motifAnnulation: body.motif_annulation
+            }
+          );
+          
+          if (messageId) {
+            console.log(`[CommandeController] Notification WhatsApp envoyée: ${messageId}`);
+          } else {
+            console.log('[CommandeController] Notification WhatsApp non envoyée (service non configuré ou statut sans message)');
+          }
+        } catch (whatsappError: any) {
+          // Ne pas bloquer la mise à jour si WhatsApp échoue
+          console.error('[CommandeController] Erreur envoi WhatsApp:', whatsappError.message);
+        }
+      }
       
       res.status(200).json({
         success: true,

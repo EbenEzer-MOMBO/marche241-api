@@ -223,7 +223,10 @@ export class CommandeModel {
         .from('commandes')
         .update(updateFields)
         .eq('id', id)
-        .select()
+        .select(`
+          *,
+          boutique:boutiques(id, nom, telephone, adresse)
+        `)
         .single();
       
       if (error) {
