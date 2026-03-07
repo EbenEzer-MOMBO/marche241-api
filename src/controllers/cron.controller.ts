@@ -312,5 +312,98 @@ export class CronController {
       });
     }
   }
+
+  /**
+   * Exécute manuellement la tâche de nettoyage des anciennes vues
+   * 
+   * GET /api/v1/cron/nettoyer-vues
+   * 
+   * Paramètres query optionnels:
+   * - jours: Nombre de jours à conserver (défaut: 30)
+   * - key: Clé secrète pour sécuriser l'accès (optionnel)
+   */
+  static async executeNettoyerVues(req: Request, res: Response): Promise<void> {
+    try {
+      // Vérification optionnelle de la clé secrète
+      const cronKey = process.env.CRON_SECRET_KEY;
+      const providedKey = req.query.key as string;
+
+      if (cronKey && providedKey !== cronKey) {
+        console.log('[CronController] Clé invalide ou manquante');
+        res.status(401).json({
+          success: false,
+          message: 'Clé d\'authentification invalide'
+        });
+        return;
+      }
+
+      // Récupérer le nombre de jours à conserver (défaut: 30)
+      const joursRetention = parseInt(req.query.jours as string) || 30;
+      
+      console.log(`[CronController] Exécution manuelle: nettoyage des vues de plus de ${joursRetention} jours`);
+
+      const result = await CronService.executeNettoyerAnciennesVuesManually(joursRetention);
+
+      res.status(200).json({
+        success: true,
+        message: `${result.count} vue(s) supprimée(s) avec succès`,
+        count: result.count,
+        jours_retention: joursRetention,
+        executed_at: new Date().toISOString()
+      });
+    } catch (error: any) {
+      console.error('[CronController] Erreur lors du nettoyage des vues:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erreur lors du nettoyage des vues',
+        error: error.message
+      });
+    }
+  }
+
+  /**
+   * Nettoie toutes les vues sauf celles du mois en cours
+   * 
+   * GET /api/v1/cron/nettoyer-vues-mois
+   * 
+   * Paramètres query optionnels:
+   * - key: Clé secrète pour sécuriser l'accès (optionnel)
+   */
+  static async executeNettoyerVuesMoisEnCours(req: Request, res: Response): Promise<void> {
+    try {
+      // Vérification optionnelle de la clé secrète
+      const cronKey = process.env.CRON_SECRET_KEY;
+      const providedKey = req.query.key as string;
+
+      if (cronKey && providedKey !== cronKey) {
+        console.log('[CronController] Clé invalide ou manquante');
+        res.status(401).json({
+          success: false,
+          message: 'Clé d\'authentification invalide'
+        });
+        return;
+      }
+
+      console.log('[CronController] Exécution manuelle: nettoyage des vues hors mois en cours');
+
+      const result = await CronService.executeNettoyerVuesMoisEnCoursManually();
+
+      res.status(200).json({
+        success: true,
+        message: `${result.count} vue(s) supprimée(s) avec succès`,
+        count: result.count,
+        mois_conserve: result.mois_conserve,
+        description: `Toutes les vues antérieures au mois ${result.mois_conserve} ont été supprimées`,
+        executed_at: new Date().toISOString()
+      });
+    } catch (error: any) {
+      console.error('[CronController] Erreur lors du nettoyage des vues:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erreur lors du nettoyage des vues',
+        error: error.message
+      });
+    }
+  }
 }
 

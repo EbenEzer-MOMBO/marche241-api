@@ -19,6 +19,9 @@ export class CronService {
     // Tâche pour expirer les transactions en attente
     this.scheduleExpirerTransactions();
 
+    // Tâche pour nettoyer les anciennes vues
+    this.scheduleNettoyerAnciennesVues();
+
     console.log('[CronService] Tâches planifiées initialisées avec succès');
   }
 
@@ -202,6 +205,127 @@ export class CronService {
   static async executeExpirerTransactionsManually(): Promise<{ count: number }> {
     console.log('[CronService] Exécution manuelle: expirer les transactions en attente');
     return await this.expirerTransactions();
+  }
+
+  /**
+   * Planifie la tâche pour nettoyer les anciennes vues
+   * S'exécute tous les premiers du mois à 3h du matin
+   */
+  static scheduleNettoyerAnciennesVues(): void {
+    const jobName = 'nettoyer-anciennes-vues';
+
+    // Planifier l'exécution le 1er de chaque mois à 3h00
+    // Format cron: '0 3 1 * *' = le 1er de chaque mois à 3h00
+    const task = cron.schedule('0 3 1 * *', async () => {
+      console.log('[CronService] Début de la tâche: nettoyer les anciennes vues');
+
+      try {
+        const result = await this.nettoyerAnciennesVues();
+        console.log(`[CronService] Tâche terminée: ${result.count} vue(s) supprimée(s)`);
+      } catch (error) {
+        console.error('[CronService] Erreur lors de la tâche:', error);
+      }
+    });
+
+    this.jobs.set(jobName, task);
+    console.log(`[CronService] Tâche planifiée: ${jobName} - Le 1er de chaque mois à 3h00`);
+  }
+
+  /**
+   * Nettoie les vues plus anciennes que X jours
+   * @param joursRetention Nombre de jours à conserver (défaut: 30)
+   */
+  static async nettoyerAnciennesVues(joursRetention: number = 30): Promise<{ count: number }> {
+    try {
+      console.log(`[CronService] Nettoyage des vues de plus de ${joursRetention} jours`);
+
+      // Appeler la fonction SQL via RPC
+      const { data, error } = await supabaseAdmin.rpc('nettoyer_anciennes_vues', {
+        p_jours_retention: joursRetention
+      });
+
+      if (error) {
+        console.error('[CronService] Erreur lors de l\'appel RPC nettoyer_anciennes_vues:', error);
+        throw new Error(`Erreur lors du nettoyage des vues: ${error.message}`);
+      }
+
+      const count = data || 0;
+      console.log(`[CronService] ${count} vue(s) supprimée(s) (plus de ${joursRetention} jours)`);
+
+      return { count };
+    } catch (error) {
+      console.error('[CronService] Exception dans nettoyerAnciennesVues:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Nettoie toutes les vues sauf celles du mois en cours
+   * Supprime les vues dont la date est antérieure au 1er jour du mois actuel
+   */
+  static async nettoyerVuesHorsMoisEnCours(): Promise<{ count: number; mois_conserve: string }> {
+    try {
+      // Calculer le 1er jour du mois en cours
+      const now = new Date();
+      const premierJourMois = new Date(now.getFullYear(), now.getMonth(), 1);
+      const moisConserve = premierJourMois.toISOString().slice(0, 7); // Format: "2026-03"
+
+      console.log(`[CronService] Nettoyage des vues antérieures au ${premierJourMois.toISOString()}`);
+      console.log(`[CronService] Conservation des vues du mois: ${moisConserve}`);
+
+      // Compter d'abord le nombre de vues à supprimer
+      const { count: countToDelete, error: countError } = await supabaseAdmin
+        .from('vues_tracking')
+        .select('*', { count: 'exact', head: true })
+        .lt('date_vue', premierJourMois.toISOString());
+
+      if (countError) {
+        console.error('[CronService] Erreur lors du comptage des vues:', countError);
+        throw new Error(`Erreur lors du comptage des vues: ${countError.message}`);
+      }
+
+      const nombreASupprimer = countToDelete || 0;
+
+      // Supprimer toutes les vues antérieures au 1er jour du mois en cours
+      const { error } = await supabaseAdmin
+        .from('vues_tracking')
+        .delete()
+        .lt('date_vue', premierJourMois.toISOString());
+
+      if (error) {
+        console.error('[CronService] Erreur lors de la suppression des vues:', error);
+        throw new Error(`Erreur lors du nettoyage des vues: ${error.message}`);
+      }
+
+      const nombreSupprimes = nombreASupprimer;
+      console.log(`[CronService] ${nombreSupprimes} vue(s) supprimée(s) (antérieures à ${moisConserve})`);
+
+      return { 
+        count: nombreSupprimes,
+        mois_conserve: moisConserve
+      };
+    } catch (error) {
+      console.error('[CronService] Exception dans nettoyerVuesHorsMoisEnCours:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Exécute manuellement la tâche de nettoyage des anciennes vues
+   * @param joursRetention Nombre de jours à conserver (défaut: 30)
+   */
+  static async executeNettoyerAnciennesVuesManually(joursRetention: number = 30): Promise<{ count: number }> {
+    console.log(`[CronService] Exécution manuelle: nettoyer les vues de plus de ${joursRetention} jours`);
+    return await this.nettoyerAnciennesVues(joursRetention);
+  }
+
+  /**
+   * Exécute manuellement le nettoyage des vues hors mois en cours
+   * Supprime toutes les vues sauf celles du mois actuel
+   */
+  static async executeNettoyerVuesMoisEnCoursManually(): Promise<{ count: number; mois_conserve: string }> {
+    console.log('[CronService] Exécution manuelle: nettoyer toutes les vues sauf le mois en cours');
+    return await this.nettoyerVuesHorsMoisEnCours();
   }
 }
 

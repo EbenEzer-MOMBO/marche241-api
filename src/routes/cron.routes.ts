@@ -305,5 +305,115 @@ router.get('/health', CronController.healthCheck);
  */
 router.get('/expirer-transactions/execute', CronController.executeExpirerTransactions);
 
+/**
+ * @swagger
+ * /api/v1/cron/nettoyer-vues:
+ *   get:
+ *     summary: Nettoie les anciennes vues de la table vues_tracking
+ *     description: |
+ *       Supprime les vues plus anciennes que le nombre de jours spécifié.
+ *       Par défaut, supprime les vues de plus de 30 jours (1 mois).
+ *     tags: [Cron]
+ *     parameters:
+ *       - in: query
+ *         name: jours
+ *         schema:
+ *           type: integer
+ *           default: 30
+ *         description: Nombre de jours à conserver (défaut 30)
+ *       - in: query
+ *         name: key
+ *         schema:
+ *           type: string
+ *         description: Clé secrète optionnelle (définie dans CRON_SECRET_KEY)
+ *     responses:
+ *       200:
+ *         description: Nettoyage effectué avec succès
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "150 vue(s) supprimée(s) avec succès"
+ *                 count:
+ *                   type: integer
+ *                   example: 150
+ *                 jours_retention:
+ *                   type: integer
+ *                   example: 30
+ *                 executed_at:
+ *                   type: string
+ *                   format: date-time
+ *       401:
+ *         description: Clé d'authentification invalide
+ *       500:
+ *         description: Erreur serveur
+ * 
+ * @route   GET /api/v1/cron/nettoyer-vues
+ * @desc    Nettoie les anciennes vues (> X jours)
+ * @access  Public (avec clé optionnelle)
+ */
+router.get('/nettoyer-vues', CronController.executeNettoyerVues);
+
+/**
+ * @swagger
+ * /api/v1/cron/nettoyer-vues-mois:
+ *   get:
+ *     summary: Nettoie toutes les vues sauf celles du mois en cours
+ *     description: |
+ *       Supprime toutes les vues antérieures au 1er jour du mois en cours.
+ *       Seules les vues du mois actuel sont conservées.
+ *       
+ *       Exemple: Si nous sommes en mars 2026, toutes les vues de février 2026 et avant seront supprimées.
+ *     tags: [Cron]
+ *     parameters:
+ *       - in: query
+ *         name: key
+ *         schema:
+ *           type: string
+ *         description: Clé secrète optionnelle (définie dans CRON_SECRET_KEY)
+ *     responses:
+ *       200:
+ *         description: Nettoyage effectué avec succès
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "250 vue(s) supprimée(s) avec succès"
+ *                 count:
+ *                   type: integer
+ *                   example: 250
+ *                 mois_conserve:
+ *                   type: string
+ *                   example: "2026-03"
+ *                   description: Le mois dont les vues ont été conservées (format YYYY-MM)
+ *                 description:
+ *                   type: string
+ *                   example: "Toutes les vues antérieures au mois 2026-03 ont été supprimées"
+ *                 executed_at:
+ *                   type: string
+ *                   format: date-time
+ *       401:
+ *         description: Clé d'authentification invalide
+ *       500:
+ *         description: Erreur serveur
+ * 
+ * @route   GET /api/v1/cron/nettoyer-vues-mois
+ * @desc    Nettoie toutes les vues sauf le mois en cours
+ * @access  Public (avec clé optionnelle)
+ */
+router.get('/nettoyer-vues-mois', CronController.executeNettoyerVuesMoisEnCours);
+
 export default router;
 
