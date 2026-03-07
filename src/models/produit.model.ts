@@ -45,7 +45,7 @@ export class ProduitModel {
       // Récupérer le produit actuel pour vérifier le stock disponible
       const { data: produit, error: produitError } = await supabaseAdmin
         .from('produits')
-        .select('stock')
+        .select('stock, nombre_ventes')
         .eq('id', produitId)
         .single();
       
@@ -66,13 +66,22 @@ export class ProduitModel {
         throw new Error(`Stock insuffisant pour le produit ${produitId}`);
       }
       
+      // Préparer les données de mise à jour
+      const updateData: any = {
+        stock: nouveauStock,
+        date_modification: new Date()
+      };
+      
+      // Incrémenter nombre_ventes seulement lors d'une vente (quantite > 0)
+      if (quantite > 0) {
+        updateData.nombre_ventes = (produit.nombre_ventes || 0) + quantite;
+        console.log(`[ProduitModel] Incrémentation nombre_ventes: ${produit.nombre_ventes || 0} -> ${updateData.nombre_ventes}`);
+      }
+      
       // Mettre à jour le stock
       const { data: produitMisAJour, error: updateError } = await supabaseAdmin
         .from('produits')
-        .update({
-          stock: nouveauStock,
-          date_modification: new Date()
-        })
+        .update(updateData)
         .eq('id', produitId)
         .select()
         .single();
@@ -99,6 +108,65 @@ export class ProduitModel {
    *   - Ancien format: { "Couleur": "Rouge", "Taille": "M" }
    * @returns Le produit mis à jour
    */
+  /**
+   * Extrait la taille ou pointure du nom du variant
+   * @example "Marron - Taille XL" => "XL"
+   * @example "Noir - Pointure 42" => "42"
+   */
+  private static extraireTaille(nomVariant: string): string | null {
+    if (nomVariant.includes(' - Taille ')) {
+      const parts = nomVariant.split(' - Taille ');
+      return parts[1]?.trim() || null;
+    }
+    if (nomVariant.includes(' - Pointure ')) {
+      const parts = nomVariant.split(' - Pointure ');
+      return parts[1]?.trim() || null;
+    }
+    return null;
+  }
+
+  /**
+   * Trouve un variant par son ID dans le tableau des variants
+   */
+  private static trouverVariantParId(variants: any[], variantId: string): any | null {
+    for (const variant of variants) {
+      if (variant.id === variantId) {
+        return variant;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Recalcule le stock total de tous les variants
+   */
+  private static recalculerStockTotal(variantsData: any): number {
+    let total = 0;
+    
+    if (!variantsData?.variants || !Array.isArray(variantsData.variants)) {
+      return total;
+    }
+
+    for (const variant of variantsData.variants) {
+      // Vêtements/Chaussures : additionner le stock de toutes les tailles
+      if (variant.tailles && Array.isArray(variant.tailles)) {
+        for (const taille of variant.tailles) {
+          total += taille.stock || 0;
+        }
+      }
+      // Générique : ajouter directement le stock du variant
+      else if (typeof variant.stock === 'number') {
+        total += variant.stock;
+      }
+      // Ancien format avec quantite
+      else if (typeof variant.quantite === 'number') {
+        total += variant.quantite;
+      }
+    }
+
+    return total;
+  }
+
   static async updateStockWithVariants(produitId: number, quantite: number, variantsSelectionnes: any): Promise<Produit> {
     console.log(`[ProduitModel] Mise à jour du stock avec variants pour le produit ${produitId}`, {
       quantite,
@@ -109,7 +177,7 @@ export class ProduitModel {
       // Récupérer le produit avec ses variants
       const { data: produit, error: produitError } = await supabaseAdmin
         .from('produits')
-        .select('id, variants, quantite_stock')
+        .select('id, variants, quantite_stock, nombre_ventes')
         .eq('id', produitId)
         .single();
       
@@ -129,19 +197,151 @@ export class ProduitModel {
       let variantTrouve = false;
       let nouveauxVariantsData: any;
 
-      // Détecter le nouveau format: { variants: [...], options: [...] }
-      if (variantsData.variants && Array.isArray(variantsData.variants)) {
-        console.log(`[ProduitModel] Nouveau format détecté`);
+      // ========================================
+      // NOUVEAU FORMAT MODERNE: { type: "vetements"|"chaussures"|"electronique"|..., variants: [...] }
+      // ========================================
+      if (variantsData.type && variantsData.variants && Array.isArray(variantsData.variants)) {
+        console.log(`[ProduitModel] Format moderne détecté, type: ${variantsData.type}`);
         
-        // Nouveau format
-        nouveauxVariantsData = { ...variantsData };
-        const nouveauxVariants = [...variantsData.variants];
+        nouveauxVariantsData = JSON.parse(JSON.stringify(variantsData)); // Deep clone
+        
+        // Extraire les infos du variant sélectionné
+        const variantSelectionne = variantsSelectionnes.variant;
+        const variantId = variantSelectionne?.id || null;
+        const variantNom = variantSelectionne?.nom || null;
+        
+        if (!variantId) {
+          console.warn(`[ProduitModel] Pas d'ID de variant dans la sélection, recherche par nom`);
+        }
+        
+        console.log(`[ProduitModel] Recherche du variant: ID=${variantId}, Nom=${variantNom}`);
+        
+        // Trouver le variant par son ID
+        const variant = this.trouverVariantParId(nouveauxVariantsData.variants, variantId);
+        
+        if (!variant) {
+          console.error(`[ProduitModel] Variant non trouvé: ${variantId}`);
+          throw new Error(`Variant non trouvé: ${variantId}`);
+        }
+        
+        console.log(`[ProduitModel] Variant trouvé:`, JSON.stringify(variant, null, 2));
+        
+        // Cas 1 : Vêtements ou Chaussures (avec tailles)
+        if ((variantsData.type === 'vetements' || variantsData.type === 'chaussures') && variant.tailles) {
+          const tailleRecherchee = this.extraireTaille(variantNom);
+          
+          if (!tailleRecherchee) {
+            console.error(`[ProduitModel] Impossible d'extraire la taille du nom: ${variantNom}`);
+            throw new Error(`Impossible d'extraire la taille du variant: ${variantNom}`);
+          }
+          
+          console.log(`[ProduitModel] Taille recherchée: ${tailleRecherchee}`);
+          
+          // Trouver la taille dans le variant
+          let tailleTrouvee = false;
+          for (const tailleObj of variant.tailles) {
+            if (tailleObj.taille === tailleRecherchee) {
+              const stockActuel = tailleObj.stock || 0;
+              const nouveauStock = stockActuel - quantite;
+              
+              if (nouveauStock < 0) {
+                console.error(`[ProduitModel] Stock insuffisant pour ${variantNom}`);
+                throw new Error(`Stock insuffisant pour ${variantNom} (disponible: ${stockActuel}, demandé: ${quantite})`);
+              }
+              
+              tailleObj.stock = nouveauStock;
+              console.log(`[ProduitModel] Stock de la taille ${tailleRecherchee} mis à jour: ${stockActuel} -> ${nouveauStock}`);
+              tailleTrouvee = true;
+              variantTrouve = true;
+              break;
+            }
+          }
+          
+          if (!tailleTrouvee) {
+            console.error(`[ProduitModel] Taille non trouvée: ${tailleRecherchee}`);
+            throw new Error(`Taille non trouvée: ${tailleRecherchee}`);
+          }
+        }
+        // Cas 2 : Produits Génériques (sans tailles, stock direct sur le variant)
+        else if (typeof variant.stock === 'number') {
+          const stockActuel = variant.stock;
+          const nouveauStock = stockActuel - quantite;
+          
+          if (nouveauStock < 0) {
+            console.error(`[ProduitModel] Stock insuffisant pour le variant ${variantNom || variantId}`);
+            throw new Error(`Stock insuffisant pour le variant ${variantNom || variantId} (disponible: ${stockActuel}, demandé: ${quantite})`);
+          }
+          
+          variant.stock = nouveauStock;
+          console.log(`[ProduitModel] Stock du variant ${variantNom || variantId} mis à jour: ${stockActuel} -> ${nouveauStock}`);
+          variantTrouve = true;
+        }
+        // Cas 3 : Ancien format avec "quantite" au lieu de "stock"
+        else if (typeof variant.quantite === 'number') {
+          const stockActuel = variant.quantite;
+          const nouveauStock = stockActuel - quantite;
+          
+          if (nouveauStock < 0) {
+            console.error(`[ProduitModel] Stock insuffisant pour le variant ${variantNom || variantId}`);
+            throw new Error(`Stock insuffisant pour le variant ${variantNom || variantId} (disponible: ${stockActuel}, demandé: ${quantite})`);
+          }
+          
+          variant.quantite = nouveauStock;
+          console.log(`[ProduitModel] Stock du variant ${variantNom || variantId} mis à jour: ${stockActuel} -> ${nouveauStock}`);
+          variantTrouve = true;
+        }
+        
+        if (variantTrouve) {
+          // Recalculer le stock total
+          const quantiteTotale = this.recalculerStockTotal(nouveauxVariantsData);
+          console.log(`[ProduitModel] Nouvelle quantité totale calculée: ${quantiteTotale}`);
+          
+          // Préparer les données de mise à jour
+          const updateData: any = {
+            variants: nouveauxVariantsData,
+            quantite_stock: quantiteTotale,
+            en_stock: quantiteTotale > 0,
+            date_modification: new Date()
+          };
+          
+          // Incrémenter nombre_ventes seulement lors d'une vente (quantite > 0)
+          if (quantite > 0) {
+            updateData.nombre_ventes = (produit.nombre_ventes || 0) + quantite;
+            console.log(`[ProduitModel] Incrémentation nombre_ventes: ${produit.nombre_ventes || 0} -> ${updateData.nombre_ventes}`);
+          }
+          
+          // Mettre à jour le produit
+          const { data: produitMisAJour, error: updateError } = await supabaseAdmin
+            .from('produits')
+            .update(updateData)
+            .eq('id', produitId)
+            .select()
+            .single();
+          
+          if (updateError) {
+            console.error(`[ProduitModel] Erreur lors de la mise à jour: ${updateError.message}`);
+            throw new Error(`Erreur lors de la mise à jour du stock: ${updateError.message}`);
+          }
+
+          console.log(`[ProduitModel] Stock avec variants mis à jour avec succès (format moderne)`);
+          return produitMisAJour;
+        }
+      }
+      
+      // ========================================
+      // FORMAT INTERMÉDIAIRE: { variants: [...], options: [...] } sans "type"
+      // ========================================
+      else if (variantsData.variants && Array.isArray(variantsData.variants) && !variantsData.type) {
+        console.log(`[ProduitModel] Format intermédiaire détecté (variants sans type)`);
+        
+        nouveauxVariantsData = JSON.parse(JSON.stringify(variantsData));
+        const nouveauxVariants = nouveauxVariantsData.variants;
         
         // Extraire le nom du variant sélectionné
         const nomVariantSelectionne = variantsSelectionnes.variant?.nom || null;
         
         if (nomVariantSelectionne) {
-          console.log(`[ProduitModel] Recherche du variant: ${nomVariantSelectionne}`);
+          console.log(`[ProduitModel] Recherche du variant par nom: ${nomVariantSelectionne}`);
           
           for (let i = 0; i < nouveauxVariants.length; i++) {
             if (nouveauxVariants[i].nom === nomVariantSelectionne) {
@@ -161,38 +361,50 @@ export class ProduitModel {
           }
         }
         
-        nouveauxVariantsData.variants = nouveauxVariants;
-        
-        // Calculer la quantité totale
-        const quantiteTotale = nouveauxVariants.reduce((sum, v) => sum + (v.quantite || 0), 0);
-        console.log(`[ProduitModel] Nouvelle quantité totale calculée: ${quantiteTotale}`);
-        
-        // Mettre à jour le produit
-        const { data: produitMisAJour, error: updateError } = await supabaseAdmin
-          .from('produits')
-          .update({
+        if (variantTrouve) {
+          // Calculer la quantité totale
+          const quantiteTotale = nouveauxVariants.reduce((sum: number, v: any) => sum + (v.quantite || 0), 0);
+          console.log(`[ProduitModel] Nouvelle quantité totale calculée: ${quantiteTotale}`);
+          
+          // Préparer les données de mise à jour
+          const updateData: any = {
             variants: nouveauxVariantsData,
             quantite_stock: quantiteTotale,
             en_stock: quantiteTotale > 0,
             date_modification: new Date()
-          })
-          .eq('id', produitId)
-          .select()
-          .single();
-        
-        if (updateError) {
-          console.error(`[ProduitModel] Erreur lors de la mise à jour: ${updateError.message}`);
-          throw new Error(`Erreur lors de la mise à jour du stock: ${updateError.message}`);
-        }
+          };
+          
+          // Incrémenter nombre_ventes seulement lors d'une vente (quantite > 0)
+          if (quantite > 0) {
+            updateData.nombre_ventes = (produit.nombre_ventes || 0) + quantite;
+            console.log(`[ProduitModel] Incrémentation nombre_ventes: ${produit.nombre_ventes || 0} -> ${updateData.nombre_ventes}`);
+          }
+          
+          // Mettre à jour le produit
+          const { data: produitMisAJour, error: updateError } = await supabaseAdmin
+            .from('produits')
+            .update(updateData)
+            .eq('id', produitId)
+            .select()
+            .single();
+          
+          if (updateError) {
+            console.error(`[ProduitModel] Erreur lors de la mise à jour: ${updateError.message}`);
+            throw new Error(`Erreur lors de la mise à jour du stock: ${updateError.message}`);
+          }
 
-        console.log(`[ProduitModel] Stock avec variants mis à jour avec succès (nouveau format)`);
-        return produitMisAJour;
+          console.log(`[ProduitModel] Stock avec variants mis à jour avec succès (format intermédiaire)`);
+          return produitMisAJour;
+        }
+      }
+      
+      // ========================================
+      // ANCIEN FORMAT: [{ "nom": "Type", "options": ["A", "B"], "quantites": [8, 4] }]
+      // ========================================
+      else if (Array.isArray(variantsData)) {
+        console.log(`[ProduitModel] Ancien format détecté (tableau)`);
         
-      } else if (Array.isArray(variantsData)) {
-        // Ancien format: [{ "nom": "Type", "options": ["A", "B"], "quantites": [8, 4] }]
-        console.log(`[ProduitModel] Ancien format détecté`);
-        
-        let nouveauxVariants = [...variantsData];
+        let nouveauxVariants = JSON.parse(JSON.stringify(variantsData));
 
         for (let i = 0; i < nouveauxVariants.length; i++) {
           const variant = nouveauxVariants[i];
@@ -221,36 +433,47 @@ export class ProduitModel {
           }
         }
 
-        // Calculer la nouvelle quantité totale en stock
-        let quantiteTotale = 0;
-        for (const variant of nouveauxVariants) {
-          if (variant.quantites && Array.isArray(variant.quantites)) {
-            quantiteTotale += variant.quantites.reduce((sum: number, q: number) => sum + (q || 0), 0);
+        if (variantTrouve) {
+          // Calculer la nouvelle quantité totale en stock
+          let quantiteTotale = 0;
+          for (const variant of nouveauxVariants) {
+            if (variant.quantites && Array.isArray(variant.quantites)) {
+              quantiteTotale += variant.quantites.reduce((sum: number, q: number) => sum + (q || 0), 0);
+            }
           }
-        }
 
-        console.log(`[ProduitModel] Nouvelle quantité totale calculée: ${quantiteTotale}`);
+          console.log(`[ProduitModel] Nouvelle quantité totale calculée: ${quantiteTotale}`);
 
-        // Mettre à jour le produit avec les nouveaux variants et la quantité totale
-        const { data: produitMisAJour, error: updateError } = await supabaseAdmin
-          .from('produits')
-          .update({
+          // Préparer les données de mise à jour
+          const updateData: any = {
             variants: nouveauxVariants,
             quantite_stock: quantiteTotale,
             en_stock: quantiteTotale > 0,
             date_modification: new Date()
-          })
-          .eq('id', produitId)
-          .select()
-          .single();
-        
-        if (updateError) {
-          console.error(`[ProduitModel] Erreur lors de la mise à jour: ${updateError.message}`);
-          throw new Error(`Erreur lors de la mise à jour du stock: ${updateError.message}`);
-        }
+          };
+          
+          // Incrémenter nombre_ventes seulement lors d'une vente (quantite > 0)
+          if (quantite > 0) {
+            updateData.nombre_ventes = (produit.nombre_ventes || 0) + quantite;
+            console.log(`[ProduitModel] Incrémentation nombre_ventes: ${produit.nombre_ventes || 0} -> ${updateData.nombre_ventes}`);
+          }
 
-        console.log(`[ProduitModel] Stock avec variants mis à jour avec succès (ancien format)`);
-        return produitMisAJour;
+          // Mettre à jour le produit avec les nouveaux variants et la quantité totale
+          const { data: produitMisAJour, error: updateError } = await supabaseAdmin
+            .from('produits')
+            .update(updateData)
+            .eq('id', produitId)
+            .select()
+            .single();
+          
+          if (updateError) {
+            console.error(`[ProduitModel] Erreur lors de la mise à jour: ${updateError.message}`);
+            throw new Error(`Erreur lors de la mise à jour du stock: ${updateError.message}`);
+          }
+
+          console.log(`[ProduitModel] Stock avec variants mis à jour avec succès (ancien format)`);
+          return produitMisAJour;
+        }
       }
 
       if (!variantTrouve) {
