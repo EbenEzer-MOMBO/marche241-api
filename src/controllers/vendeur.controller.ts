@@ -522,7 +522,7 @@ export class VendeurController {
 
             const webhookData = {
               type: 'welcome',
-              email: email || null,
+              email: email || vendeurMisAJour.email || null,
               phone: cleanPhone,
               vendeur: {
                 id: vendeurMisAJour.id, 
