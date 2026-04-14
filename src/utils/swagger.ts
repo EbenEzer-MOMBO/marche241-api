@@ -46,6 +46,7 @@ const swaggerOptions = {
   },
   apis: [
     './src/routes/*.ts',
+    './src/utils/swagger-schemas.validation.ts',
     './src/utils/swagger-schemas.ts',
     './src/utils/swagger-schemas.auth.ts',
     './src/utils/swagger-schemas.commune.ts',

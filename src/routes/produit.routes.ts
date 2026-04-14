@@ -194,7 +194,11 @@ router.get('/categories', ProduitController.getTopProduitsByCategories);
  *       200:
  *         description: Produits récupérés avec succès
  *       400:
- *         description: ID de catégorie invalide
+ *         description: Paramètre invalide (validation Joi)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ValidationErrorResponse'
  *       500:
  *         description: Erreur serveur
  * 
@@ -275,7 +279,11 @@ router.get('/categorie/:categorieId', validateParams(idParamSchema), ProduitCont
  *                   description: Nombre total de pages
  *                   example: 3
  *       400:
- *         description: ID de boutique invalide
+ *         description: Paramètre invalide (validation Joi)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ValidationErrorResponse'
  *       500:
  *         description: Erreur serveur
  * 
@@ -433,7 +441,11 @@ router.get('/:id', validateParams(idParamSchema), ProduitController.getProduitBy
  *                 produit:
  *                   $ref: '#/components/schemas/Produit'
  *       400:
- *         description: Données invalides
+ *         description: Données invalides (validation Joi — voir code VALIDATION_ERROR et errors[])
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ValidationErrorResponse'
  *       401:
  *         description: Non authentifié
  *       403:
@@ -537,7 +549,11 @@ router.post('/', auth, validate(createProduitSchema), ProduitController.createPr
  *                 produit:
  *                   $ref: '#/components/schemas/Produit'
  *       400:
- *         description: Données invalides
+ *         description: Données invalides (validation Joi — voir code VALIDATION_ERROR et errors[])
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ValidationErrorResponse'
  *       401:
  *         description: Non authentifié
  *       403:
@@ -654,7 +670,11 @@ router.delete('/:id', auth, validateParams(idParamSchema), ProduitController.del
  *                       description: Vues des 30 derniers jours
  *                       example: 220
  *       400:
- *         description: ID de produit invalide
+ *         description: Paramètre invalide (validation Joi)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ValidationErrorResponse'
  *       401:
  *         description: Non authentifié
  *       404:

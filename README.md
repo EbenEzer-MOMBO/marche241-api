@@ -107,10 +107,17 @@ marche241-api/
 
 ## 📝 API Documentation
 
-La documentation de l'API sera disponible à l'adresse :
+Documentation interactive (Swagger UI) :
+
 ```
 http://localhost:3000/api/docs
 ```
+
+Spécification OpenAPI JSON : `GET /api/docs.json`
+
+### Erreurs de validation (HTTP 400)
+
+Les échecs de validation Joi (corps, paramètres d’URL ou query) renvoient un objet avec `code: "VALIDATION_ERROR"`, un `message` explicite et un tableau `errors` détaillé par champ. Voir [docs/ERREURS_VALIDATION.md](docs/ERREURS_VALIDATION.md).
 
 ## 🤝 Contribution
 

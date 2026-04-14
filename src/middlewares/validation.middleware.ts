@@ -1,5 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
 import { ApiError } from './error.middleware';
+import {
+  buildValidationSummaryMessage,
+  formatJoiDetails,
+} from '../utils/joi-validation-response';
 
 /**
  * Middleware de validation générique
@@ -27,19 +31,17 @@ export const validate = (schema: any) => {
 
       if (error) {
         console.error('[ValidationMiddleware] ===== ERREUR DE VALIDATION =====');
-        const errors = error.details.map((detail: any) => ({
-          field: detail.path.join('.'),
-          message: detail.message,
-          type: detail.type,
-          context: detail.context
-        }));
-        
+        const errors = formatJoiDetails(error.details);
+
         console.error('[ValidationMiddleware] Détails des erreurs:', JSON.stringify(errors, null, 2));
         console.error('[ValidationMiddleware] Données reçues:', JSON.stringify(req.body, null, 2));
         console.error('[ValidationMiddleware] Erreur complète:', error.message);
 
-        const apiError = new Error('Erreur de validation') as ApiError;
+        const apiError = new Error(
+          buildValidationSummaryMessage(errors, 'Validation impossible')
+        ) as ApiError;
         apiError.statusCode = 400;
+        apiError.code = 'VALIDATION_ERROR';
         apiError.errors = errors;
 
         return next(apiError);
@@ -106,18 +108,16 @@ export const validateParams = (schema: any) => {
 
       if (error) {
         console.error('[ValidationMiddleware] ===== ERREUR DE VALIDATION DES PARAMÈTRES =====');
-        const errors = error.details.map((detail: any) => ({
-          field: detail.path.join('.'),
-          message: detail.message,
-          type: detail.type,
-          context: detail.context
-        }));
-        
+        const errors = formatJoiDetails(error.details);
+
         console.error('[ValidationMiddleware] Erreurs:', JSON.stringify(errors, null, 2));
         console.error('[ValidationMiddleware] Paramètres reçus:', JSON.stringify(req.params, null, 2));
 
-        const apiError = new Error('Erreur de validation des paramètres') as ApiError;
+        const apiError = new Error(
+          buildValidationSummaryMessage(errors, 'Validation des paramètres impossible')
+        ) as ApiError;
         apiError.statusCode = 400;
+        apiError.code = 'VALIDATION_ERROR';
         apiError.errors = errors;
 
         return next(apiError);
@@ -148,16 +148,16 @@ export const validateQuery = (schema: any) => {
       });
 
       if (error) {
-        const errors = error.details.map((detail: any) => ({
-          field: detail.path.join('.'),
-          message: detail.message
-        }));
-        
+        const errors = formatJoiDetails(error.details);
+
         console.error('[ValidationMiddleware] Erreurs de validation des paramètres de requête:', JSON.stringify(errors, null, 2));
         console.error('[ValidationMiddleware] Paramètres de requête reçus:', JSON.stringify(req.query, null, 2));
 
-        const apiError = new Error('Erreur de validation des paramètres de requête') as ApiError;
+        const apiError = new Error(
+          buildValidationSummaryMessage(errors, 'Paramètres de requête invalides')
+        ) as ApiError;
         apiError.statusCode = 400;
+        apiError.code = 'VALIDATION_ERROR';
         apiError.errors = errors;
 
         return next(apiError);

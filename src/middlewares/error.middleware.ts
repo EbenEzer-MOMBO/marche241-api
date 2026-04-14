@@ -2,6 +2,8 @@ import { Request, Response, NextFunction } from 'express';
 
 export interface ApiError extends Error {
   statusCode?: number;
+  /** Code machine pour le client (ex. VALIDATION_ERROR) */
+  code?: string;
   errors?: any[];
 }
 
@@ -12,13 +14,24 @@ export const errorHandler = (
   next: NextFunction
 ) => {
   const statusCode = err.statusCode || 500;
-  
-  res.status(statusCode).json({
+
+  const payload: Record<string, unknown> = {
     success: false,
     message: err.message || 'Erreur serveur',
-    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined,
-    errors: err.errors
-  });
+  };
+
+  if (process.env.NODE_ENV === 'development') {
+    payload.stack = err.stack;
+  }
+
+  if (err.errors?.length) {
+    payload.code = err.code ?? 'VALIDATION_ERROR';
+    payload.errors = err.errors;
+  } else if (err.code) {
+    payload.code = err.code;
+  }
+
+  res.status(statusCode).json(payload);
 };
 
 export const notFound = (req: Request, res: Response, next: NextFunction) => {
