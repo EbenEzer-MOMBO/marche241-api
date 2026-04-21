@@ -32,6 +32,9 @@ export const updateVendeurSchema = Joi.object({
   }),
   photo_profil: Joi.string().allow(null, '').max(255).messages({
     'string.max': 'L\'URL de la photo de profil ne doit pas dépasser {#limit} caractères'
+  }),
+  numero_paiement: Joi.string().allow(null, '').max(255).messages({
+    'string.max': 'Le numéro de paiement ne doit pas dépasser {#limit} caractères'
   })
 });
 

@@ -122,6 +122,9 @@
  *         ville:
  *           type: string
  *           description: Ville du vendeur
+ *         numero_paiement:
+ *           type: string
+ *           description: Numéro ou identifiant pour recevoir les paiements
  *         verification_telephone:
  *           type: boolean
  *           description: Indique si le téléphone a été vérifié

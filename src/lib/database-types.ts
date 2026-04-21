@@ -49,6 +49,7 @@ export interface Vendeur {
   date_modification: Date;
   statut: StatutVendeur;
   photo_profil?: string;
+  numero_paiement?: string;
   ville?: string;
   verification_telephone: boolean;
   verification_email: boolean;

@@ -317,6 +317,10 @@ router.post('/', validate(createVendeurSchema), VendeurController.createVendeur)
  *                 type: string
  *                 description: Ville du vendeur
  *                 example: "Libreville"
+ *               numero_paiement:
+ *                 type: string
+ *                 description: Numéro ou identifiant pour recevoir les paiements
+ *                 example: "+24177123456"
  *     responses:
  *       200:
  *         description: Vendeur mis à jour avec succès
