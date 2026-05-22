@@ -101,8 +101,8 @@ export const createBoutiqueSchema = Joi.object({
   telephone: Joi.string().allow(null, '').pattern(/^\+?[0-9]{8,15}$/).messages({
     'string.pattern.base': 'Le numéro de téléphone doit être au format international (8-15 chiffres)'
   }),
-  is_full_payment_activated: Joi.boolean().default(false).messages({
-    'boolean.base': 'is_full_payment_activated doit être un booléen (true/false)'
+  payment_restriction_mode: Joi.string().valid('complet_uniquement', 'livraison_uniquement', 'les_deux').default('les_deux').messages({
+    'any.only': 'Le mode de restriction de paiement doit être complet_uniquement, livraison_uniquement ou les_deux'
   })
 });
 
@@ -137,8 +137,8 @@ export const updateBoutiqueSchema = Joi.object({
   telephone: Joi.string().allow(null, '').pattern(/^\+?[0-9]{8,15}$/).messages({
     'string.pattern.base': 'Le numéro de téléphone doit être au format international (8-15 chiffres)'
   }),
-  is_full_payment_activated: Joi.boolean().messages({
-    'boolean.base': 'is_full_payment_activated doit être un booléen (true/false)'
+  payment_restriction_mode: Joi.string().valid('complet_uniquement', 'livraison_uniquement', 'les_deux').messages({
+    'any.only': 'Le mode de restriction de paiement doit être complet_uniquement, livraison_uniquement ou les_deux'
   })
 }).unknown(true); // Permettre les champs supplémentaires qui ne sont pas dans le schéma
 
