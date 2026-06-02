@@ -211,4 +211,35 @@ router.post('/notifier-vendeur', WhatsAppController.notifierVendeurNouvelleComma
  */
 router.post('/test', WhatsAppController.testConfiguration);
 
+/**
+ * @swagger
+ * /api/v1/whatsapp/optout:
+ *   post:
+ *     summary: Désabonne un utilisateur de la liste de diffusion WhatsApp (Opt-out)
+ *     tags: [WhatsApp]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - telephone
+ *             properties:
+ *               telephone:
+ *                 type: string
+ *                 description: Numéro WhatsApp à désabonner
+ *                 example: "+24177123456"
+ *     responses:
+ *       200:
+ *         description: Désabonnement réussi
+ *       400:
+ *         description: Données invalides
+ *       404:
+ *         description: Numéro non trouvé
+ *       500:
+ *         description: Erreur serveur
+ */
+router.post('/optout', WhatsAppController.optOut);
+
 export default router;

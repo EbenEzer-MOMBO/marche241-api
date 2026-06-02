@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { WhatsAppService } from '../services/whatsapp.service';
+import { WhatsappSubscriberModel } from '../models/whatsapp_subscriber.model';
 
 export class WhatsAppController {
   /**
@@ -275,6 +276,47 @@ Ce message confirme que la configuration WhatsApp GREEN-API fonctionne correctem
       res.status(500).json({
         success: false,
         message: 'Erreur lors de la vérification du statut',
+        error: error.message
+      });
+    }
+  }
+
+  /**
+   * Désabonne un utilisateur de la liste WhatsApp (Opt-out)
+   */
+  static async optOut(req: Request, res: Response): Promise<void> {
+    try {
+      const { telephone } = req.body;
+
+      if (!telephone) {
+        res.status(400).json({
+          success: false,
+          message: 'Le champ telephone est obligatoire'
+        });
+        return;
+      }
+
+      const subscriber = await WhatsappSubscriberModel.unsubscribe(telephone);
+
+      if (!subscriber) {
+        res.status(404).json({
+          success: false,
+          message: "Ce numéro de téléphone n'est pas enregistré comme abonné"
+        });
+        return;
+      }
+
+      res.status(200).json({
+        success: true,
+        message: 'Vous avez été désabonné avec succès des notifications WhatsApp',
+        data: subscriber
+      });
+
+    } catch (error: any) {
+      console.error('Erreur lors du désabonnement WhatsApp:', error.message);
+      res.status(500).json({
+        success: false,
+        message: 'Erreur lors du désabonnement',
         error: error.message
       });
     }

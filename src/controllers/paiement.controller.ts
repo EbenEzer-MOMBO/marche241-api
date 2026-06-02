@@ -4,6 +4,7 @@ import { TransactionModel } from '../models/transaction.model';
 import { CommandeModel } from '../models/commande.model';
 import { StatutPaiement, Transaction, MethodePaiement } from '../lib/database-types';
 import { ProduitModel } from '../models/produit.model';
+import { WhatsappSubscriberModel } from '../models/whatsapp_subscriber.model';
 
 export class PaiementController {
   /**
@@ -686,6 +687,16 @@ export class PaiementController {
               console.log(`[PaiementController] Statut de la commande mis à jour (les stocks sont déduits automatiquement lors du passage à 'confirmee')`);
             } else {
               console.log(`[PaiementController] Statut de la commande inchangé: ${commande.statut}`);
+            }
+
+            // Enregistrer automatiquement le numéro WhatsApp unique du client comme abonné actif
+            if (commande.client_telephone) {
+              try {
+                console.log(`[PaiementController] Enregistrement automatique de l'abonné WhatsApp: ${commande.client_telephone} (${commande.client_nom || 'Sans nom'})`);
+                await WhatsappSubscriberModel.subscribe(commande.client_telephone, commande.client_nom);
+              } catch (subError: any) {
+                console.error(`[PaiementController] Échec de l'abonnement automatique WhatsApp pour ${commande.client_telephone}:`, subError.message);
+              }
             }
 
             console.log(`[PaiementController] Commande mise à jour avec succès`);
