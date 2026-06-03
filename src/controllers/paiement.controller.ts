@@ -390,9 +390,9 @@ export class PaiementController {
    */
   private static async getAccessToken(): Promise<string> {
     try {
-      const authUrl = "https://staging.billing-easy.net/shap/api/v1/merchant/auth";
-      const apiId = "b43ea5f5e3a4c4e";
-      const apiSecret = "e97d36-2a452a-235add-a14b73-13f388";
+      const authUrl = process.env.EBILLING_AUTH_URL || "https://staging.billing-easy.net/shap/api/v1/merchant/auth";
+      const apiId = process.env.EBILLING_API_ID || '';
+      const apiSecret = process.env.EBILLING_API_SECRET || '';
 
       const authData = new URLSearchParams();
       authData.append('api_id', apiId);
@@ -423,7 +423,7 @@ export class PaiementController {
    */
   private static async creerFacture(paymentData: any, accessToken: string): Promise<any> {
     try {
-      const paymentUrl = "https://staging.billing-easy.net/shap/api/v1/merchant/create-invoice";
+      const paymentUrl = process.env.EBILLING_CREATE_INVOICE_URL || "https://staging.billing-easy.net/shap/api/v1/merchant/create-invoice";
 
       const globalArray = {
         payer_email: paymentData.email,
@@ -457,7 +457,7 @@ export class PaiementController {
    */
   private static async envoyerUSSDPush(ussdData: any, accessToken: string): Promise<any> {
     try {
-      const ussdPushUrl = "https://staging.billing-easy.net/shap/api/v1/merchant/send-ussd-push";
+      const ussdPushUrl = process.env.EBILLING_SEND_USSD_PUSH_URL || "https://staging.billing-easy.net/shap/api/v1/merchant/send-ussd-push";
 
       const response = await axios.post(ussdPushUrl, ussdData, {
         headers: {
@@ -482,9 +482,9 @@ export class PaiementController {
     try {
       console.log(`[PaiementController] Début de processPaymentVerification pour billId: ${billId}`);
 
-      const SERVER_URL = "https://stg.billing-easy.com/api/v1/merchant/e_bills";
-      const USER_NAME = 'weupgrade';
-      const SHARED_KEY = 'ae049010-e12a-4b92-8b4a-f83f1c489f97';
+      const SERVER_URL = process.env.EBILLING_SERVER_URL || "https://stg.billing-easy.com/api/v1/merchant/e_bills";
+      const USER_NAME = process.env.EBILLING_USER_NAME || '';
+      const SHARED_KEY = process.env.EBILLING_SHARED_KEY || '';
 
       // Vérifier l'état du bill
       const checkBillUrl = `${SERVER_URL}/${billId}`;
