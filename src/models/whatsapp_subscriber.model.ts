@@ -135,4 +135,50 @@ export class WhatsappSubscriberModel {
 
     return updated as WhatsappSubscriber;
   }
+
+  /**
+   * Désabonne un utilisateur à partir de son ID
+   * @param id Identifiant de l'abonné
+   */
+  static async unsubscribeById(id: number): Promise<WhatsappSubscriber | null> {
+    if (!id || isNaN(id)) {
+      throw new Error("L'identifiant de l'abonné est invalide");
+    }
+
+    // Rechercher si l'abonné existe
+    const { data: existing, error: getError } = await supabaseAdmin
+      .from(this.TABLE_NAME)
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (getError) {
+      console.error(`[WhatsappSubscriberModel] Erreur lors de la recherche pour désabonnement ID ${id}:`, getError.message);
+      throw new Error(`Erreur lors de la recherche de l'abonné: ${getError.message}`);
+    }
+
+    if (!existing) {
+      console.log(`[WhatsappSubscriberModel] Aucun abonné trouvé pour l'ID ${id} pour désabonnement`);
+      return null;
+    }
+
+    console.log(`[WhatsappSubscriberModel] Passage du statut à inactive pour l'abonné (ID: ${id}, Phone: ${existing.phone})`);
+    const { data: updated, error: updateError } = await supabaseAdmin
+      .from(this.TABLE_NAME)
+      .update({
+        status: 'inactive',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (updateError) {
+      console.error(`[WhatsappSubscriberModel] Erreur lors du désabonnement de l'abonné ID ${id}:`, updateError.message);
+      throw new Error(`Erreur lors du désabonnement: ${updateError.message}`);
+    }
+
+    return updated as WhatsappSubscriber;
+  }
 }
+

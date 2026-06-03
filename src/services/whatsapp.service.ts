@@ -275,4 +275,48 @@ Merci pour votre confiance ! 🙏`;
 
     return this.sendMessage(phone, message);
   }
+
+  /**
+   * Vérifie si un numéro de téléphone dispose d'un compte WhatsApp
+   * @param phone Numéro de téléphone
+   */
+  static async checkWhatsAppNumber(phone: string): Promise<{ existsWhatsapp: boolean } | null> {
+    if (!this.isConfigured()) {
+      console.warn('[WhatsAppService] Service non configuré. Variables GREEN_API_ID_INSTANCE et GREEN_API_TOKEN requises.');
+      return null;
+    }
+
+    const formattedChatId = this.formatPhoneNumber(phone);
+    const cleanDigits = formattedChatId.split('@')[0]; // ex: "24177123456"
+
+    const url = `${this.apiUrl}/waInstance${this.idInstance}/checkWhatsapp/${this.apiTokenInstance}`;
+
+    console.log(`[WhatsAppService] Vérification WhatsApp pour ${cleanDigits}`);
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          phoneNumber: parseInt(cleanDigits, 10)
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`[WhatsAppService] Erreur HTTP lors de la vérification ${response.status}: ${errorText}`);
+        return null;
+      }
+
+      const data = await response.json() as { existsWhatsapp: boolean };
+      console.log(`[WhatsAppService] Résultat de la vérification pour ${cleanDigits}: ${data.existsWhatsapp}`);
+      return data;
+    } catch (error: any) {
+      console.error('[WhatsAppService] Erreur lors de la vérification WhatsApp:', error.message);
+      return null;
+    }
+  }
 }
+

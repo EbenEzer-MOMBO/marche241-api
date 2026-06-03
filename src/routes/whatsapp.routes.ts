@@ -32,6 +32,35 @@ router.get('/status', WhatsAppController.getStatus);
 
 /**
  * @swagger
+ * /api/v1/whatsapp/check-number:
+ *   post:
+ *     summary: Vérifie si un numéro de téléphone dispose d'un compte WhatsApp
+ *     tags: [WhatsApp]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - telephone
+ *             properties:
+ *               telephone:
+ *                 type: string
+ *                 description: Numéro à vérifier
+ *                 example: "+24177123456"
+ *     responses:
+ *       200:
+ *         description: Résultat de la vérification
+ *       400:
+ *         description: Données invalides
+ *       500:
+ *         description: Erreur serveur ou service non configuré
+ */
+router.post('/check-number', WhatsAppController.checkWhatsAppNumber);
+
+/**
+ * @swagger
  * /api/v1/whatsapp/notification-statut:
  *   post:
  *     summary: Envoie une notification de changement de statut de commande
@@ -213,33 +242,27 @@ router.post('/test', WhatsAppController.testConfiguration);
 
 /**
  * @swagger
- * /api/v1/whatsapp/optout:
- *   post:
+ * /api/v1/whatsapp/optout/{id}:
+ *   get:
  *     summary: Désabonne un utilisateur de la liste de diffusion WhatsApp (Opt-out)
  *     tags: [WhatsApp]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - telephone
- *             properties:
- *               telephone:
- *                 type: string
- *                 description: Numéro WhatsApp à désabonner
- *                 example: "+24177123456"
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID unique de l'abonné WhatsApp
  *     responses:
  *       200:
- *         description: Désabonnement réussi
+ *         description: Désabonnement réussi (retourne une page HTML ou un JSON de confirmation)
  *       400:
- *         description: Données invalides
+ *         description: ID invalide ou manquant
  *       404:
- *         description: Numéro non trouvé
+ *         description: ID d'abonné non trouvé
  *       500:
  *         description: Erreur serveur
  */
-router.post('/optout', WhatsAppController.optOut);
+router.get('/optout/:id', WhatsAppController.optOut);
 
 export default router;

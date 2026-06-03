@@ -282,9 +282,9 @@ Ce message confirme que la configuration WhatsApp GREEN-API fonctionne correctem
   }
 
   /**
-   * Désabonne un utilisateur de la liste WhatsApp (Opt-out)
+   * Vérifie si un numéro dispose d'un compte WhatsApp
    */
-  static async optOut(req: Request, res: Response): Promise<void> {
+  static async checkWhatsAppNumber(req: Request, res: Response): Promise<void> {
     try {
       const { telephone } = req.body;
 
@@ -296,29 +296,271 @@ Ce message confirme que la configuration WhatsApp GREEN-API fonctionne correctem
         return;
       }
 
-      const subscriber = await WhatsappSubscriberModel.unsubscribe(telephone);
-
-      if (!subscriber) {
-        res.status(404).json({
+      // Vérifier si le service est configuré
+      if (!WhatsAppService.isConfigured()) {
+        res.status(500).json({
           success: false,
-          message: "Ce numéro de téléphone n'est pas enregistré comme abonné"
+          message: 'Service WhatsApp non configuré sur le serveur backend.'
+        });
+        return;
+      }
+
+      const result = await WhatsAppService.checkWhatsAppNumber(telephone);
+
+      if (!result) {
+        res.status(500).json({
+          success: false,
+          message: 'Échec de la vérification WhatsApp.'
         });
         return;
       }
 
       res.status(200).json({
         success: true,
-        message: 'Vous avez été désabonné avec succès des notifications WhatsApp',
-        data: subscriber
+        existsWhatsapp: result.existsWhatsapp
       });
 
     } catch (error: any) {
-      console.error('Erreur lors du désabonnement WhatsApp:', error.message);
+      console.error('Erreur lors de la vérification du numéro WhatsApp:', error.message);
       res.status(500).json({
         success: false,
-        message: 'Erreur lors du désabonnement',
+        message: 'Erreur lors de la vérification du numéro WhatsApp',
         error: error.message
       });
     }
   }
+
+  /**
+   * Désabonne un utilisateur de la liste WhatsApp (Opt-out)
+   */
+  static async optOut(req: Request, res: Response): Promise<void> {
+    const { id } = req.params;
+
+    if (!id || isNaN(Number(id))) {
+      if (req.xhr || req.headers.accept?.includes('application/json')) {
+        res.status(400).json({
+          success: false,
+          message: "L'identifiant de désabonnement est requis et doit être valide"
+        });
+        return;
+      }
+      
+      res.status(400).send(WhatsAppController.getErrorHtml("L'identifiant de désabonnement est invalide ou manquant."));
+      return;
+    }
+
+    try {
+      const subscriber = await WhatsappSubscriberModel.unsubscribeById(Number(id));
+
+      if (!subscriber) {
+        if (req.xhr || req.headers.accept?.includes('application/json')) {
+          res.status(404).json({
+            success: false,
+            message: "Abonné non trouvé"
+          });
+          return;
+        }
+        res.status(404).send(WhatsAppController.getErrorHtml("Ce lien de désabonnement semble expiré ou invalide. Aucun abonné correspondant n'a été trouvé."));
+        return;
+      }
+
+      if (req.xhr || req.headers.accept?.includes('application/json')) {
+        res.status(200).json({
+          success: true,
+          message: 'Vous avez été désabonné avec succès des notifications WhatsApp',
+          data: subscriber
+        });
+        return;
+      }
+
+      res.status(200).send(WhatsAppController.getSuccessHtml());
+
+    } catch (error: any) {
+      console.error('Erreur lors du désabonnement WhatsApp:', error.message);
+      if (req.xhr || req.headers.accept?.includes('application/json')) {
+        res.status(500).json({
+          success: false,
+          message: 'Erreur lors du désabonnement',
+          error: error.message
+        });
+        return;
+      }
+      res.status(500).send(WhatsAppController.getErrorHtml("Une erreur interne est survenue lors de votre demande de désabonnement."));
+    }
+  }
+
+  /**
+   * Retourne le code HTML pour une page de désabonnement réussi.
+   */
+  private static getSuccessHtml(): string {
+    return `
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Désabonnement Réussi - Marché 241</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: #f8fafc;
+            color: #1e293b;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .container {
+            background-color: white;
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
+            text-align: center;
+            max-width: 450px;
+            width: 100%;
+        }
+        .icon {
+            background-color: #f0fdf4;
+            color: #16a34a;
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+            margin: 0 auto 24px;
+            line-height: 80px;
+        }
+        h1 {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            color: #0f172a;
+        }
+        p {
+            font-size: 16px;
+            color: #64748b;
+            line-height: 1.6;
+            margin-bottom: 32px;
+        }
+        .btn {
+            display: inline-block;
+            background-color: #1e293b;
+            color: white;
+            text-decoration: none;
+            padding: 12px 24px;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 14px;
+            transition: background-color 0.2s;
+        }
+        .btn:hover {
+            background-color: #0f172a;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="icon">✓</div>
+        <h1>Désabonnement réussi</h1>
+        <p>Vous avez été retiré avec succès de notre liste de diffusion WhatsApp. Vous ne recevrez plus de messages promotionnels ou d'actualités sur ce numéro.</p>
+        <a href="https://marche241.com" class="btn">Retour au site</a>
+    </div>
+</body>
+</html>
+    `;
+  }
+
+  /**
+   * Retourne le code HTML pour une page d'erreur de désabonnement.
+   */
+  private static getErrorHtml(errorMessage: string): string {
+    return `
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Erreur de Désabonnement - Marché 241</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: #f8fafc;
+            color: #1e293b;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .container {
+            background-color: white;
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
+            text-align: center;
+            max-width: 450px;
+            width: 100%;
+        }
+        .icon {
+            background-color: #fef2f2;
+            color: #dc2626;
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+            margin: 0 auto 24px;
+            line-height: 80px;
+        }
+        h1 {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            color: #0f172a;
+        }
+        p {
+            font-size: 16px;
+            color: #64748b;
+            line-height: 1.6;
+            margin-bottom: 32px;
+        }
+        .btn {
+            display: inline-block;
+            background-color: #1e293b;
+            color: white;
+            text-decoration: none;
+            padding: 12px 24px;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 14px;
+            transition: background-color 0.2s;
+        }
+        .btn:hover {
+            background-color: #0f172a;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="icon">✕</div>
+        <h1>Une erreur est survenue</h1>
+        <p>${errorMessage}</p>
+        <a href="https://marche241.com" class="btn">Retour au site</a>
+    </div>
+</body>
+</html>
+    `;
+  }
 }
+
