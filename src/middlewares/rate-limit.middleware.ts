@@ -1,11 +1,11 @@
 import rateLimit from 'express-rate-limit';
 
 /**
- * Limiteur de débit global standard (100 requêtes par 15 minutes par IP)
+ * Limiteur de débit global standard (500 requêtes par 15 minutes par IP)
  */
 export const standardLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limite chaque IP à 100 requêtes par windowMs
+  max: 500, // Limite chaque IP à 500 requêtes par windowMs
   standardHeaders: true, // Retourne les infos de limite dans les headers `RateLimit-*`
   legacyHeaders: false, // Désactive les headers `X-RateLimit-*`
   message: {
