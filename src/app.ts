@@ -76,6 +76,10 @@ if (process.env.NODE_ENV !== 'production') {
 // Configurer Swagger
 setupSwagger(app);
 
+// Rate limiter global pour l'API
+import { standardLimiter } from './middlewares/rate-limit.middleware';
+app.use('/api/', standardLimiter);
+
 // Routes API
 app.use(routes);
 

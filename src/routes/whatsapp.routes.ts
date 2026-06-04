@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import { WhatsAppController } from '../controllers/whatsapp.controller';
+import { auth, isAdmin } from '../middlewares/auth.middleware';
+import { whatsappLimiter } from '../middlewares/rate-limit.middleware';
 
 const router = Router();
 
@@ -57,7 +59,7 @@ router.get('/status', WhatsAppController.getStatus);
  *       500:
  *         description: Erreur serveur ou service non configuré
  */
-router.post('/check-number', WhatsAppController.checkWhatsAppNumber);
+router.post('/check-number', whatsappLimiter, WhatsAppController.checkWhatsAppNumber);
 
 /**
  * @swagger
@@ -126,7 +128,7 @@ router.post('/check-number', WhatsAppController.checkWhatsAppNumber);
  *       500:
  *         description: Erreur serveur
  */
-router.post('/notification-statut', WhatsAppController.envoyerNotificationStatut);
+router.post('/notification-statut', auth, WhatsAppController.envoyerNotificationStatut);
 
 /**
  * @swagger
@@ -160,7 +162,7 @@ router.post('/notification-statut', WhatsAppController.envoyerNotificationStatut
  *       500:
  *         description: Erreur serveur
  */
-router.post('/envoyer-message', WhatsAppController.envoyerMessage);
+router.post('/envoyer-message', whatsappLimiter, WhatsAppController.envoyerMessage);
 
 /**
  * @swagger
@@ -209,7 +211,7 @@ router.post('/envoyer-message', WhatsAppController.envoyerMessage);
  *       500:
  *         description: Erreur serveur
  */
-router.post('/notifier-vendeur', WhatsAppController.notifierVendeurNouvelleCommande);
+router.post('/notifier-vendeur', auth, WhatsAppController.notifierVendeurNouvelleCommande);
 
 /**
  * @swagger
@@ -238,7 +240,7 @@ router.post('/notifier-vendeur', WhatsAppController.notifierVendeurNouvelleComma
  *       500:
  *         description: Erreur de configuration ou d'envoi
  */
-router.post('/test', WhatsAppController.testConfiguration);
+router.post('/test', auth, isAdmin, WhatsAppController.testConfiguration);
 
 /**
  * @swagger

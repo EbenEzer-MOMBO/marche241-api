@@ -69,6 +69,11 @@ router.get('/cron/tasks', CronController.executeAllTasks);
 // Exemple: curl https://votre-api.onrender.com/cron/expirer-transactions
 router.get('/cron/expirer-transactions', CronController.executeExpirerTransactions);
 
+// Route pour annuler manuellement les commandes orphelines
+// Exemple: curl https://votre-api.onrender.com/cron/annuler-commandes-orphelines?key=votre_cle_secrete
+router.get('/cron/annuler-commandes-orphelines', CronController.executeAnnulerCommandesOrphelines);
+
 // Ajouter d'autres routes ici au fur et à mesure
 
 export default router;
+

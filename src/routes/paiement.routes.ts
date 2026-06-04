@@ -4,6 +4,7 @@ import { auth } from '../middlewares/auth.middleware';
 import { validate, validateParams } from '../middlewares/validation.middleware';
 import { idParamSchema } from '../utils/validation.schemas';
 import { initierPaiementMobileSchema, initierPaiementVisaSchema, verifierPaiementSchema } from '../utils/validation.schemas.paiement';
+import { paymentLimiter } from '../middlewares/rate-limit.middleware';
 
 const router = Router();
 
@@ -12,7 +13,7 @@ const router = Router();
  * /api/v1/paiements/mobile:
  *   post:
  *     summary: Initialise un paiement mobile (Airtel Money ou Moov Money)
- *     description: Initialise un paiement mobile et envoie un push USSD
+ *     description: Initialise un paiement mobile and envoie un push USSD
  *     tags: [Paiements]
  *     requestBody:
  *       required: true
@@ -66,7 +67,7 @@ const router = Router();
  * @desc    Initialise un paiement mobile
  * @access  Public
  */
-router.post('/mobile', validate(initierPaiementMobileSchema), PaiementController.initierPaiementMobile);
+router.post('/mobile', paymentLimiter, validate(initierPaiementMobileSchema), PaiementController.initierPaiementMobile);
 
 /**
  * @swagger
@@ -117,7 +118,7 @@ router.post('/mobile', validate(initierPaiementMobileSchema), PaiementController
  * @desc    Initialise un paiement Visa
  * @access  Public
  */
-router.post('/visa', validate(initierPaiementVisaSchema), PaiementController.initierPaiementVisa);
+router.post('/visa', paymentLimiter, validate(initierPaiementVisaSchema), PaiementController.initierPaiementVisa);
 
 /**
  * @swagger

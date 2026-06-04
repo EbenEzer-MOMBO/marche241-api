@@ -415,5 +415,39 @@ router.get('/nettoyer-vues', CronController.executeNettoyerVues);
  */
 router.get('/nettoyer-vues-mois', CronController.executeNettoyerVuesMoisEnCours);
 
+/**
+ * @swagger
+ * /api/v1/cron/annuler-commandes-orphelines:
+ *   get:
+ *     summary: Annule les commandes orphelines
+ *     description: Annule les commandes en attente créées il y a plus de X heures sans aucune transaction associée.
+ *     tags: [Cron]
+ *     parameters:
+ *       - in: query
+ *         name: heures
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Nombre d'heures d'inactivité avant d'être considérée comme orpheline (défaut 1)
+ *       - in: query
+ *         name: key
+ *         schema:
+ *           type: string
+ *         description: Clé secrète optionnelle (définie dans CRON_SECRET_KEY)
+ *     responses:
+ *       200:
+ *         description: Annulation effectuée avec succès
+ *       401:
+ *         description: Clé d'authentification invalide
+ *       500:
+ *         description: Erreur serveur
+ * 
+ * @route   GET /api/v1/cron/annuler-commandes-orphelines
+ * @desc    Annule les commandes en attente sans transaction
+ * @access  Public (avec clé optionnelle)
+ */
+router.get('/annuler-commandes-orphelines', CronController.executeAnnulerCommandesOrphelines);
+
 export default router;
+
 

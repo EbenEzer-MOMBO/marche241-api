@@ -102,3 +102,16 @@ export const transactionStatsQuerySchema = Joi.object({
     'date.min': 'La date de fin doit être postérieure à la date de début'
   })
 });
+
+// Schéma pour les filtres de requête de la liste des transactions
+export const transactionQuerySchema = Joi.object({
+  page: Joi.number().integer().min(1).default(1),
+  limite: Joi.number().integer().min(1).max(100).default(10),
+  statut: Joi.string().valid('en_attente', 'paye', 'echec', 'rembourse', 'all').default('all'),
+  type_paiement: Joi.string().valid('paiement_complet', 'acompte', 'frais_livraison', 'solde_apres_livraison', 'complement', 'all').default('all'),
+  recherche: Joi.string().allow('', null).default(''),
+  mois: Joi.string().pattern(/^\d{4}-\d{2}$/).allow('', null).messages({
+    'string.pattern.base': 'Le format du mois doit être AAAA-MM (ex: 2026-06)'
+  })
+});
+

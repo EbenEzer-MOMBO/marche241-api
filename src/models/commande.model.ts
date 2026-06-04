@@ -574,4 +574,72 @@ export class CommandeModel {
       throw error;
     }
   }
+
+  /**
+   * Annule les commandes orphelines (statut 'en_attente' de plus de X heures sans aucune transaction)
+   * @param delaiHeures Délai en heures avant de considérer une commande comme orpheline (défaut: 1 heure)
+   */
+  static async annulerCommandesOrphelines(delaiHeures: number = 1): Promise<{ nbAnnulees: number }> {
+    console.log(`[CommandeModel] Début de la recherche des commandes orphelines (seuil: ${delaiHeures}h)...`);
+    try {
+      const dateLimite = new Date(Date.now() - delaiHeures * 60 * 60 * 1000).toISOString();
+
+      // Récupérer les commandes en attente créées avant la date limite, avec leurs transactions
+      const { data: commandes, error } = await supabaseAdmin
+        .from('commandes')
+        .select('id, numero_commande, date_commande, transactions(id)')
+        .eq('statut', 'en_attente')
+        .lt('date_commande', dateLimite);
+
+      if (error) {
+        console.error('[CommandeModel] Erreur lors de la récupération des commandes en attente:', error);
+        throw new Error(`Erreur lors de la récupération des commandes: ${error.message}`);
+      }
+
+      if (!commandes || commandes.length === 0) {
+        console.log('[CommandeModel] Aucune commande en attente trouvée avant le seuil.');
+        return { nbAnnulees: 0 };
+      }
+
+      // Filtrer les commandes qui n'ont aucune transaction associée
+      const orphelineIds: number[] = [];
+      const orphelineNumeros: string[] = [];
+
+      for (const cmd of commandes) {
+        const txs = cmd.transactions as any[];
+        if (!txs || txs.length === 0) {
+          orphelineIds.push(cmd.id);
+          orphelineNumeros.push(cmd.numero_commande || cmd.id.toString());
+        }
+      }
+
+      if (orphelineIds.length === 0) {
+        console.log('[CommandeModel] Toutes les commandes en attente ont au moins une transaction associée.');
+        return { nbAnnulees: 0 };
+      }
+
+      console.log(`[CommandeModel] Commandes orphelines trouvées (${orphelineIds.length}):`, orphelineNumeros.join(', '));
+
+      // Mettre à jour ces commandes au statut 'annulee'
+      const { error: updateError } = await supabaseAdmin
+        .from('commandes')
+        .update({
+          statut: 'annulee',
+          date_modification: new Date()
+        })
+        .in('id', orphelineIds);
+
+      if (updateError) {
+        console.error('[CommandeModel] Erreur lors de l\'annulation en masse des commandes orphelines:', updateError);
+        throw new Error(`Erreur lors de l'annulation des commandes: ${updateError.message}`);
+      }
+
+      console.log(`[CommandeModel] Succès: ${orphelineIds.length} commandes orphelines annulées.`);
+      return { nbAnnulees: orphelineIds.length };
+    } catch (error) {
+      console.error('[CommandeModel] Exception dans annulerCommandesOrphelines:', error);
+      throw error;
+    }
+  }
 }
+

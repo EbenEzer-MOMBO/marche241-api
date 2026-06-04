@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { TransactionController } from '../controllers/transaction.controller';
-import { auth, isAdmin } from '../middlewares/auth.middleware';
+import { auth, isAdmin, isBoutiqueOwner, isCommandeOwner } from '../middlewares/auth.middleware';
 import { validate, validateParams, validateQuery } from '../middlewares/validation.middleware';
 import { idParamSchema, paginationQuerySchema } from '../utils/validation.schemas';
 import { 
@@ -10,8 +10,10 @@ import {
   referenceParamSchema, 
   transactionStatsQuerySchema, 
   updateTransactionSchema, 
-  updateTransactionStatusSchema 
+  updateTransactionStatusSchema,
+  transactionQuerySchema
 } from '../utils/validation.schemas.transaction';
+import { paymentLimiter } from '../middlewares/rate-limit.middleware';
 
 const router = Router();
 
@@ -51,7 +53,7 @@ const router = Router();
  * @desc    Récupère toutes les transactions
  * @access  Private (admin)
  */
-router.get('/', validateQuery(paginationQuerySchema), TransactionController.getAllTransactions);
+router.get('/', auth, isAdmin, validateQuery(paginationQuerySchema), TransactionController.getAllTransactions);
 
 /**
  * @swagger
@@ -91,7 +93,7 @@ router.get('/', validateQuery(paginationQuerySchema), TransactionController.getA
  * @desc    Récupère les statistiques des transactions
  * @access  Private (admin)
  */
-router.get('/stats', validateQuery(transactionStatsQuerySchema), TransactionController.getTransactionStats);
+router.get('/stats', auth, isAdmin, validateQuery(transactionStatsQuerySchema), TransactionController.getTransactionStats);
 
 /**
  * @swagger
@@ -159,7 +161,8 @@ router.get('/stats', validateQuery(transactionStatsQuerySchema), TransactionCont
  * @desc    Récupère les transactions d'une boutique
  * @access  Private
  */
-router.get('/boutique/:boutiqueId', validateParams(boutiqueIdParamSchema), validateQuery(paginationQuerySchema), TransactionController.getTransactionsByBoutiqueId);
+router.get('/boutique/:boutiqueId', auth, validateParams(boutiqueIdParamSchema), validateQuery(transactionQuerySchema), isBoutiqueOwner, TransactionController.getTransactionsByBoutiqueId);
+router.get('/boutique/:boutiqueId/export', auth, validateParams(boutiqueIdParamSchema), validateQuery(transactionQuerySchema), isBoutiqueOwner, TransactionController.exportTransactionsToCSV);
 
 /**
  * @swagger
@@ -191,7 +194,7 @@ router.get('/boutique/:boutiqueId', validateParams(boutiqueIdParamSchema), valid
  * @desc    Récupère les transactions d'une commande
  * @access  Private
  */
-router.get('/commande/:commandeId', validateParams(commandeIdParamSchema), TransactionController.getTransactionsByCommandeId);
+router.get('/commande/:commandeId', auth, validateParams(commandeIdParamSchema), isCommandeOwner, TransactionController.getTransactionsByCommandeId);
 
 /**
  * @swagger
@@ -225,7 +228,7 @@ router.get('/commande/:commandeId', validateParams(commandeIdParamSchema), Trans
  * @desc    Récupère une transaction par sa référence
  * @access  Private
  */
-router.get('/reference/:reference', validateParams(referenceParamSchema), TransactionController.getTransactionByReference);
+router.get('/reference/:reference', auth, validateParams(referenceParamSchema), TransactionController.getTransactionByReference);
 
 /**
  * @swagger
@@ -259,7 +262,7 @@ router.get('/reference/:reference', validateParams(referenceParamSchema), Transa
  * @desc    Récupère une transaction par son ID
  * @access  Private
  */
-router.get('/:id', validateParams(idParamSchema), TransactionController.getTransactionById);
+router.get('/:id', auth, validateParams(idParamSchema), TransactionController.getTransactionById);
 
 /**
  * @swagger
@@ -290,7 +293,7 @@ router.get('/:id', validateParams(idParamSchema), TransactionController.getTrans
  * @desc    Crée une nouvelle transaction
  * @access  Private
  */
-router.post('/', validate(createTransactionSchema), TransactionController.createTransaction);
+router.post('/', paymentLimiter, validate(createTransactionSchema), TransactionController.createTransaction);
 
 /**
  * @swagger

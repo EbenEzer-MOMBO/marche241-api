@@ -245,6 +245,28 @@ export class CronController {
         });
       }
 
+      // Tâche 3: Annuler les commandes orphelines (> 1 heure)
+      const task3Start = Date.now();
+      try {
+        console.log('[CronController] Tâche 3: Annuler les commandes orphelines');
+        const result = await CronService.executeAnnulerCommandesOrphelinesManually(1);
+        results.push({
+          task: 'annuler_commandes_orphelines',
+          success: true,
+          result: { commandes_annulees: result.nbAnnulees },
+          duration: Date.now() - task3Start
+        });
+        console.log(`[CronController] Tâche 3 terminée: ${result.nbAnnulees} commande(s) annulée(s)`);
+      } catch (error: any) {
+        console.error('[CronController] Erreur tâche 3:', error.message);
+        results.push({
+          task: 'annuler_commandes_orphelines',
+          success: false,
+          error: error.message,
+          duration: Date.now() - task3Start
+        });
+      }
+
       const totalDuration = Date.now() - startTime;
       const allSuccess = results.every(r => r.success);
 
@@ -401,6 +423,50 @@ export class CronController {
       res.status(500).json({
         success: false,
         message: 'Erreur lors du nettoyage des vues',
+        error: error.message
+      });
+    }
+  }
+
+  /**
+   * Exécute manuellement l'annulation des commandes orphelines
+   * 
+   * GET /api/v1/cron/annuler-commandes-orphelines
+   */
+  static async executeAnnulerCommandesOrphelines(req: Request, res: Response): Promise<void> {
+    try {
+      // Vérification optionnelle de la clé secrète
+      const cronKey = process.env.CRON_SECRET_KEY;
+      const providedKey = req.query.key as string;
+
+      if (cronKey && providedKey !== cronKey) {
+        console.log('[CronController] Clé invalide ou manquante');
+        res.status(401).json({
+          success: false,
+          message: 'Clé d\'authentification invalide'
+        });
+        return;
+      }
+
+      // Récupérer le délai en heures (défaut: 1 heure)
+      const delaiHeures = parseInt(req.query.heures as string) || 1;
+      
+      console.log(`[CronController] Exécution manuelle: annulation des commandes orphelines de plus de ${delaiHeures} heures`);
+
+      const result = await CronService.executeAnnulerCommandesOrphelinesManually(delaiHeures);
+
+      res.status(200).json({
+        success: true,
+        message: `${result.nbAnnulees} commande(s) orpheline(s) annulée(s) avec succès`,
+        count: result.nbAnnulees,
+        delai_heures: delaiHeures,
+        executed_at: new Date().toISOString()
+      });
+    } catch (error: any) {
+      console.error('[CronController] Erreur lors de l\'annulation des commandes orphelines:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erreur lors de l\'annulation des commandes orphelines',
         error: error.message
       });
     }

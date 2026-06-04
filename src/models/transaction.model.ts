@@ -70,30 +70,74 @@ export class TransactionModel {
   static async getTransactionsByBoutiqueId(
     boutiqueId: number,
     page: number = 1,
-    limite: number = 10
+    limite: number = 10,
+    filters?: {
+      statut?: string;
+      type_paiement?: string;
+      recherche?: string;
+      mois?: string;
+    }
   ): Promise<{ transactions: Transaction[], total: number }> {
     const offset = (page - 1) * limite;
 
-    // Compter le nombre total de transactions pour cette boutique
-    const { count, error: countError } = await supabaseAdmin
+    // 1. Construire la requête de comptage
+    let countQuery = supabaseAdmin
       .from('transactions')
       .select('*, commande:commande_id!inner(boutique_id)', { count: 'exact', head: true })
       .eq('commande.boutique_id', boutiqueId);
 
-    if (countError) {
-      throw new Error(`Erreur lors du comptage des transactions: ${countError.message}`);
-    }
-
-    // Récupérer les transactions avec les informations de la commande
-    const { data, error } = await supabaseAdmin
+    // 2. Construire la requête de données
+    let dataQuery = supabaseAdmin
       .from('transactions')
       .select(`
         *,
         commande:commande_id!inner(*)
       `)
       .eq('commande.boutique_id', boutiqueId)
-      .order('date_creation', { ascending: false })
-      .range(offset, offset + limite - 1);
+      .order('date_creation', { ascending: false });
+
+    // Appliquer les filtres communs
+    if (filters) {
+      const { statut, type_paiement, recherche, mois } = filters;
+
+      if (statut && statut !== 'all') {
+        countQuery = countQuery.eq('statut', statut);
+        dataQuery = dataQuery.eq('statut', statut);
+      }
+
+      if (type_paiement && type_paiement !== 'all') {
+        countQuery = countQuery.eq('type_paiement', type_paiement);
+        dataQuery = dataQuery.eq('type_paiement', type_paiement);
+      }
+
+      if (recherche) {
+        const searchFilter = `reference_transaction.ilike.%${recherche}%,numero_telephone.ilike.%${recherche}%,reference_operateur.ilike.%${recherche}%`;
+        countQuery = countQuery.or(searchFilter);
+        dataQuery = dataQuery.or(searchFilter);
+      }
+
+      if (mois) {
+        const [yearStr, monthStr] = mois.split('-');
+        const year = parseInt(yearStr);
+        const month = parseInt(monthStr);
+
+        const startOfMonth = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0, 0));
+        const endOfMonth = new Date(Date.UTC(year, month, 1, 0, 0, 0, 0));
+
+        countQuery = countQuery.gte('date_creation', startOfMonth.toISOString()).lt('date_creation', endOfMonth.toISOString());
+        dataQuery = dataQuery.gte('date_creation', startOfMonth.toISOString()).lt('date_creation', endOfMonth.toISOString());
+      }
+    }
+
+    // Exécuter le comptage
+    const { count, error: countError } = await countQuery;
+
+    if (countError) {
+      throw new Error(`Erreur lors du comptage des transactions: ${countError.message}`);
+    }
+
+    // Exécuter la récupération avec pagination
+    const { data, error } = await dataQuery.range(offset, offset + limite - 1);
 
     if (error) {
       throw new Error(`Erreur lors de la récupération des transactions: ${error.message}`);
@@ -103,6 +147,68 @@ export class TransactionModel {
       transactions: data || [],
       total: count || 0
     };
+  }
+
+  /**
+   * Récupère toutes les transactions liées aux commandes d'une boutique sans pagination pour l'exportation
+   * @param boutiqueId ID de la boutique
+   * @param filters Filtres appliqués
+   */
+  static async getTransactionsForExport(
+    boutiqueId: number,
+    filters?: {
+      statut?: string;
+      type_paiement?: string;
+      recherche?: string;
+      mois?: string;
+    }
+  ): Promise<Transaction[]> {
+    let dataQuery = supabaseAdmin
+      .from('transactions')
+      .select(`
+        *,
+        commande:commande_id!inner(*)
+      `)
+      .eq('commande.boutique_id', boutiqueId)
+      .order('date_creation', { ascending: false });
+
+    // Appliquer les filtres communs
+    if (filters) {
+      const { statut, type_paiement, recherche, mois } = filters;
+
+      if (statut && statut !== 'all') {
+        dataQuery = dataQuery.eq('statut', statut);
+      }
+
+      if (type_paiement && type_paiement !== 'all') {
+        dataQuery = dataQuery.eq('type_paiement', type_paiement);
+      }
+
+      if (recherche) {
+        const searchFilter = `reference_transaction.ilike.%${recherche}%,numero_telephone.ilike.%${recherche}%,reference_operateur.ilike.%${recherche}%`;
+        dataQuery = dataQuery.or(searchFilter);
+      }
+
+      if (mois) {
+        const [yearStr, monthStr] = mois.split('-');
+        const year = parseInt(yearStr);
+        const month = parseInt(monthStr);
+
+        const startOfMonth = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0, 0));
+        const endOfMonth = new Date(Date.UTC(year, month, 1, 0, 0, 0, 0));
+
+        dataQuery = dataQuery.gte('date_creation', startOfMonth.toISOString()).lt('date_creation', endOfMonth.toISOString());
+      }
+    }
+
+    // Exécuter la récupération
+    const { data, error } = await dataQuery;
+
+    if (error) {
+      throw new Error(`Erreur lors de la récupération des transactions pour export: ${error.message}`);
+    }
+
+    return data || [];
   }
 
   /**

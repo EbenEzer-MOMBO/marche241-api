@@ -22,6 +22,9 @@ export class CronService {
     // Tâche pour nettoyer les anciennes vues
     this.scheduleNettoyerAnciennesVues();
 
+    // Tâche pour annuler les commandes orphelines
+    this.scheduleAnnulerCommandesOrphelines();
+
     console.log('[CronService] Tâches planifiées initialisées avec succès');
   }
 
@@ -326,6 +329,49 @@ export class CronService {
   static async executeNettoyerVuesMoisEnCoursManually(): Promise<{ count: number; mois_conserve: string }> {
     console.log('[CronService] Exécution manuelle: nettoyer toutes les vues sauf le mois en cours');
     return await this.nettoyerVuesHorsMoisEnCours();
+  }
+
+  /**
+   * Planifie la tâche pour annuler les commandes orphelines
+   * S'exécute toutes les 30 minutes
+   */
+  static scheduleAnnulerCommandesOrphelines(): void {
+    const jobName = 'annuler-commandes-orphelines';
+
+    const task = cron.schedule('*/30 * * * *', async () => {
+      console.log('[CronService] Début de la tâche: annuler les commandes orphelines');
+
+      try {
+        const result = await this.annulerCommandesOrphelines();
+        console.log(`[CronService] Tâche terminée: ${result.nbAnnulees} commande(s) orpheline(s) annulée(s)`);
+      } catch (error) {
+        console.error('[CronService] Erreur lors de la tâche:', error);
+      }
+    });
+
+    this.jobs.set(jobName, task);
+    console.log(`[CronService] Tâche planifiée: ${jobName} - Toutes les 30 minutes`);
+  }
+
+  /**
+   * Annule les commandes orphelines
+   */
+  static async annulerCommandesOrphelines(delaiHeures: number = 1): Promise<{ nbAnnulees: number }> {
+    try {
+      const { CommandeModel } = await import('../models/commande.model');
+      return await CommandeModel.annulerCommandesOrphelines(delaiHeures);
+    } catch (error) {
+      console.error('[CronService] Exception dans annulerCommandesOrphelines:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Exécute manuellement la tâche d'annulation des commandes orphelines
+   */
+  static async executeAnnulerCommandesOrphelinesManually(delaiHeures: number = 1): Promise<{ nbAnnulees: number }> {
+    console.log(`[CronService] Exécution manuelle: annuler les commandes orphelines de plus de ${delaiHeures}h`);
+    return await this.annulerCommandesOrphelines(delaiHeures);
   }
 }
 

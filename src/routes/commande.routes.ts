@@ -11,6 +11,8 @@ import {
   updateCommandeStatusSchema, 
   updatePaymentStatusSchema 
 } from '../utils/validation.schemas.commande';
+import { orderLimiter } from '../middlewares/rate-limit.middleware';
+import { validateTurnstile } from '../middlewares/captcha.middleware';
 
 const router = Router();
 
@@ -39,7 +41,7 @@ const router = Router();
  * @desc    Crée une nouvelle commande
  * @access  Public
  */
-router.post('/', validate(createCommandeSchema), CommandeController.createCommande);
+router.post('/', orderLimiter, validateTurnstile, validate(createCommandeSchema), CommandeController.createCommande);
 
 /**
  * @swagger

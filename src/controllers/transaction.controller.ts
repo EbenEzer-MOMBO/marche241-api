@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { TransactionModel } from '../models/transaction.model';
 import { CommandeModel } from '../models/commande.model';
+import { BoutiqueModel } from '../models/boutique.model';
 import { StatutPaiement } from '../lib/database-types';
 
 export class TransactionController {
@@ -90,11 +91,13 @@ export class TransactionController {
 
       const page = parseInt(query.page as string) || 1;
       const limite = parseInt(query.limite as string) || 10;
+      const { statut, type_paiement, recherche, mois } = query;
 
       const { transactions, total } = await TransactionModel.getTransactionsByBoutiqueId(
         boutiqueId,
         page,
-        limite
+        limite,
+        { statut, type_paiement, recherche, mois }
       );
 
       res.status(200).json({
@@ -109,6 +112,93 @@ export class TransactionController {
       res.status(500).json({
         success: false,
         message: 'Erreur lors de la récupération des transactions de la boutique',
+        error: error.message
+      });
+    }
+  }
+
+  /**
+   * Exporte les transactions d'une boutique au format CSV
+   * @param req Requête HTTP
+   * @param res Réponse HTTP
+   */
+  static async exportTransactionsToCSV(req: Request, res: Response): Promise<void> {
+    try {
+      const boutiqueId = parseInt(req.params.boutiqueId);
+
+      if (isNaN(boutiqueId)) {
+        res.status(400).json({
+          success: false,
+          message: 'ID de boutique invalide'
+        });
+        return;
+      }
+
+      // Récupérer le slug de la boutique
+      let boutiqueSlug = String(boutiqueId);
+      try {
+        const boutique = await BoutiqueModel.getBoutiqueById(boutiqueId);
+        if (boutique && boutique.slug) {
+          boutiqueSlug = boutique.slug;
+        }
+      } catch (err) {
+        console.error('Erreur lors de la récupération de la boutique pour export:', err);
+      }
+
+      const query = (req as any).validatedQuery || req.query;
+      const { statut, type_paiement, recherche, mois } = query;
+
+      const transactions = await TransactionModel.getTransactionsForExport(
+        boutiqueId,
+        { statut, type_paiement, recherche, mois }
+      );
+
+      // Génération du CSV
+      const headers = [
+        'Date de creation',
+        'Reference transaction',
+        'ID Commande',
+        'Montant (TTC FCFA)',
+        'Methode de paiement',
+        'Type de paiement',
+        'Telephone',
+        'Reference operateur',
+        'Statut',
+        'Notes'
+      ];
+
+      const rows = transactions.map(t => {
+        const dateStr = t.date_creation ? new Date(t.date_creation).toLocaleString('fr-FR') : '';
+        return [
+          dateStr,
+          t.reference_transaction || '',
+          t.commande_id || '',
+          t.montant || 0,
+          t.methode_paiement || '',
+          t.type_paiement || '',
+          t.numero_telephone || '',
+          t.reference_operateur || '',
+          t.statut || '',
+          t.notes || ''
+        ].map(val => {
+          const strVal = String(val).replace(/"/g, '""');
+          return `"${strVal}"`;
+        }).join(';');
+      });
+
+      const csvContent = '\uFEFF' + [headers.join(';'), ...rows].join('\n');
+      
+      // Nom du fichier personnalisé : transactions_[boutique]_[mois/GLOBAL].csv
+      const monthSuffix = mois ? mois : 'GLOBAL';
+      const filename = `transactions_${boutiqueSlug}_${monthSuffix}.csv`;
+
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.status(200).send(csvContent);
+    } catch (error: any) {
+      res.status(500).json({
+        success: false,
+        message: 'Erreur lors de l\'exportation des transactions en CSV',
         error: error.message
       });
     }

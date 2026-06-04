@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import jwt from 'jsonwebtoken';
 import { WhatsAppService } from '../services/whatsapp.service';
 import { WhatsappSubscriberModel } from '../models/whatsapp_subscriber.model';
 
@@ -17,6 +18,37 @@ export class WhatsAppController {
           message: 'Les champs telephone et message sont obligatoires'
         });
         return;
+      }
+
+      // 1. Tenter d'authentifier l'utilisateur via le token s'il est fourni (facultatif)
+      let isUserAuthenticated = false;
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        const token = authHeader.substring(7);
+        try {
+          const decoded = jwt.verify(token, process.env.JWT_SECRET || '');
+          if (decoded) {
+            isUserAuthenticated = true;
+          }
+        } catch (e) {
+          // Token invalide ou expiré, considéré comme anonyme
+        }
+      }
+
+      // 2. Si l'utilisateur n'est pas authentifié, restreindre strictement le contenu au format OTP
+      if (!isUserAuthenticated) {
+        // Valider le format du message : il doit correspondre au format d'envoi de code de vérification
+        // Exemple : "Votre code de vérification Marché241 est: 123456\n\nCe code expire dans 10 minutes."
+        const otpRegex = /^Votre code de vérification Marché241 est:\s*(\d{4,8})\n\nCe code expire dans 10 minutes\.$/i;
+        if (!otpRegex.test(message.trim())) {
+          console.warn(`[WhatsAppController] Envoi bloqué : format de message non autorisé pour les requêtes anonymes. Destination: ${telephone}`);
+          res.status(403).json({
+            success: false,
+            message: 'Action interdite. Format de message non autorisé pour les requêtes publiques.',
+            code: 'FORBIDDEN_MESSAGE_FORMAT'
+          });
+          return;
+        }
       }
 
       const messageId = await WhatsAppService.sendMessage(telephone, message);
@@ -47,6 +79,7 @@ export class WhatsAppController {
       });
     }
   }
+
 
   /**
    * Envoie une notification de changement de statut de commande
