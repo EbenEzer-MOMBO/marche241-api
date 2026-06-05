@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { VendeurModel } from '../models/vendeur.model';
+import { WhatsappSubscriberModel } from '../models/whatsapp_subscriber.model';
 import { DemandeCodeVerification, VerificationCode, ConnexionVendeur, CreateVendeurData, Vendeur, StatutVendeur } from '../lib/database-types';
 import { EmailService } from '../services/email.service';
 import jwt from 'jsonwebtoken';
@@ -103,6 +104,13 @@ export class VendeurController {
         telephone,
         ville
       });
+
+      // Enregistrer automatiquement le numéro WhatsApp du vendeur dans les abonnés actifs
+      try {
+        await WhatsappSubscriberModel.subscribe(telephone, nom);
+      } catch (subError: any) {
+        console.error(`[VendeurController] Échec de l'abonnement automatique WhatsApp pour le vendeur ${telephone}:`, subError.message);
+      }
       
       // Envoyer les données vers le webhook
       try {
@@ -229,6 +237,13 @@ export class VendeurController {
       }
 
       const nouveauVendeur = await VendeurModel.createVendeur(vendeurData);
+
+      // Enregistrer automatiquement le numéro WhatsApp du vendeur dans les abonnés actifs
+      try {
+        await WhatsappSubscriberModel.subscribe(nouveauVendeur.telephone, nouveauVendeur.nom);
+      } catch (subError: any) {
+        console.error(`[VendeurController] Échec de l'abonnement automatique WhatsApp pour le vendeur ${nouveauVendeur.telephone}:`, subError.message);
+      }
 
       res.status(201).json({
         success: true,

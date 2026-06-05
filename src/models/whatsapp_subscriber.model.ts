@@ -13,16 +13,33 @@ export class WhatsappSubscriberModel {
   private static readonly TABLE_NAME = 'whatsapp_subscribers';
 
   /**
+   * Normalise un numéro de téléphone pour WhatsApp avec le préfixe '+'
+   */
+  private static normalizePhone(phone: string): string {
+    const onlyDigits = phone.trim().replace(/\D/g, '');
+    if (onlyDigits === '') {
+      return '';
+    }
+    let digits = onlyDigits;
+    if (digits.startsWith('0')) {
+      digits = '241' + digits.substring(1);
+    }
+    if (digits.length <= 9) {
+      digits = '241' + digits;
+    }
+    return '+' + digits;
+  }
+
+  /**
    * Enregistre ou met à jour un abonné en statut actif
    * @param phone Numéro de téléphone
    * @param name Nom de l'abonné
    */
   static async subscribe(phone: string, name: string | null = null): Promise<WhatsappSubscriber> {
-    // Nettoyer le numéro de téléphone (enlever les espaces)
-    const cleanedPhone = phone.trim().replace(/\s+/g, '');
+    const cleanedPhone = this.normalizePhone(phone);
 
     if (!cleanedPhone) {
-      throw new Error('Le numéro de téléphone ne peut pas être vide');
+      throw new Error('Le numéro de téléphone ne peut pas être vide ou invalide');
     }
 
     // Rechercher si l'abonné existe déjà
@@ -94,10 +111,10 @@ export class WhatsappSubscriberModel {
    * @param phone Numéro de téléphone
    */
   static async unsubscribe(phone: string): Promise<WhatsappSubscriber | null> {
-    const cleanedPhone = phone.trim().replace(/\s+/g, '');
+    const cleanedPhone = this.normalizePhone(phone);
 
     if (!cleanedPhone) {
-      throw new Error('Le numéro de téléphone ne peut pas être vide');
+      throw new Error('Le numéro de téléphone ne peut pas être vide ou invalide');
     }
 
     // Rechercher si l'abonné existe

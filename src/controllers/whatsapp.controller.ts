@@ -502,7 +502,7 @@ Ce message confirme que la configuration WhatsApp GREEN-API fonctionne correctem
         <div class="icon">✓</div>
         <h1>Désabonnement réussi</h1>
         <p>Vous avez été retiré avec succès de notre liste de diffusion WhatsApp. Vous ne recevrez plus de messages promotionnels ou d'actualités sur ce numéro.</p>
-        <a href="https://marche241.com" class="btn">Retour au site</a>
+        <a href="https://marche241.ga/" class="btn">Retour au site</a>
     </div>
 </body>
 </html>
