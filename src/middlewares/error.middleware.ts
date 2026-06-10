@@ -1,4 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
+import path from 'path';
+import fs from 'fs';
 
 export interface ApiError extends Error {
   statusCode?: number;
@@ -35,6 +37,16 @@ export const errorHandler = (
 };
 
 export const notFound = (req: Request, res: Response, next: NextFunction) => {
+  const acceptsHtml = req.headers.accept?.includes('text/html');
+  const isApiRoute = req.originalUrl.startsWith('/api/');
+
+  if (acceptsHtml && !isApiRoute) {
+    const notFoundPage = path.join(__dirname, '..', 'public', '404.html');
+    if (fs.existsSync(notFoundPage)) {
+      return res.status(404).sendFile(notFoundPage);
+    }
+  }
+
   const error = new Error(`Route non trouvée - ${req.originalUrl}`) as ApiError;
   error.statusCode = 404;
   next(error);
