@@ -265,6 +265,7 @@ router.post('/test', auth, isAdmin, WhatsAppController.testConfiguration);
  *       500:
  *         description: Erreur serveur
  */
-router.get('/optout/:id?', WhatsAppController.optOut);
+router.get('/optout', WhatsAppController.optOut);
+router.get('/optout/:id', WhatsAppController.optOut);
 
 export default router;
