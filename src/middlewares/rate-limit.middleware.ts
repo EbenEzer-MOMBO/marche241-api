@@ -66,7 +66,7 @@ export const whatsappLimiter = rateLimit({
  */
 export const whatsappCheckLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 50,
+  max: 500,
   standardHeaders: true,
   legacyHeaders: false,
   message: {
