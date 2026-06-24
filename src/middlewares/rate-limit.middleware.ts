@@ -47,7 +47,7 @@ export const paymentLimiter = rateLimit({
 });
 
 /**
- * Limiteur de débit strict pour l'envoi de messages et vérifications WhatsApp anonymes (3 requêtes par 15 minutes par IP)
+ * Limiteur de débit pour l'envoi de messages WhatsApp (3 requêtes par 15 minutes par IP)
  */
 export const whatsappLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -58,6 +58,21 @@ export const whatsappLimiter = rateLimit({
     success: false,
     message: 'Trop de requêtes de messagerie WhatsApp pour cette adresse IP. Veuillez réessayer dans 15 minutes.',
     code: 'TOO_MANY_WHATSAPP_REQUESTS'
+  }
+});
+
+/**
+ * Limiteur de débit pour la vérification de numéros WhatsApp (50 requêtes par 15 minutes par IP)
+ */
+export const whatsappCheckLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 50,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Trop de vérifications de numéro WhatsApp pour cette adresse IP. Veuillez réessayer dans 15 minutes.',
+    code: 'TOO_MANY_WHATSAPP_CHECK_REQUESTS'
   }
 });
 

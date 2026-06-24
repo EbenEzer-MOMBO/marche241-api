@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { WhatsAppController } from '../controllers/whatsapp.controller';
 import { auth, isAdmin } from '../middlewares/auth.middleware';
-import { whatsappLimiter } from '../middlewares/rate-limit.middleware';
+import { whatsappLimiter, whatsappCheckLimiter } from '../middlewares/rate-limit.middleware';
 
 const router = Router();
 
@@ -59,7 +59,7 @@ router.get('/status', WhatsAppController.getStatus);
  *       500:
  *         description: Erreur serveur ou service non configuré
  */
-router.post('/check-number', whatsappLimiter, WhatsAppController.checkWhatsAppNumber);
+router.post('/check-number', whatsappCheckLimiter, WhatsAppController.checkWhatsAppNumber);
 
 /**
  * @swagger
