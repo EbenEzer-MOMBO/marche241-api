@@ -5,7 +5,7 @@ import rateLimit from 'express-rate-limit';
  */
 export const standardLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 500, // Limite chaque IP à 500 requêtes par windowMs
+  max: 1500, // Limite chaque IP à 500 requêtes par windowMs
   standardHeaders: true, // Retourne les infos de limite dans les headers `RateLimit-*`
   legacyHeaders: false, // Désactive les headers `X-RateLimit-*`
   message: {
@@ -21,7 +21,7 @@ export const standardLimiter = rateLimit({
  */
 export const orderLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // Limite chaque IP à 5 créations de commande par windowMs
+  max: 10, // Limite chaque IP à 5 créations de commande par windowMs
   standardHeaders: true,
   legacyHeaders: false,
   message: {
@@ -36,7 +36,7 @@ export const orderLimiter = rateLimit({
  */
 export const paymentLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // Limite chaque IP à 5 initiations de paiement par windowMs
+  max: 10, // Limite chaque IP à 5 initiations de paiement par windowMs
   standardHeaders: true,
   legacyHeaders: false,
   message: {
