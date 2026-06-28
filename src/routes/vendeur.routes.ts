@@ -490,4 +490,11 @@ router.post('/code', validate(demandeCodeSchema), VendeurController.demanderCode
  */
 router.post('/verification', validate(verificationCodeSchema), VendeurController.verifierCode);
 
+/**
+ * @route   PATCH /api/v1/vendeurs/me/ping
+ * @desc    Heartbeat session — met à jour derniere_connexion du vendeur authentifié
+ * @access  Private (vendeur authentifié)
+ */
+router.patch('/me/ping', auth, VendeurController.ping);
+
 export default router;

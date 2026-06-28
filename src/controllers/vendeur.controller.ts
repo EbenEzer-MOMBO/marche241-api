@@ -302,6 +302,27 @@ export class VendeurController {
   }
 
   /**
+   * Met à jour derniere_connexion du vendeur authentifié (heartbeat session).
+   */
+  static async ping(req: Request, res: Response): Promise<void> {
+    try {
+      const vendeurId = req.vendeur!.id;
+
+      await VendeurModel.updateVendeur(vendeurId, {
+        derniere_connexion: new Date().toISOString() as any,
+      });
+
+      res.status(200).json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({
+        success: false,
+        message: 'Erreur lors de la mise à jour de la connexion',
+        error: error.message,
+      });
+    }
+  }
+
+  /**
    * Supprime un vendeur
    */
   static async deleteVendeur(req: Request, res: Response): Promise<void> {
