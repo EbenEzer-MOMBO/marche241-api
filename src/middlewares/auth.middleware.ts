@@ -125,6 +125,36 @@ export const isAdmin = (req: Request, res: Response, next: NextFunction) => {
   next();
 };
 
+// Middleware pour vérifier que le vendeur authentifié modifie son propre profil
+export const isSelfVendeur = (req: Request, res: Response, next: NextFunction) => {
+  if (!req.vendeur) {
+    console.log('[isSelfVendeur] Pas de vendeur authentifié');
+    return res.status(401).json({
+      success: false,
+      message: 'Authentification requise'
+    });
+  }
+
+  const targetId = parseInt(req.params.id);
+
+  if (isNaN(targetId)) {
+    return res.status(400).json({
+      success: false,
+      message: 'ID de vendeur invalide'
+    });
+  }
+
+  if (targetId !== req.vendeur.id && !req.isAdmin) {
+    console.log('[isSelfVendeur] Accès refusé - vendeur_id cible:', targetId, 'vendeur_id requête:', req.vendeur.id);
+    return res.status(403).json({
+      success: false,
+      message: 'Accès refusé, vous ne pouvez modifier que votre propre profil'
+    });
+  }
+
+  next();
+};
+
 // Middleware pour vérifier si l'utilisateur est propriétaire de la boutique
 export const isBoutiqueOwner = async (req: Request, res: Response, next: NextFunction) => {
   try {

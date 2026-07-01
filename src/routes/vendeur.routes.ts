@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { VendeurController } from '../controllers/vendeur.controller';
-import { auth, isAdmin } from '../middlewares/auth.middleware';
+import { auth, isAdmin, isSelfVendeur } from '../middlewares/auth.middleware';
 import { validate, validateParams, validateQuery } from '../middlewares/validation.middleware';
 import { 
   createVendeurSchema, 
@@ -350,7 +350,7 @@ router.post('/', validate(createVendeurSchema), VendeurController.createVendeur)
  * @desc    Met à jour un vendeur existant
  * @access  Private (vendeur authentifié)
  */
-router.put('/:id', auth, validateParams(idParamSchema), validate(updateVendeurSchema), VendeurController.updateVendeur);
+router.put('/:id', auth, validateParams(idParamSchema), isSelfVendeur, validate(updateVendeurSchema), VendeurController.updateVendeur);
 
 /**
  * @swagger

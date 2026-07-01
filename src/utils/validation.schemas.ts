@@ -1,9 +1,29 @@
 import Joi from 'joi';
 
+// Pays supportés par le sélecteur téléphone (voir marche241_v2/src/components/ui/PhoneNumberInput.tsx)
+// Chaque entrée : indicatif international + nombre exact de chiffres locaux attendus
+const SUPPORTED_PHONE_COUNTRIES: { dialCode: string; length: number }[] = [
+  { dialCode: '241', length: 8 }, // Gabon
+  { dialCode: '33', length: 9 },  // France
+  { dialCode: '237', length: 8 }, // Cameroun
+  { dialCode: '225', length: 8 }, // Côte d'Ivoire
+  { dialCode: '221', length: 8 }, // Sénégal
+  { dialCode: '212', length: 9 }, // Maroc
+];
+
+// Numéro international +<indicatif><n chiffres locaux exacts>, ou format local gabonais 0XXXXXXXX
+export const PHONE_PATTERN = new RegExp(
+  '^(' +
+    SUPPORTED_PHONE_COUNTRIES.map((c) => `\\+${c.dialCode}[0-9]{${c.length}}`).join('|') +
+    '|0[0-9]{8}' +
+  ')$'
+);
+const PHONE_MESSAGE = 'Le numéro de téléphone doit être valide pour un des pays supportés (Gabon +241, France +33, Cameroun +237, Côte d\'Ivoire +225, Sénégal +221, Maroc +212)';
+
 // Schémas de validation pour les vendeurs
 export const createVendeurSchema = Joi.object({
-  telephone: Joi.string().required().pattern(/^\+?[0-9]{8,15}$/).messages({
-    'string.pattern.base': 'Le numéro de téléphone doit être au format international (8-15 chiffres)',
+  telephone: Joi.string().required().pattern(PHONE_PATTERN).messages({
+    'string.pattern.base': PHONE_MESSAGE,
     'any.required': 'Le numéro de téléphone est obligatoire'
   }),
   nom: Joi.string().required().min(2).max(100).messages({
@@ -42,8 +62,8 @@ export const demandeCodeSchema = Joi.object({
   email: Joi.string().email().messages({
     'string.email': 'L\'adresse email n\'est pas valide'
   }),
-  phone: Joi.string().pattern(/^\+?[0-9]{10,15}$/).messages({
-    'string.pattern.base': 'Le numéro de téléphone n\'est pas valide'
+  phone: Joi.string().pattern(PHONE_PATTERN).messages({
+    'string.pattern.base': PHONE_MESSAGE
   })
 }).or('email', 'phone').messages({
   'object.missing': 'L\'adresse email ou le numéro de téléphone est obligatoire'
@@ -53,8 +73,8 @@ export const verificationCodeSchema = Joi.object({
   email: Joi.string().email().messages({
     'string.email': 'L\'adresse email n\'est pas valide'
   }),
-  phone: Joi.string().pattern(/^\+?[0-9]{10,15}$/).messages({
-    'string.pattern.base': 'Le numéro de téléphone n\'est pas valide'
+  phone: Joi.string().pattern(PHONE_PATTERN).messages({
+    'string.pattern.base': PHONE_MESSAGE
   }),
   code: Joi.string().required().pattern(/^[0-9]{4,6}$/).messages({
     'string.pattern.base': 'Le code doit être composé de 4 à 6 chiffres',
@@ -98,8 +118,8 @@ export const createBoutiqueSchema = Joi.object({
   adresse: Joi.string().allow(null, '').messages({
     'string.base': 'L\'adresse doit être une chaîne de caractères'
   }),
-  telephone: Joi.string().allow(null, '').pattern(/^\+?[0-9]{8,15}$/).messages({
-    'string.pattern.base': 'Le numéro de téléphone doit être au format international (8-15 chiffres)'
+  telephone: Joi.string().allow(null, '').pattern(PHONE_PATTERN).messages({
+    'string.pattern.base': PHONE_MESSAGE
   }),
   payment_restriction_mode: Joi.string().valid('complet_uniquement', 'livraison_uniquement', 'les_deux').default('les_deux').messages({
     'any.only': 'Le mode de restriction de paiement doit être complet_uniquement, livraison_uniquement ou les_deux'
@@ -134,8 +154,8 @@ export const updateBoutiqueSchema = Joi.object({
   adresse: Joi.string().allow(null, '').messages({
     'string.base': 'L\'adresse doit être une chaîne de caractères'
   }),
-  telephone: Joi.string().allow(null, '').pattern(/^\+?[0-9]{8,15}$/).messages({
-    'string.pattern.base': 'Le numéro de téléphone doit être au format international (8-15 chiffres)'
+  telephone: Joi.string().allow(null, '').pattern(PHONE_PATTERN).messages({
+    'string.pattern.base': PHONE_MESSAGE
   }),
   payment_restriction_mode: Joi.string().valid('complet_uniquement', 'livraison_uniquement', 'les_deux').messages({
     'any.only': 'Le mode de restriction de paiement doit être complet_uniquement, livraison_uniquement ou les_deux'
