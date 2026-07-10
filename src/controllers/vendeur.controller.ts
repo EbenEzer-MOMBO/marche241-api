@@ -3,6 +3,7 @@ import { VendeurModel } from '../models/vendeur.model';
 import { WhatsappSubscriberModel } from '../models/whatsapp_subscriber.model';
 import { DemandeCodeVerification, VerificationCode, ConnexionVendeur, CreateVendeurData, Vendeur, StatutVendeur } from '../lib/database-types';
 import { EmailService } from '../services/email.service';
+import { WhatsAppService } from '../services/whatsapp.service';
 import jwt from 'jsonwebtoken';
 import { generateToken } from '../utils/jwt.utils';
 
@@ -97,6 +98,17 @@ export class VendeurController {
         return;
       }
       
+      // Vérifier que le numéro fourni correspond bien à un compte WhatsApp existant
+      // avant de créer le vendeur (évite l'abus de numéros valides syntaxiquement mais fictifs)
+      const whatsappCheck = await WhatsAppService.checkWhatsAppNumber(telephone);
+      if (whatsappCheck !== null && whatsappCheck.existsWhatsapp === false) {
+        res.status(400).json({
+          success: false,
+          message: 'Le numéro de téléphone fourni ne correspond à aucun compte WhatsApp valide'
+        });
+        return;
+      }
+
       // Créer le vendeur et générer le code
       const { vendeur, code } = await VendeurModel.inscrireVendeur({
         email,
@@ -111,7 +123,7 @@ export class VendeurController {
       } catch (subError: any) {
         console.error(`[VendeurController] Échec de l'abonnement automatique WhatsApp pour le vendeur ${telephone}:`, subError.message);
       }
-      
+
       // Envoyer les données vers le webhook
       try {
         const webhookUrl = process.env.WEBHOOK_REGISTER_URL;
@@ -232,6 +244,17 @@ export class VendeurController {
         res.status(400).json({
           success: false,
           message: 'Un vendeur avec ce numéro de téléphone existe déjà'
+        });
+        return;
+      }
+
+      // Vérifier que le numéro fourni correspond bien à un compte WhatsApp existant
+      // avant de créer le vendeur (évite l'abus de numéros valides syntaxiquement mais fictifs)
+      const whatsappCheck = await WhatsAppService.checkWhatsAppNumber(vendeurData.telephone);
+      if (whatsappCheck !== null && whatsappCheck.existsWhatsapp === false) {
+        res.status(400).json({
+          success: false,
+          message: 'Le numéro de téléphone fourni ne correspond à aucun compte WhatsApp valide'
         });
         return;
       }

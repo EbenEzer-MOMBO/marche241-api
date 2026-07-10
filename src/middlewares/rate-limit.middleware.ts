@@ -62,11 +62,27 @@ export const whatsappLimiter = rateLimit({
 });
 
 /**
+ * Limiteur de débit strict pour l'inscription et la vérification vendeur (10 requêtes par heure par IP)
+ * Évite les inscriptions en masse (emails jetables, abonnement WhatsApp automatique en spam).
+ */
+export const registrationLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 heure
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Trop de tentatives d\'inscription ou de vérification depuis cette adresse IP. Veuillez réessayer plus tard.',
+    code: 'TOO_MANY_REGISTRATION_ATTEMPTS'
+  }
+});
+
+/**
  * Limiteur de débit pour la vérification de numéros WhatsApp (50 requêtes par 15 minutes par IP)
  */
 export const whatsappCheckLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 500,
+  max: 100,
   standardHeaders: true,
   legacyHeaders: false,
   message: {

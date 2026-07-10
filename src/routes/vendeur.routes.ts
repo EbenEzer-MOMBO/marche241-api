@@ -2,13 +2,15 @@ import { Router } from 'express';
 import { VendeurController } from '../controllers/vendeur.controller';
 import { auth, isAdmin, isSelfVendeur } from '../middlewares/auth.middleware';
 import { validate, validateParams, validateQuery } from '../middlewares/validation.middleware';
-import { 
-  createVendeurSchema, 
-  updateVendeurSchema, 
-  demandeCodeSchema, 
+import { validateTurnstile } from '../middlewares/captcha.middleware';
+import { registrationLimiter } from '../middlewares/rate-limit.middleware';
+import {
+  createVendeurSchema,
+  updateVendeurSchema,
+  demandeCodeSchema,
   verificationCodeSchema,
   idParamSchema,
-  paginationQuerySchema 
+  paginationQuerySchema
 } from '../utils/validation.schemas';
 
 const router = Router();
@@ -211,7 +213,7 @@ router.get('/:id', auth, validateParams(idParamSchema), VendeurController.getVen
  *             schema:
  *               $ref: '#/components/schemas/ErreurAuthentification'
  */
-router.post('/inscription', validate(createVendeurSchema), VendeurController.inscrireVendeur);
+router.post('/inscription', registrationLimiter, validateTurnstile, validate(createVendeurSchema), VendeurController.inscrireVendeur);
 
 /**
  * @swagger
@@ -278,7 +280,7 @@ router.post('/inscription', validate(createVendeurSchema), VendeurController.ins
  *             schema:
  *               $ref: '#/components/schemas/ErreurAuthentification'
  */
-router.post('/', validate(createVendeurSchema), VendeurController.createVendeur);
+router.post('/', registrationLimiter, validateTurnstile, validate(createVendeurSchema), VendeurController.createVendeur);
 
 /**
  * @swagger
@@ -444,7 +446,7 @@ router.delete('/:id', auth, isAdmin, validateParams(idParamSchema), VendeurContr
  *             schema:
  *               $ref: '#/components/schemas/ErreurAuthentification'
  */
-router.post('/code', validate(demandeCodeSchema), VendeurController.demanderCodeVerification);
+router.post('/code', registrationLimiter, validate(demandeCodeSchema), VendeurController.demanderCodeVerification);
 
 /**
  * @swagger
@@ -488,7 +490,7 @@ router.post('/code', validate(demandeCodeSchema), VendeurController.demanderCode
  *             schema:
  *               $ref: '#/components/schemas/ErreurAuthentification'
  */
-router.post('/verification', validate(verificationCodeSchema), VendeurController.verifierCode);
+router.post('/verification', registrationLimiter, validate(verificationCodeSchema), VendeurController.verifierCode);
 
 /**
  * @route   PATCH /api/v1/vendeurs/me/ping
