@@ -6,6 +6,7 @@ import { EmailService } from '../services/email.service';
 import { WhatsAppService } from '../services/whatsapp.service';
 import jwt from 'jsonwebtoken';
 import { generateToken } from '../utils/jwt.utils';
+import { hasValidMxRecord } from '../utils/email.utils';
 
 export class VendeurController {
   /**
@@ -97,7 +98,17 @@ export class VendeurController {
         });
         return;
       }
-      
+
+      // Vérifier que le domaine de l'email possède un enregistrement MX
+      // (évite les domaines inexistants qui génèrent des bounces en masse)
+      if (!(await hasValidMxRecord(email))) {
+        res.status(400).json({
+          success: false,
+          message: 'Le domaine de l\'adresse email fournie n\'existe pas ou ne peut pas recevoir d\'emails'
+        });
+        return;
+      }
+
       // Vérifier que le numéro fourni correspond bien à un compte WhatsApp existant
       // avant de créer le vendeur (évite l'abus de numéros valides syntaxiquement mais fictifs)
       const whatsappCheck = await WhatsAppService.checkWhatsAppNumber(telephone);
@@ -244,6 +255,16 @@ export class VendeurController {
         res.status(400).json({
           success: false,
           message: 'Un vendeur avec ce numéro de téléphone existe déjà'
+        });
+        return;
+      }
+
+      // Vérifier que le domaine de l'email possède un enregistrement MX
+      // (évite les domaines inexistants qui génèrent des bounces en masse)
+      if (vendeurData.email && !(await hasValidMxRecord(vendeurData.email))) {
+        res.status(400).json({
+          success: false,
+          message: 'Le domaine de l\'adresse email fournie n\'existe pas ou ne peut pas recevoir d\'emails'
         });
         return;
       }
