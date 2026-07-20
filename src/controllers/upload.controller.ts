@@ -167,33 +167,68 @@ export class UploadController {
    */
   static async deleteImage(req: Request, res: Response) {
     try {
-      // Récupérer le chemin de l'image depuis le corps de la requête
       const { path } = req.body;
-      
-      if (!path) {
+
+      if (!path || typeof path !== 'string') {
         return res.status(400).json({
           success: false,
           message: 'Le chemin de l\'image est requis'
         });
       }
-      
-      // Supprimer l'image de Supabase Storage
+
+      // Rejeter path traversal et URLs absolues
+      if (
+        path.includes('..') ||
+        path.startsWith('/') ||
+        path.includes('\\') ||
+        /^https?:\/\//i.test(path)
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: 'Chemin d\'image invalide'
+        });
+      }
+
+      const vendeur = (req as any).vendeur || (req as any).user;
+      if (!vendeur) {
+        return res.status(401).json({
+          success: false,
+          message: 'Authentification requise'
+        });
+      }
+
+      if (!(req as any).isAdmin) {
+        const { BoutiqueModel } = require('../models/boutique.model');
+        const boutiques = await BoutiqueModel.getBoutiquesByVendeurId(vendeur.id);
+        const slugs = boutiques.map((b: { slug: string }) => b.slug).filter(Boolean);
+        const allowedFolders = ['produits', 'boutiques', 'general', 'categories'];
+
+        const isAllowed = slugs.some((slug: string) =>
+          allowedFolders.some((folder) => path.startsWith(`${folder}/${slug}/`))
+        );
+
+        if (!isAllowed) {
+          return res.status(403).json({
+            success: false,
+            message: 'Vous n\'êtes pas autorisé à supprimer ce fichier'
+          });
+        }
+      }
+
       const { deleteFile } = require('../utils/storage.utils');
       const result = await deleteFile(path);
-      
+
       if (!result.success) {
         return res.status(400).json({
           success: false,
           message: result.error
         });
       }
-      
-      // Retourner la confirmation de suppression
+
       return res.status(200).json({
         success: true,
         message: 'Image supprimée avec succès'
       });
-      
     } catch (error) {
       console.error('Erreur lors de la suppression d\'image:', error);
       return res.status(500).json({

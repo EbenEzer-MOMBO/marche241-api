@@ -43,8 +43,8 @@ export const createTransactionSchema = Joi.object({
     'any.only': 'La méthode de paiement doit être l\'une des suivantes: mobile_money, airtel_money, moov_money, especes, virement',
     'any.required': 'La méthode de paiement est obligatoire'
   }),
-  statut: Joi.string().valid('en_attente', 'paye', 'echec', 'rembourse').default('en_attente').messages({
-    'any.only': 'Le statut doit être l\'un des suivants: en_attente, paye, echec, rembourse'
+  statut: Joi.string().valid('en_attente').default('en_attente').messages({
+    'any.only': 'Le statut de création doit être en_attente'
   }),
   numero_telephone: Joi.string().pattern(/^\+?[0-9]{8,15}$/).allow(null, '').messages({
     'string.pattern.base': 'Le numéro de téléphone doit être au format international (8-15 chiffres)'

@@ -3,6 +3,7 @@ import { BoutiqueModel } from '../models/boutique.model';
 import { ProduitModel } from '../models/produit.model';
 import { VueModel } from '../models/vue.model';
 import { CreateBoutiqueData, Boutique, StatutBoutique } from '../lib/database-types';
+import { logger } from '../utils/logger';
 
 /**
  * Utilitaire pour extraire l'IP réelle du client
@@ -22,15 +23,12 @@ export class BoutiqueController {
    */
   static async getAllBoutiques(req: Request, res: Response): Promise<void> {
     try {
-      console.log('[BoutiqueController] ===== GET ALL BOUTIQUES =====');
-      console.log('[BoutiqueController] Query params:', req.query);
       
       const page = parseInt(req.query.page as string) || 1;
       const limite = parseInt(req.query.limite as string) || 10;
       const tri_par = req.query.tri_par as string || 'date_creation';
       const ordre = (req.query.ordre as 'ASC' | 'DESC') || 'DESC';
 
-      console.log('[BoutiqueController] Paramètres:', { page, limite, tri_par, ordre });
 
       const boutiques = await BoutiqueModel.getAllBoutiques({
         page,
@@ -39,12 +37,10 @@ export class BoutiqueController {
         ordre
       });
 
-      console.log('[BoutiqueController] Nombre de boutiques récupérées:', boutiques.donnees?.length || 0);
-      console.log('[BoutiqueController] Total:', boutiques.total);
 
       res.status(200).json(boutiques);
     } catch (error: any) {
-      console.error('[BoutiqueController] ERREUR:', error);
+      logger.error('[BoutiqueController] ERREUR:', error);
       res.status(500).json({
         success: false,
         message: 'Erreur lors de la récupération des boutiques',
@@ -58,9 +54,7 @@ export class BoutiqueController {
    */
   static async getBoutiqueById(req: Request, res: Response): Promise<void> {
     try {
-      console.log('[BoutiqueController] ===== GET BOUTIQUE BY ID =====');
       const idOrSlug = req.params.id;
-      console.log('[BoutiqueController] ID ou Slug reçu:', idOrSlug);
       
       let boutique;
       
@@ -69,16 +63,13 @@ export class BoutiqueController {
       
       if (!isNaN(id)) {
         // Si c'est un nombre, rechercher par ID
-        console.log('[BoutiqueController] Recherche par ID:', id);
         boutique = await BoutiqueModel.getBoutiqueById(id);
       } else {
         // Sinon, rechercher par slug
-        console.log('[BoutiqueController] Recherche par slug:', idOrSlug);
         boutique = await BoutiqueModel.getBoutiqueBySlug(idOrSlug);
       }
       
       if (!boutique) {
-        console.log('[BoutiqueController] Boutique non trouvée');
         res.status(404).json({
           success: false,
           message: 'Boutique non trouvée'
@@ -86,7 +77,6 @@ export class BoutiqueController {
         return;
       }
 
-      console.log('[BoutiqueController] Boutique trouvée:', { id: boutique.id, nom: boutique.nom, slug: boutique.slug });
 
       // Enregistrer la vue (en arrière-plan, ne pas bloquer la réponse)
       const clientIp = getClientIp(req);
@@ -94,19 +84,14 @@ export class BoutiqueController {
       const referer = req.headers['referer'] || undefined;
       
       VueModel.enregistrerVue('boutique', boutique.id, clientIp, userAgent, referer)
-        .then(nouvelleVue => {
-          if (nouvelleVue) {
-            console.log(`[BoutiqueController] Nouvelle vue enregistrée pour boutique ${boutique.id}`);
-          }
-        })
-        .catch(err => console.error('[BoutiqueController] Erreur tracking vue:', err));
+        .catch(err => logger.error('[BoutiqueController] Erreur tracking vue:', err));
 
       res.status(200).json({
         success: true,
         boutique
       });
     } catch (error: any) {
-      console.error('[BoutiqueController] ERREUR:', error);
+      logger.error('[BoutiqueController] ERREUR:', error);
       res.status(500).json({
         success: false,
         message: 'Erreur lors de la récupération de la boutique',
@@ -146,12 +131,7 @@ export class BoutiqueController {
       const referer = req.headers['referer'] || undefined;
       
       VueModel.enregistrerVue('boutique', boutique.id, clientIp, userAgent, referer)
-        .then(nouvelleVue => {
-          if (nouvelleVue) {
-            console.log(`[BoutiqueController] Nouvelle vue enregistrée pour boutique ${boutique.id}`);
-          }
-        })
-        .catch(err => console.error('[BoutiqueController] Erreur tracking vue:', err));
+        .catch(err => logger.error('[BoutiqueController] Erreur tracking vue:', err));
 
       res.status(200).json({
         success: true,
@@ -203,18 +183,14 @@ export class BoutiqueController {
     try {
       const boutiqueData: CreateBoutiqueData = req.body;
       
-      console.log('[createBoutique] Données reçues:', boutiqueData);
-      console.log('[createBoutique] Utilisateur authentifié:', req.user ? { id: req.user.id, email: req.user.email } : 'non authentifié');
       
       // Récupérer le vendeur_id depuis le token JWT si authentifié
       if (req.user && req.user.id) {
         boutiqueData.vendeur_id = req.user.id;
-        console.log('[createBoutique] vendeur_id récupéré du token:', boutiqueData.vendeur_id);
       }
       
       // Vérifier que les champs obligatoires sont présents
       if (!boutiqueData.nom || !boutiqueData.vendeur_id) {
-        console.log('[createBoutique] Champs manquants - nom:', boutiqueData.nom, 'vendeur_id:', boutiqueData.vendeur_id);
         res.status(400).json({
           success: false,
           message: 'Les champs nom et vendeur_id sont obligatoires'
@@ -222,7 +198,6 @@ export class BoutiqueController {
         return;
       }
       
-      console.log('[createBoutique] Création de la boutique avec vendeur_id:', boutiqueData.vendeur_id);
       
       // Générer un slug si non fourni
       if (!boutiqueData.slug) {
@@ -230,13 +205,10 @@ export class BoutiqueController {
           .toLowerCase()
           .replace(/[^a-z0-9]+/g, '-')
           .replace(/^-|-$/g, '');
-        console.log('[createBoutique] Slug généré:', boutiqueData.slug);
       }
       
       // Vérifier si le slug existe déjà
-      console.log('[createBoutique] Vérification du slug:', boutiqueData.slug);
       const slugExists = await BoutiqueModel.slugExists(boutiqueData.slug);
-      console.log('[createBoutique] Slug existe déjà:', slugExists);
       
       if (slugExists) {
         res.status(400).json({
@@ -246,9 +218,7 @@ export class BoutiqueController {
         return;
       }
 
-      console.log('[createBoutique] Appel BoutiqueModel.createBoutique avec:', boutiqueData);
       const nouvelleBoutique = await BoutiqueModel.createBoutique(boutiqueData);
-      console.log('[createBoutique] Boutique créée:', nouvelleBoutique);
 
       res.status(201).json({
         success: true,
@@ -256,8 +226,8 @@ export class BoutiqueController {
         boutique: nouvelleBoutique
       });
     } catch (error: any) {
-      console.error('[createBoutique] Erreur:', error);
-      console.error('[createBoutique] Stack:', error.stack);
+      logger.error('[createBoutique] Erreur:', error);
+      logger.error('[createBoutique] Stack:', error.stack);
       res.status(500).json({
         success: false,
         message: 'Erreur lors de la création de la boutique',

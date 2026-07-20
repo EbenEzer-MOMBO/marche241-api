@@ -4,6 +4,7 @@ import { TransactionModel } from '../models/transaction.model';
 import { ProduitModel } from '../models/produit.model';
 import { StatutCommande, StatutPaiement, MethodePaiement } from '../lib/database-types';
 import { WhatsAppService } from '../services/whatsapp.service';
+import { logger } from '../utils/logger';
 
 export class CommandeController {
   /**
@@ -13,19 +14,18 @@ export class CommandeController {
    */
   static async createCommande(req: Request, res: Response): Promise<void> {
     try {
-      console.log('Début de la création de commande');
-      console.log('Body reçu:', JSON.stringify(req.body, null, 2));
+      logger.debug('Début de la création de commande');
       
       // Utiliser validatedBody s'il existe, sinon utiliser body
       const body = (req as any).validatedBody || req.body;
-      console.log('Body validé:', JSON.stringify(body, null, 2));
+      logger.debug('Body validé:', JSON.stringify(body, null, 2));
       
       // Extraire les articles et les autres données de la commande
       const { articles, ...commandeData } = body;
       
       // Vérifier la disponibilité des produits AVANT de créer la commande
       if (articles && Array.isArray(articles) && articles.length > 0) {
-        console.log('[createCommande] Vérification de la disponibilité des produits');
+        logger.debug('[createCommande] Vérification de la disponibilité des produits');
         const produitsIndisponibles: any[] = [];
         const quantitesInsuffisantes: any[] = [];
         
@@ -55,7 +55,7 @@ export class CommandeController {
           // Nouveau format: variants_selectionnes = { variant: {...}, options: {...} }
           // Nouveau format produit: variants = { variants: [...], options: [...] }
           if (article.variants_selectionnes && produit.variants) {
-            console.log('[createCommande] Vérification du stock pour les variants:', article.variants_selectionnes);
+            logger.debug('[createCommande] Vérification du stock pour les variants:', article.variants_selectionnes);
             
             // Calculer le stock disponible pour ces variants spécifiques
             let stockDisponible = produit.quantite_stock || 0;
@@ -65,17 +65,17 @@ export class CommandeController {
             // Vérifier si un variant spécifique est sélectionné (nouveau format)
             if (article.variants_selectionnes.variant && variantsData.variants && Array.isArray(variantsData.variants)) {
               const variantSelectionne = article.variants_selectionnes.variant;
-              console.log('[createCommande] Variant sélectionné (nouveau format):', variantSelectionne);
+              logger.debug('[createCommande] Variant sélectionné (nouveau format):', variantSelectionne);
               
               const variantProduit = variantsData.variants.find((v: any) => v.nom === variantSelectionne.nom);
               
               if (variantProduit && typeof variantProduit.quantite === 'number') {
                 stockDisponible = Math.min(stockDisponible, variantProduit.quantite);
-                console.log(`[createCommande] Stock pour variant ${variantProduit.nom}: ${variantProduit.quantite}`);
+                logger.debug(`[createCommande] Stock pour variant ${variantProduit.nom}: ${variantProduit.quantite}`);
               }
             } else {
               // Support de l'ancien format pour rétrocompatibilité
-              console.log('[createCommande] Ancien format de variants détecté');
+              logger.debug('[createCommande] Ancien format de variants détecté');
               for (const [nomVariant, optionSelectionnee] of Object.entries(article.variants_selectionnes)) {
                 if (nomVariant === 'variant' || nomVariant === 'options') continue; // Skip nouveau format
                 
@@ -87,13 +87,13 @@ export class CommandeController {
                   if (indexOption !== -1 && variant.quantites[indexOption] !== undefined) {
                     const quantiteVariant = variant.quantites[indexOption];
                     stockDisponible = Math.min(stockDisponible, quantiteVariant);
-                    console.log(`[createCommande] Stock pour ${nomVariant}=${optionSelectionnee}: ${quantiteVariant}`);
+                    logger.debug(`[createCommande] Stock pour ${nomVariant}=${optionSelectionnee}: ${quantiteVariant}`);
                   }
                 }
               }
             }
             
-            console.log('[createCommande] Stock disponible calculé:', stockDisponible);
+            logger.debug('[createCommande] Stock disponible calculé:', stockDisponible);
             
             // Vérifier si la quantité demandée est disponible
             if (article.quantite > stockDisponible) {
@@ -122,7 +122,7 @@ export class CommandeController {
         
         // Si des produits sont indisponibles ou en quantité insuffisante, rejeter la création
         if (produitsIndisponibles.length > 0 || quantitesInsuffisantes.length > 0) {
-          console.log('[createCommande] Produits indisponibles ou quantités insuffisantes détectés');
+          logger.debug('[createCommande] Produits indisponibles ou quantités insuffisantes détectés');
           
           const erreurs: any = {
             success: false,
@@ -141,11 +141,11 @@ export class CommandeController {
           return;
         }
         
-        console.log('[createCommande] Tous les produits sont disponibles en quantité suffisante');
+        logger.debug('[createCommande] Tous les produits sont disponibles en quantité suffisante');
       }
       
       // Créer la commande
-      console.log('Préparation des données pour création de la commande');
+      logger.debug('Préparation des données pour création de la commande');
       
       // Ajouter les statuts et initialiser les montants
       const commandeToCreate = {
@@ -161,17 +161,17 @@ export class CommandeController {
         remise: commandeData.remise || 0
       };
       
-      console.log('Données de la commande:', JSON.stringify(commandeToCreate, null, 2));
+      logger.debug('Données de la commande:', JSON.stringify(commandeToCreate, null, 2));
       
-      console.log('Appel à CommandeModel.createCommande');
+      logger.debug('Appel à CommandeModel.createCommande');
       const commande = await CommandeModel.createCommande(commandeToCreate);
-      console.log('Commande créée avec ID:', commande.id);
+      logger.debug('Commande créée avec ID:', commande.id);
       
       // Ajouter les articles à la commande
       if (body.articles && Array.isArray(body.articles)) {
-        console.log(`Ajout de ${body.articles.length} articles à la commande`);
+        logger.debug(`Ajout de ${body.articles.length} articles à la commande`);
         for (const article of body.articles) {
-          console.log('Ajout de l\'article:', JSON.stringify(article, null, 2));
+          logger.debug('Ajout de l\'article:', JSON.stringify(article, null, 2));
           
           // N'inclure que les champs qui existent dans la table commande_articles
           const { description, ...articleSansDescription } = article;
@@ -185,7 +185,7 @@ export class CommandeController {
           const variants_selectionnes = article.variants_selectionnes ? 
             JSON.parse(JSON.stringify(article.variants_selectionnes)) : null;
           
-          console.log('Variants sélectionnés avant insertion:', JSON.stringify(variants_selectionnes, null, 2));
+          logger.debug('Variants sélectionnés avant insertion:', JSON.stringify(variants_selectionnes, null, 2));
           
           await CommandeModel.addArticleToCommande({
             commande_id: commande.id,
@@ -197,17 +197,17 @@ export class CommandeController {
             variants_selectionnes
           });
         }
-        console.log('Tous les articles ont été ajoutés');
+        logger.debug('Tous les articles ont été ajoutés');
       } else {
-        console.log('Aucun article à ajouter');
+        logger.debug('Aucun article à ajouter');
       }
       
       // Mettre à jour les totaux de la commande
-      console.log('Mise à jour des totaux de la commande');
+      logger.debug('Mise à jour des totaux de la commande');
       const commandeAvecTotaux = await CommandeModel.updateCommandeTotals(commande.id);
-      console.log('Totaux mis à jour:', JSON.stringify(commandeAvecTotaux, null, 2));
+      logger.debug('Totaux mis à jour:', JSON.stringify(commandeAvecTotaux, null, 2));
       
-      console.log('Envoi de la réponse au client');
+      logger.debug('Envoi de la réponse au client');
       res.status(201).json({
         success: true,
         message: 'Commande créée avec succès',
@@ -220,8 +220,8 @@ export class CommandeController {
         }
       });
     } catch (error: any) {
-      console.error('ERREUR lors de la création de la commande:', error);
-      console.error('Stack trace:', error.stack);
+      logger.error('ERREUR lors de la création de la commande:', error);
+      logger.error('Stack trace:', error.stack);
       
       res.status(500).json({
         success: false,
@@ -248,7 +248,7 @@ export class CommandeController {
         return;
       }
       
-      const commande = await CommandeModel.getCommandeById(id);
+      const commande = (req as any).commande || await CommandeModel.getCommandeById(id);
       
       if (!commande) {
         res.status(404).json({
@@ -288,7 +288,7 @@ export class CommandeController {
         return;
       }
       
-      const commande = await CommandeModel.getCommandeByNumero(numero);
+      const commande = (req as any).commande || await CommandeModel.getCommandeByNumero(numero);
       
       if (!commande) {
         res.status(404).json({
@@ -370,8 +370,8 @@ export class CommandeController {
         return;
       }
       
-      // Vérifier si la commande existe
-      const existingCommande = await CommandeModel.getCommandeById(id);
+      // Vérifier si la commande existe (réutilise celle chargée par isCommandeOwner)
+      const existingCommande = (req as any).commande || await CommandeModel.getCommandeById(id);
       
       if (!existingCommande) {
         res.status(404).json({
@@ -400,7 +400,7 @@ export class CommandeController {
       // Envoyer une notification WhatsApp au client
       if (updatedCommande.client_telephone) {
         try {
-          console.log(`[CommandeController] Envoi notification WhatsApp pour statut: ${body.statut}`);
+          logger.debug(`[CommandeController] Envoi notification WhatsApp pour statut: ${body.statut}`);
           
           const messageId = await WhatsAppService.sendOrderStatusNotification(
             body.statut,
@@ -420,13 +420,13 @@ export class CommandeController {
           );
           
           if (messageId) {
-            console.log(`[CommandeController] Notification WhatsApp envoyée: ${messageId}`);
+            logger.debug(`[CommandeController] Notification WhatsApp envoyée: ${messageId}`);
           } else {
-            console.log('[CommandeController] Notification WhatsApp non envoyée (service non configuré ou statut sans message)');
+            logger.debug('[CommandeController] Notification WhatsApp non envoyée (service non configuré ou statut sans message)');
           }
         } catch (whatsappError: any) {
           // Ne pas bloquer la mise à jour si WhatsApp échoue
-          console.error('[CommandeController] Erreur envoi WhatsApp:', whatsappError.message);
+          logger.error('[CommandeController] Erreur envoi WhatsApp:', whatsappError.message);
         }
       }
       
@@ -461,8 +461,8 @@ export class CommandeController {
         return;
       }
       
-      // Vérifier si la commande existe
-      const existingCommande = await CommandeModel.getCommandeById(id);
+      // Vérifier si la commande existe (réutilise celle chargée par isCommandeOwner)
+      const existingCommande = (req as any).commande || await CommandeModel.getCommandeById(id);
       
       if (!existingCommande) {
         res.status(404).json({
@@ -535,7 +535,7 @@ export class CommandeController {
       }
       
       // Vérifier la disponibilité des produits avant d'initialiser le paiement
-      console.log('[initierPaiement] Vérification de la disponibilité des produits');
+      logger.debug('[initierPaiement] Vérification de la disponibilité des produits');
       const articles = await CommandeModel.getCommandeArticlesDetails(id);
       const produitsIndisponibles: any[] = [];
       const quantitesInsuffisantes: any[] = [];
@@ -564,7 +564,7 @@ export class CommandeController {
         // Nouveau format: variants_selectionnes = { variant: {...}, options: {...} }
         // Nouveau format produit: variants = { variants: [...], options: [...] }
         if (article.variants_selectionnes && produit.variants) {
-          console.log('[initierPaiement] Vérification du stock pour les variants:', article.variants_selectionnes);
+          logger.debug('[initierPaiement] Vérification du stock pour les variants:', article.variants_selectionnes);
           
           // Calculer le stock disponible pour ces variants spécifiques
           let stockDisponible = produit.quantite_stock || 0;
@@ -574,17 +574,17 @@ export class CommandeController {
           // Vérifier si un variant spécifique est sélectionné (nouveau format)
           if (article.variants_selectionnes.variant && variantsData.variants && Array.isArray(variantsData.variants)) {
             const variantSelectionne = article.variants_selectionnes.variant;
-            console.log('[initierPaiement] Variant sélectionné (nouveau format):', variantSelectionne);
+            logger.debug('[initierPaiement] Variant sélectionné (nouveau format):', variantSelectionne);
             
             const variantProduit = variantsData.variants.find((v: any) => v.nom === variantSelectionne.nom);
             
             if (variantProduit && typeof variantProduit.quantite === 'number') {
               stockDisponible = Math.min(stockDisponible, variantProduit.quantite);
-              console.log(`[initierPaiement] Stock pour variant ${variantProduit.nom}: ${variantProduit.quantite}`);
+              logger.debug(`[initierPaiement] Stock pour variant ${variantProduit.nom}: ${variantProduit.quantite}`);
             }
           } else {
             // Support de l'ancien format pour rétrocompatibilité
-            console.log('[initierPaiement] Ancien format de variants détecté');
+            logger.debug('[initierPaiement] Ancien format de variants détecté');
             for (const [nomVariant, optionSelectionnee] of Object.entries(article.variants_selectionnes)) {
               if (nomVariant === 'variant' || nomVariant === 'options') continue; // Skip nouveau format
               
@@ -596,13 +596,13 @@ export class CommandeController {
                 if (indexOption !== -1 && variant.quantites[indexOption] !== undefined) {
                   const quantiteVariant = variant.quantites[indexOption];
                   stockDisponible = Math.min(stockDisponible, quantiteVariant);
-                  console.log(`[initierPaiement] Stock pour ${nomVariant}=${optionSelectionnee}: ${quantiteVariant}`);
+                  logger.debug(`[initierPaiement] Stock pour ${nomVariant}=${optionSelectionnee}: ${quantiteVariant}`);
                 }
               }
             }
           }
           
-          console.log('[initierPaiement] Stock disponible calculé:', stockDisponible);
+          logger.debug('[initierPaiement] Stock disponible calculé:', stockDisponible);
           
           // Vérifier si la quantité demandée est disponible
           if (article.quantite > stockDisponible) {
@@ -629,7 +629,7 @@ export class CommandeController {
       
       // Si des produits sont indisponibles ou en quantité insuffisante, rejeter le paiement
       if (produitsIndisponibles.length > 0 || quantitesInsuffisantes.length > 0) {
-        console.log('[initierPaiement] Produits indisponibles ou quantités insuffisantes détectés');
+        logger.debug('[initierPaiement] Produits indisponibles ou quantités insuffisantes détectés');
         
         const erreurs: any = {
           success: false,
@@ -648,7 +648,7 @@ export class CommandeController {
         return;
       }
       
-      console.log('[initierPaiement] Tous les produits sont disponibles en quantité suffisante');
+      logger.debug('[initierPaiement] Tous les produits sont disponibles en quantité suffisante');
       
       // Utiliser validatedBody s'il existe, sinon utiliser body
       const body = (req as any).validatedBody || req.body;
@@ -684,7 +684,7 @@ export class CommandeController {
         const webhookUrl = process.env.WEBHOOK_PAYMENT_URL;
         
         if (webhookUrl) {
-          console.log('[initierPaiement] Envoi des données au webhook de paiement');
+          logger.debug('[initierPaiement] Envoi des données au webhook de paiement');
           
           // Préparer les données du webhook
           const webhookData = {
@@ -751,15 +751,15 @@ export class CommandeController {
           });
 
           if (response.ok) {
-            console.log('[initierPaiement] Données envoyées au webhook avec succès');
+            logger.debug('[initierPaiement] Données envoyées au webhook avec succès');
           } else {
-            console.error(`[initierPaiement] Webhook responded with status ${response.status}`);
+            logger.error(`[initierPaiement] Webhook responded with status ${response.status}`);
           }
         } else {
-          console.log('[initierPaiement] WEBHOOK_PAYMENT_URL non configuré, envoi ignoré');
+          logger.debug('[initierPaiement] WEBHOOK_PAYMENT_URL non configuré, envoi ignoré');
         }
       } catch (webhookError: any) {
-        console.error('[initierPaiement] Erreur lors de l\'envoi au webhook:', webhookError);
+        logger.error('[initierPaiement] Erreur lors de l\'envoi au webhook:', webhookError);
         // On continue même si le webhook échoue, le paiement est déjà initialisé
       }
       
@@ -795,8 +795,8 @@ export class CommandeController {
         return;
       }
       
-      // Vérifier si la commande existe
-      const commande = await CommandeModel.getCommandeById(id);
+      // Vérifier si la commande existe (réutilise celle chargée par isCommandeOwner)
+      const commande = (req as any).commande || await CommandeModel.getCommandeById(id);
       
       if (!commande) {
         res.status(404).json({

@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import multer from 'multer';
 import path from 'path';
+import { logger } from '../utils/logger';
 
 // Configuration du stockage temporaire en mémoire
 const storage = multer.memoryStorage();
@@ -40,16 +41,16 @@ const uploadMultipleConfig = multer({
  */
 export const uploadImage = (fieldName: string) => {
   return (req: Request, res: Response, next: NextFunction) => {
-    console.log(`[UploadMiddleware] Début uploadImage - fieldName: ${fieldName}`);
-    console.log('[UploadMiddleware] Content-Type:', req.headers['content-type']);
+    logger.debug(`[UploadMiddleware] Début uploadImage - fieldName: ${fieldName}`);
+    logger.debug('[UploadMiddleware] Content-Type:', req.headers['content-type']);
     
     const uploadSingle = uploadSingleConfig.single(fieldName);
     
     uploadSingle(req, res, (err: any) => {
-      console.log('[UploadMiddleware] Résultat uploadSingle - Erreur:', err);
+      logger.debug('[UploadMiddleware] Résultat uploadSingle - Erreur:', err);
       
       if (err instanceof multer.MulterError) {
-        console.log('[UploadMiddleware] Erreur Multer:', err.code, err.message);
+        logger.debug('[UploadMiddleware] Erreur Multer:', err.code, err.message);
         // Erreur Multer
         if (err.code === 'LIMIT_FILE_SIZE') {
           return res.status(400).json({
@@ -86,15 +87,15 @@ export const uploadImage = (fieldName: string) => {
  */
 export const uploadMultipleImages = (fieldName: string, maxCount: number = 5) => {
   return (req: Request, res: Response, next: NextFunction) => {
-    console.log(`[UploadMiddleware] Début uploadMultipleImages - fieldName: ${fieldName}, maxCount: ${maxCount}`);
-    console.log('[UploadMiddleware] Headers:', req.headers);
-    console.log('[UploadMiddleware] Content-Type:', req.headers['content-type']);
+    logger.debug(`[UploadMiddleware] Début uploadMultipleImages - fieldName: ${fieldName}, maxCount: ${maxCount}`);
+    logger.debug('[UploadMiddleware] Headers:', req.headers);
+    logger.debug('[UploadMiddleware] Content-Type:', req.headers['content-type']);
     
     const uploadArray = uploadMultipleConfig.array(fieldName, maxCount);
     
     uploadArray(req, res, (err: any) => {
-      console.log('[UploadMiddleware] Après uploadArray - Erreur:', err);
-      console.log('[UploadMiddleware] Body:', req.body);
+      logger.debug('[UploadMiddleware] Après uploadArray - Erreur:', err);
+      logger.debug('[UploadMiddleware] Body:', req.body);
       if (err instanceof multer.MulterError) {
         // Erreur Multer
         if (err.code === 'LIMIT_FILE_SIZE') {
@@ -122,11 +123,11 @@ export const uploadMultipleImages = (fieldName: string, maxCount: number = 5) =>
       
       // Si aucun fichier n'a été uploadé, continuer sans erreur
       if (!req.files || (Array.isArray(req.files) && req.files.length === 0)) {
-        console.log('[UploadMiddleware] Aucun fichier trouvé dans req.files');
+        logger.debug('[UploadMiddleware] Aucun fichier trouvé dans req.files');
         return next();
       }
       
-      console.log('[UploadMiddleware] Fichiers trouvés:', 
+      logger.debug('[UploadMiddleware] Fichiers trouvés:', 
         Array.isArray(req.files) 
           ? `${req.files.length} fichiers (tableau)` 
           : `${Object.keys(req.files).length} champs avec fichiers (objet)`);

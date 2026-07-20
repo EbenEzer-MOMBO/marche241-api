@@ -78,17 +78,32 @@ export const registrationLimiter = rateLimit({
 });
 
 /**
- * Limiteur de débit pour la vérification de numéros WhatsApp (50 requêtes par 15 minutes par IP)
+ * Limiteur de débit pour la vérification de numéros WhatsApp (20 requêtes par 15 minutes par IP)
  */
 export const whatsappCheckLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100,
+  max: 20,
   standardHeaders: true,
   legacyHeaders: false,
   message: {
     success: false,
     message: 'Trop de vérifications de numéro WhatsApp pour cette adresse IP. Veuillez réessayer dans 15 minutes.',
     code: 'TOO_MANY_WHATSAPP_CHECK_REQUESTS'
+  }
+});
+
+/**
+ * Limiteur dédié au polling de vérification de paiement (30 requêtes / 15 min par IP)
+ */
+export const paymentVerificationLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Trop de vérifications de paiement pour cette adresse IP. Veuillez réessayer plus tard.',
+    code: 'TOO_MANY_PAYMENT_VERIFICATIONS'
   }
 });
 

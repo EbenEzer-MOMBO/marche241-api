@@ -1,19 +1,20 @@
 import jwt, { SignOptions } from 'jsonwebtoken';
 import { Vendeur } from '../lib/database-types';
 
+const getJwtSecret = (): string => {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('JWT_SECRET manquant dans la configuration serveur');
+  }
+  return secret;
+};
+
 /**
  * Génère un token JWT pour un vendeur
- * @param vendeur Le vendeur pour lequel générer le token
- * @returns Le token JWT
  */
 export const generateToken = (vendeur: Vendeur): string => {
-  const secret = process.env.JWT_SECRET || 'default_secret';
-  
-  // Utiliser une valeur par défaut sans passer par process.env pour éviter les problèmes de type
-  const options: SignOptions = {
-    expiresIn: '30d'
-  };
-  
+  const expiresIn = (process.env.JWT_EXPIRES_IN || '7d') as SignOptions['expiresIn'];
+
   return jwt.sign(
     {
       id: vendeur.id,
@@ -21,21 +22,18 @@ export const generateToken = (vendeur: Vendeur): string => {
       nom: vendeur.nom,
       email: vendeur.email
     },
-    secret,
-    options
+    getJwtSecret(),
+    { expiresIn }
   );
 };
 
 /**
  * Vérifie un token JWT
- * @param token Le token à vérifier
- * @returns Les données décodées du token ou null si invalide
  */
 export const verifyToken = (token: string): any | null => {
   try {
-    const secret = process.env.JWT_SECRET || 'default_secret';
-    return jwt.verify(token, secret);
-  } catch (error) {
+    return jwt.verify(token, getJwtSecret());
+  } catch {
     return null;
   }
 };

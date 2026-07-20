@@ -190,6 +190,14 @@ export class BoutiqueModel {
   }
 
   /**
+   * Vérifie qu'une boutique appartient à un vendeur
+   */
+  static async isOwnedByVendeur(boutiqueId: number, vendeurId: number): Promise<boolean> {
+    const boutique = await this.getBoutiqueById(boutiqueId);
+    return !!boutique && boutique.vendeur_id === vendeurId;
+  }
+
+  /**
    * Vérifie si un slug de boutique existe déjà
    */
   static async slugExists(slug: string, excludeId?: number): Promise<boolean> {

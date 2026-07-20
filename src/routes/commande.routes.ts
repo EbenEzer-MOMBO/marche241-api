@@ -44,118 +44,25 @@ const router = Router();
 router.post('/', orderLimiter, validateTurnstile, validate(createCommandeSchema), CommandeController.createCommande);
 
 /**
- * @swagger
- * /api/v1/commandes/{id}:
- *   get:
- *     summary: Récupère une commande par son ID
- *     description: Récupère les détails d'une commande spécifique
- *     tags: [Commandes]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *         description: ID de la commande
- *     responses:
- *       200:
- *         description: Commande récupérée avec succès
- *       400:
- *         description: ID de commande invalide
- *       401:
- *         description: Non authentifié
- *       404:
- *         description: Commande non trouvée
- *       500:
- *         description: Erreur serveur
- * 
- * @route   GET /api/v1/commandes/:id
- * @desc    Récupère une commande par son ID
- * @access  Private
- */
-router.get('/:id', auth, validateParams(idParamSchema), CommandeController.getCommandeById);
-
-/**
- * @swagger
- * /api/v1/commandes/numero/{numero}:
- *   get:
- *     summary: Récupère une commande par son numéro
- *     description: Récupère les détails d'une commande par son numéro unique
- *     tags: [Commandes]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: numero
- *         required: true
- *         schema:
- *           type: string
- *         description: Numéro de la commande
- *     responses:
- *       200:
- *         description: Commande récupérée avec succès
- *       400:
- *         description: Numéro de commande invalide
- *       401:
- *         description: Non authentifié
- *       404:
- *         description: Commande non trouvée
- *       500:
- *         description: Erreur serveur
- * 
  * @route   GET /api/v1/commandes/numero/:numero
  * @desc    Récupère une commande par son numéro
- * @access  Private
+ * @access  Private (propriétaire)
  */
-router.get('/numero/:numero', auth, validateParams(numeroParamSchema), CommandeController.getCommandeByNumero);
+router.get('/numero/:numero', auth, validateParams(numeroParamSchema), isCommandeOwner, CommandeController.getCommandeByNumero);
 
 /**
- * @swagger
- * /api/v1/commandes/boutique/{boutiqueId}:
- *   get:
- *     summary: Récupère les commandes d'une boutique
- *     description: Récupère la liste paginée des commandes d'une boutique spécifique
- *     tags: [Commandes]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: boutiqueId
- *         required: true
- *         schema:
- *           type: integer
- *         description: ID de la boutique
- *       - in: query
- *         name: page
- *         schema:
- *           type: integer
- *           default: 1
- *         description: Numéro de la page
- *       - in: query
- *         name: limite
- *         schema:
- *           type: integer
- *           default: 10
- *         description: Nombre d'éléments par page
- *     responses:
- *       200:
- *         description: Commandes récupérées avec succès
- *       400:
- *         description: ID de boutique invalide
- *       401:
- *         description: Non authentifié
- *       403:
- *         description: Non autorisé
- *       500:
- *         description: Erreur serveur
- * 
  * @route   GET /api/v1/commandes/boutique/:boutiqueId
  * @desc    Récupère les commandes d'une boutique
  * @access  Private (propriétaire de la boutique)
  */
 router.get('/boutique/:boutiqueId', auth, validateParams(boutiqueIdParamSchema), validateQuery(paginationQuerySchema), isBoutiqueOwner, CommandeController.getCommandesByBoutique);
+
+/**
+ * @route   GET /api/v1/commandes/:id
+ * @desc    Récupère une commande par son ID
+ * @access  Private (propriétaire)
+ */
+router.get('/:id', auth, validateParams(idParamSchema), isCommandeOwner, CommandeController.getCommandeById);
 
 /**
  * @swagger
@@ -346,6 +253,6 @@ router.post('/:id/paiement', validateParams(idParamSchema), validate(initierPaie
  * @desc    Récupère les détails des produits d'une commande
  * @access  Private
  */
-router.get('/:id/articles', auth, validateParams(idParamSchema), CommandeController.getCommandeArticlesDetails);
+router.get('/:id/articles', auth, validateParams(idParamSchema), isCommandeOwner, CommandeController.getCommandeArticlesDetails);
 
 export default router;

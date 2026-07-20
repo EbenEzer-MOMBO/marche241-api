@@ -12,6 +12,7 @@ import whatsappRoutes from './whatsapp.routes';
 import uploadRoutes from './upload.routes';
 import cronRoutes from './cron.routes';
 import { CronController } from '../controllers/cron.controller';
+import { requireCronSecret } from '../middlewares/cron-auth.middleware';
 
 const router = Router();
 
@@ -63,17 +64,14 @@ router.get('/health', CronController.healthCheck);
 
 // Route pour exécuter les tâches cron depuis cPanel
 // Exemple: curl https://votre-api.onrender.com/cron/tasks?key=votre_cle_secrete
-router.get('/cron/tasks', CronController.executeAllTasks);
+router.get('/cron/tasks', requireCronSecret, CronController.executeAllTasks);
 
 // Route pour expirer manuellement les transactions en attente
-// Exemple: curl https://votre-api.onrender.com/cron/expirer-transactions
-router.get('/cron/expirer-transactions', CronController.executeExpirerTransactions);
+// Exemple: curl https://votre-api.onrender.com/cron/expirer-transactions?key=votre_cle_secrete
+router.get('/cron/expirer-transactions', requireCronSecret, CronController.executeExpirerTransactions);
 
 // Route pour annuler manuellement les commandes orphelines
 // Exemple: curl https://votre-api.onrender.com/cron/annuler-commandes-orphelines?key=votre_cle_secrete
-router.get('/cron/annuler-commandes-orphelines', CronController.executeAnnulerCommandesOrphelines);
-
-// Ajouter d'autres routes ici au fur et à mesure
+router.get('/cron/annuler-commandes-orphelines', requireCronSecret, CronController.executeAnnulerCommandesOrphelines);
 
 export default router;
-

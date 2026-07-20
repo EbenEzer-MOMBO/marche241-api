@@ -1,12 +1,13 @@
 import nodemailer from 'nodemailer';
+import { logger } from '../utils/logger';
 
 export class EmailService {
   private static transporter: nodemailer.Transporter | null = null;
 
   static initialize() {
     if (!process.env.MAIL_USERNAME || !process.env.MAIL_PASSWORD) {
-      console.log('⚠️ Configuration SMTP non configurée - Emails désactivés');
-      console.log('   Veuillez configurer MAIL_USERNAME et MAIL_PASSWORD dans votre fichier .env');
+      logger.debug('⚠️ Configuration SMTP non configurée - Emails désactivés');
+      logger.debug('   Veuillez configurer MAIL_USERNAME et MAIL_PASSWORD dans votre fichier .env');
       return;
     }
     
@@ -24,15 +25,15 @@ export class EmailService {
       }
     });
     
-    console.log('✅ Service email SMTP configuré');
-    console.log(`✉️  Utilisation du compte: ${process.env.MAIL_USERNAME}`);
+    logger.debug('✅ Service email SMTP configuré');
+    logger.debug(`✉️  Utilisation du compte: ${process.env.MAIL_USERNAME}`);
     
     // Vérifier la connexion
     this.transporter.verify((error, success) => {
       if (error) {
-        console.error('❌ Erreur de connexion SMTP:', error);
+        logger.error('❌ Erreur de connexion SMTP:', error);
       } else {
-        console.log('✅ Connexion SMTP vérifiée avec succès');
+        logger.debug('✅ Connexion SMTP vérifiée avec succès');
       }
     });
   }
@@ -48,16 +49,14 @@ export class EmailService {
 
       // Si SMTP n'est pas configuré, simuler l'envoi
       if (!this.transporter) {
-        console.log('📧 Simulation envoi email (SMTP non configuré)');
-        console.log(`📧 Code de vérification pour: ${email}`);
-        console.log(`📧 Code: ${code}`);
+        logger.debug(`📧 Simulation envoi email (SMTP non configuré) vers ${email}`);
         return;
       }
 
       const fromEmail = process.env.MAIL_FROM_ADDRESS;
       const fromName = process.env.MAIL_FROM_NAME;
       
-      console.log(`[EmailService] Envoi d'email de ${fromEmail} vers ${email}`);
+      logger.debug(`[EmailService] Envoi d'email de ${fromEmail} vers ${email}`);
 
       const mailOptions = {
         from: `"${fromName}" <${fromEmail}>`,
@@ -68,10 +67,10 @@ export class EmailService {
       };
 
       const info = await this.transporter.sendMail(mailOptions);
-      console.log('[EmailService] Email envoyé avec succès:', info.messageId);
+      logger.debug('[EmailService] Email envoyé avec succès:', info.messageId);
 
     } catch (error: any) {
-      console.error('[EmailService] Exception lors de l\'envoi de l\'email:', error);
+      logger.error('[EmailService] Exception lors de l\'envoi de l\'email:', error);
       throw new Error(`Erreur lors de l'envoi de l'email: ${error.message}`);
     }
   }
@@ -255,15 +254,15 @@ export class EmailService {
 
       // Si SMTP n'est pas configuré, simuler l'envoi
       if (!this.transporter) {
-        console.log('📧 Simulation envoi email de bienvenue (SMTP non configuré)');
-        console.log(`📧 Email de bienvenue pour: ${email}`);
+        logger.debug('📧 Simulation envoi email de bienvenue (SMTP non configuré)');
+        logger.debug(`📧 Email de bienvenue pour: ${email}`);
         return;
       }
 
       const fromEmail = process.env.MAIL_FROM_ADDRESS;
       const fromName = process.env.MAIL_FROM_NAME;
       
-      console.log(`[EmailService] Envoi d'email de bienvenue de ${fromEmail} vers ${email}`);
+      logger.debug(`[EmailService] Envoi d'email de bienvenue de ${fromEmail} vers ${email}`);
 
       const mailOptions = {
         from: `"${fromName}" <${fromEmail}>`,
@@ -274,10 +273,10 @@ export class EmailService {
       };
 
       const info = await this.transporter.sendMail(mailOptions);
-      console.log('[EmailService] Email de bienvenue envoyé avec succès:', info.messageId);
+      logger.debug('[EmailService] Email de bienvenue envoyé avec succès:', info.messageId);
 
     } catch (error: any) {
-      console.error('[EmailService] Exception lors de l\'envoi de l\'email de bienvenue:', error);
+      logger.error('[EmailService] Exception lors de l\'envoi de l\'email de bienvenue:', error);
       throw new Error(`Erreur lors de l'envoi de l'email de bienvenue: ${error.message}`);
     }
   }

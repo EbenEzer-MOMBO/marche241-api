@@ -1,3 +1,4 @@
+import { logger } from '../utils/logger';
 /**
  * Service d'envoi de messages WhatsApp via GREEN-API
  * Documentation: https://green-api.com/en/docs/api/sending/SendMessage/
@@ -156,14 +157,14 @@ export class WhatsAppService {
    */
   static async sendMessage(phone: string, message: string): Promise<string | null> {
     if (!this.isConfigured()) {
-      console.warn('[WhatsAppService] Service non configuré. Variables GREEN_API_ID_INSTANCE et GREEN_API_TOKEN requises.');
+      logger.warn('[WhatsAppService] Service non configuré. Variables GREEN_API_ID_INSTANCE et GREEN_API_TOKEN requises.');
       return null;
     }
 
     const chatId = this.formatPhoneNumber(phone);
     const url = `${this.apiUrl}/waInstance${this.idInstance}/sendMessage/${this.apiTokenInstance}`;
 
-    console.log(`[WhatsAppService] Envoi de message à ${chatId}`);
+    logger.debug(`[WhatsAppService] Envoi de message à ${chatId}`);
 
     try {
       const response = await fetch(url, {
@@ -179,15 +180,15 @@ export class WhatsAppService {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(`[WhatsAppService] Erreur HTTP ${response.status}: ${errorText}`);
+        logger.error(`[WhatsAppService] Erreur HTTP ${response.status}: ${errorText}`);
         return null;
       }
 
       const data = await response.json() as WhatsAppMessageResponse;
-      console.log(`[WhatsAppService] Message envoyé avec succès. ID: ${data.idMessage}`);
+      logger.debug(`[WhatsAppService] Message envoyé avec succès. ID: ${data.idMessage}`);
       return data.idMessage;
     } catch (error: any) {
-      console.error('[WhatsAppService] Erreur lors de l\'envoi du message:', error.message);
+      logger.error('[WhatsAppService] Erreur lors de l\'envoi du message:', error.message);
       return null;
     }
   }
@@ -206,7 +207,7 @@ export class WhatsAppService {
     const messageGenerator = MESSAGES_STATUT[statut];
     
     if (!messageGenerator) {
-      console.log(`[WhatsAppService] Pas de message défini pour le statut: ${statut}`);
+      logger.debug(`[WhatsAppService] Pas de message défini pour le statut: ${statut}`);
       return null;
     }
 
@@ -280,18 +281,24 @@ Merci pour votre confiance ! 🙏`;
    * Vérifie si un numéro de téléphone dispose d'un compte WhatsApp
    * @param phone Numéro de téléphone
    */
+  private static checkNumberCache = new Map<string, { existsWhatsapp: boolean; expiresAt: number }>();
+  private static readonly CHECK_NUMBER_TTL_MS = 24 * 60 * 60 * 1000;
+
   static async checkWhatsAppNumber(phone: string): Promise<{ existsWhatsapp: boolean } | null> {
     if (!this.isConfigured()) {
-      console.warn('[WhatsAppService] Service non configuré. Variables GREEN_API_ID_INSTANCE et GREEN_API_TOKEN requises.');
+      logger.warn('[WhatsAppService] Service non configuré. Variables GREEN_API_ID_INSTANCE et GREEN_API_TOKEN requises.');
       return null;
     }
 
     const formattedChatId = this.formatPhoneNumber(phone);
-    const cleanDigits = formattedChatId.split('@')[0]; // ex: "24177123456"
+    const cleanDigits = formattedChatId.split('@')[0];
+
+    const cached = this.checkNumberCache.get(cleanDigits);
+    if (cached && Date.now() < cached.expiresAt) {
+      return { existsWhatsapp: cached.existsWhatsapp };
+    }
 
     const url = `${this.apiUrl}/waInstance${this.idInstance}/checkWhatsapp/${this.apiTokenInstance}`;
-
-    console.log(`[WhatsAppService] Vérification WhatsApp pour ${cleanDigits}`);
 
     try {
       const response = await fetch(url, {
@@ -306,15 +313,18 @@ Merci pour votre confiance ! 🙏`;
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(`[WhatsAppService] Erreur HTTP lors de la vérification ${response.status}: ${errorText}`);
+        logger.error(`[WhatsAppService] Erreur HTTP lors de la vérification ${response.status}: ${errorText}`);
         return null;
       }
 
       const data = await response.json() as { existsWhatsapp: boolean };
-      console.log(`[WhatsAppService] Résultat de la vérification pour ${cleanDigits}: ${data.existsWhatsapp}`);
+      this.checkNumberCache.set(cleanDigits, {
+        existsWhatsapp: data.existsWhatsapp,
+        expiresAt: Date.now() + this.CHECK_NUMBER_TTL_MS
+      });
       return data;
     } catch (error: any) {
-      console.error('[WhatsAppService] Erreur lors de la vérification WhatsApp:', error.message);
+      logger.error('[WhatsAppService] Erreur lors de la vérification WhatsApp:', error.message);
       return null;
     }
   }

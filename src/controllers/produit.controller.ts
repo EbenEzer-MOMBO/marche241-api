@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import { ProduitModel } from '../models/produit.model';
 import { VueModel } from '../models/vue.model';
+import { BoutiqueModel } from '../models/boutique.model';
+import { logger } from '../utils/logger';
 
 /**
  * Utilitaire pour extraire l'IP réelle du client
@@ -83,20 +85,20 @@ export class ProduitController {
       VueModel.enregistrerVue('produit', produit.id, clientIp, userAgent, referer)
         .then(nouvelleVue => {
           if (nouvelleVue) {
-            console.log(`[ProduitController] Nouvelle vue enregistrée pour produit ${produit.id}`);
+            logger.debug(`[ProduitController] Nouvelle vue enregistrée pour produit ${produit.id}`);
           }
         })
-        .catch(err => console.error('[ProduitController] Erreur tracking vue produit:', err));
+        .catch(err => logger.error('[ProduitController] Erreur tracking vue produit:', err));
 
       // Vue de la boutique (voir un produit = visiter la boutique)
       if (produit.boutique_id) {
         VueModel.enregistrerVue('boutique', produit.boutique_id, clientIp, userAgent, referer)
           .then(nouvelleVue => {
             if (nouvelleVue) {
-              console.log(`[ProduitController] Nouvelle vue enregistrée pour boutique ${produit.boutique_id}`);
+              logger.debug(`[ProduitController] Nouvelle vue enregistrée pour boutique ${produit.boutique_id}`);
             }
           })
-          .catch(err => console.error('[ProduitController] Erreur tracking vue boutique:', err));
+          .catch(err => logger.error('[ProduitController] Erreur tracking vue boutique:', err));
       }
 
       res.status(200).json({
@@ -138,20 +140,20 @@ export class ProduitController {
       VueModel.enregistrerVue('produit', produit.id, clientIp, userAgent, referer)
         .then(nouvelleVue => {
           if (nouvelleVue) {
-            console.log(`[ProduitController] Nouvelle vue enregistrée pour produit ${produit.id}`);
+            logger.debug(`[ProduitController] Nouvelle vue enregistrée pour produit ${produit.id}`);
           }
         })
-        .catch(err => console.error('[ProduitController] Erreur tracking vue produit:', err));
+        .catch(err => logger.error('[ProduitController] Erreur tracking vue produit:', err));
 
       // Vue de la boutique (voir un produit = visiter la boutique)
       if (produit.boutique_id) {
         VueModel.enregistrerVue('boutique', produit.boutique_id, clientIp, userAgent, referer)
           .then(nouvelleVue => {
             if (nouvelleVue) {
-              console.log(`[ProduitController] Nouvelle vue enregistrée pour boutique ${produit.boutique_id}`);
+              logger.debug(`[ProduitController] Nouvelle vue enregistrée pour boutique ${produit.boutique_id}`);
             }
           })
-          .catch(err => console.error('[ProduitController] Erreur tracking vue boutique:', err));
+          .catch(err => logger.error('[ProduitController] Erreur tracking vue boutique:', err));
       }
 
       res.status(200).json({
@@ -241,9 +243,9 @@ export class ProduitController {
    */
   static async createProduit(req: Request, res: Response): Promise<void> {
     try {
-      console.log('[ProduitController] Début createProduit');
-      console.log('[ProduitController] Headers:', req.headers);
-      console.log('[ProduitController] Body:', req.body);
+      logger.debug('[ProduitController] Début createProduit');
+      logger.debug('[ProduitController] Headers:', req.headers);
+      logger.debug('[ProduitController] Body:', req.body);
       
       const produitData = req.body;
       
@@ -258,7 +260,7 @@ export class ProduitController {
       }
 
       // Validation des champs requis
-      console.log('[ProduitController] Vérification des champs requis:', {
+      logger.debug('[ProduitController] Vérification des champs requis:', {
         nom: !!produitData.nom,
         slug: !!produitData.slug,
         prix: !!produitData.prix,
@@ -273,17 +275,17 @@ export class ProduitController {
         return;
       }
 
-      // TODO: Vérifier que l'utilisateur est propriétaire de la boutique
-      // const isOwner = await BoutiqueModel.isBoutiqueOwnedByVendeur(produitData.boutique_id, user.id);
-      // if (!isOwner) {
-      //   res.status(403).json({
-      //     success: false,
-      //     message: 'Vous n\'êtes pas autorisé à créer des produits pour cette boutique'
-      //   });
-      //   return;
-      // }
+      // Vérifier que l'utilisateur est propriétaire de la boutique
+      const isOwner = await BoutiqueModel.isOwnedByVendeur(produitData.boutique_id, user.id);
+      if (!isOwner && !(req as any).isAdmin) {
+        res.status(403).json({
+          success: false,
+          message: 'Vous n\'êtes pas autorisé à créer des produits pour cette boutique'
+        });
+        return;
+      }
 
-      console.log('[ProduitController] Tentative de création du produit avec les données:', {
+      logger.debug('[ProduitController] Tentative de création du produit avec les données:', {
         nom: produitData.nom,
         slug: produitData.slug,
         prix: produitData.prix,
@@ -294,7 +296,7 @@ export class ProduitController {
       });
       
       const produit = await ProduitModel.createProduit(produitData);
-      console.log('[ProduitController] Produit créé avec succès:', produit.id);
+      logger.debug('[ProduitController] Produit créé avec succès:', produit.id);
       
       res.status(201).json({
         success: true,
@@ -322,13 +324,13 @@ export class ProduitController {
    */
   static async updateProduit(req: Request, res: Response): Promise<void> {
     try {
-      console.log('[ProduitController] Début updateProduit');
-      console.log('[ProduitController] Params:', req.params);
+      logger.debug('[ProduitController] Début updateProduit');
+      logger.debug('[ProduitController] Params:', req.params);
       const id = parseInt(req.params.id);
-      console.log('[ProduitController] ID extrait:', id);
+      logger.debug('[ProduitController] ID extrait:', id);
       
       if (isNaN(id)) {
-        console.log('[ProduitController] ID de produit invalide:', req.params.id);
+        logger.debug('[ProduitController] ID de produit invalide:', req.params.id);
         res.status(400).json({
           success: false,
           message: 'ID de produit invalide'
@@ -337,13 +339,12 @@ export class ProduitController {
       }
 
       const produitData = req.body;
-      console.log('[ProduitController] Body reçu:', produitData);
       
       // Vérifier que l'utilisateur est authentifié
       const user = (req as any).user;
-      console.log('[ProduitController] Utilisateur extrait:', user ? user.email || user.id : user);
+      logger.debug('[ProduitController] Utilisateur extrait:', user ? user.email || user.id : user);
       if (!user) {
-        console.log('[ProduitController] Authentification requise');
+        logger.debug('[ProduitController] Authentification requise');
         res.status(401).json({
           success: false,
           message: 'Authentification requise'
@@ -353,9 +354,9 @@ export class ProduitController {
 
       // Récupérer le produit existant pour vérifier les permissions
       const existingProduit = await ProduitModel.getProduitById(id);
-      console.log('[ProduitController] Produit existant:', existingProduit ? existingProduit.id : existingProduit);
+      logger.debug('[ProduitController] Produit existant:', existingProduit ? existingProduit.id : existingProduit);
       if (!existingProduit) {
-        console.log('[ProduitController] Produit non trouvé pour l\'ID:', id);
+        logger.debug('[ProduitController] Produit non trouvé pour l\'ID:', id);
         res.status(404).json({
           success: false,
           message: 'Produit non trouvé'
@@ -363,19 +364,19 @@ export class ProduitController {
         return;
       }
 
-      // TODO: Vérifier que l'utilisateur est propriétaire de la boutique du produit
-      // const isOwner = await BoutiqueModel.isBoutiqueOwnedByVendeur(existingProduit.boutique_id, user.id);
-      // if (!isOwner) {
-      //   res.status(403).json({
-      //     success: false,
-      //     message: 'Vous n\'êtes pas autorisé à modifier ce produit'
-      //   });
-      //   return;
-      // }
+      // Vérifier que l'utilisateur est propriétaire de la boutique du produit
+      const isOwner = await BoutiqueModel.isOwnedByVendeur(existingProduit.boutique_id, user.id);
+      if (!isOwner && !(req as any).isAdmin) {
+        res.status(403).json({
+          success: false,
+          message: 'Vous n\'êtes pas autorisé à modifier ce produit'
+        });
+        return;
+      }
 
-      console.log('[ProduitController] Données envoyées à updateProduit:', produitData);
+      logger.debug('[ProduitController] Données envoyées à updateProduit:', produitData);
       const produit = await ProduitModel.updateProduit(id, produitData);
-      console.log('[ProduitController] Produit mis à jour avec succès:', produit.id);
+      logger.debug('[ProduitController] Produit mis à jour avec succès:', produit.id);
       
       res.status(200).json({
         success: true,
@@ -383,7 +384,7 @@ export class ProduitController {
         produit
       });
     } catch (error: any) {
-      console.log('[ProduitController] Erreur dans updateProduit:', error.message);
+      logger.debug('[ProduitController] Erreur dans updateProduit:', error.message);
       if (error.message.includes('slug existe déjà')) {
         res.status(409).json({
           success: false,
@@ -439,15 +440,15 @@ export class ProduitController {
         return;
       }
 
-      // TODO: Vérifier que l'utilisateur est propriétaire de la boutique du produit
-      // const isOwner = await BoutiqueModel.isBoutiqueOwnedByVendeur(existingProduit.boutique_id, user.id);
-      // if (!isOwner) {
-      //   res.status(403).json({
-      //     success: false,
-      //     message: 'Vous n\'êtes pas autorisé à supprimer ce produit'
-      //   });
-      //   return;
-      // }
+      // Vérifier que l'utilisateur est propriétaire de la boutique du produit
+      const isOwner = await BoutiqueModel.isOwnedByVendeur(existingProduit.boutique_id, user.id);
+      if (!isOwner && !(req as any).isAdmin) {
+        res.status(403).json({
+          success: false,
+          message: 'Vous n\'êtes pas autorisé à supprimer ce produit'
+        });
+        return;
+      }
 
       await ProduitModel.deleteProduit(id);
       
@@ -481,14 +482,13 @@ export class ProduitController {
    */
   static async getProduitsByBoutique(req: Request, res: Response): Promise<void> {
     try {
-      console.log('[ProduitController] ===== GET PRODUITS BY BOUTIQUE =====');
-      console.log('[ProduitController] Params:', req.params);
-      console.log('[ProduitController] Query:', req.query);
+      logger.debug('[ProduitController] Params:', req.params);
+      logger.debug('[ProduitController] Query:', req.query);
       
       const boutiqueId = parseInt(req.params.boutiqueId);
       
       if (isNaN(boutiqueId)) {
-        console.log('[ProduitController] ID de boutique invalide:', req.params.boutiqueId);
+        logger.debug('[ProduitController] ID de boutique invalide:', req.params.boutiqueId);
         res.status(400).json({
           success: false,
           message: 'ID de boutique invalide'
@@ -504,13 +504,13 @@ export class ProduitController {
       const tri_par = (query.tri_par as string) || 'date_creation';
       const ordre = ((query.ordre as string)?.toUpperCase() === 'ASC' ? 'ASC' : 'DESC') as 'ASC' | 'DESC';
       
-      console.log('[ProduitController] Recherche des produits pour boutique:', boutiqueId);
-      console.log('[ProduitController] Paramètres pagination:', { page, limite, tri_par, ordre });
+      logger.debug('[ProduitController] Recherche des produits pour boutique:', boutiqueId);
+      logger.debug('[ProduitController] Paramètres pagination:', { page, limite, tri_par, ordre });
       
       const { produits, total } = await ProduitModel.getProduitsByBoutique(boutiqueId, page, limite, tri_par, ordre);
       
-      console.log('[ProduitController] Nombre de produits trouvés:', produits.length);
-      console.log('[ProduitController] Total de produits pour cette boutique:', total);
+      logger.debug('[ProduitController] Nombre de produits trouvés:', produits.length);
+      logger.debug('[ProduitController] Total de produits pour cette boutique:', total);
       
       res.status(200).json({
         success: true,
@@ -521,7 +521,7 @@ export class ProduitController {
         total_pages: Math.ceil(total / limite)
       });
     } catch (error: any) {
-      console.error('[ProduitController] ERREUR:', error);
+      logger.error('[ProduitController] ERREUR:', error);
       res.status(500).json({
         success: false,
         message: 'Erreur lors de la récupération des produits de la boutique',

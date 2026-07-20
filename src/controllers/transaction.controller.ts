@@ -294,20 +294,11 @@ export class TransactionController {
       // Utiliser validatedBody s'il existe, sinon utiliser body
       const body = (req as any).validatedBody || req.body;
 
-      console.log('[TransactionController] Création de transaction, body:', JSON.stringify(body, null, 2));
-
       // Si une commande est associée, déterminer automatiquement le type_paiement si non fourni ou incorrect
       if (body.commande_id && body.montant) {
         const commande = await CommandeModel.getCommandeById(body.commande_id);
 
         if (commande) {
-          console.log('[TransactionController] Commande trouvée:', {
-            id: commande.id,
-            total: commande.total,
-            frais_livraison: commande.frais_livraison,
-            montant_transaction: body.montant
-          });
-
           // IMPORTANT: Le total de la commande (commande.total) inclut DÉJÀ la majoration de 10%
           // appliquée sur les prix des articles dans le panier. 
           // Nous devons donc seulement appliquer la majoration sur les frais de livraison s'ils existent.
@@ -327,42 +318,31 @@ export class TransactionController {
           const totalCommandeAvecFrais = totalCommande; // Déjà avec majoration
           const soldeApresLivraisonAvecFrais = totalCommande - fraisLivraisonAvecFrais;
 
-          console.log('[TransactionController] Analyse des montants:', {
-            fraisLivraison: fraisLivraison,
-            fraisLivraisonAvecFrais: fraisLivraisonAvecFrais,
-            totalCommande: totalCommande,
-            totalCommandeAvecFrais: totalCommandeAvecFrais,
-            soldeApresLivraisonAvecFrais: soldeApresLivraisonAvecFrais,
-            montantTransaction: montantTransaction,
-            note: 'totalCommande inclut déjà la majoration 10%'
-          });
-
           // Si le montant correspond aux frais de livraison + frais de service (avec tolérance de 2)
           if (Math.abs(montantTransaction - fraisLivraisonAvecFrais) <= 2 && fraisLivraison > 0) {
             body.type_paiement = 'frais_livraison';
             body.description = body.description || `Paiement des frais de livraison (${fraisLivraison} FCFA + majoration 10%)`;
-            console.log('[TransactionController] Type de paiement détecté: frais_livraison');
           }
           // Si le montant correspond au total de la commande (déjà avec majoration)
           else if (Math.abs(montantTransaction - totalCommandeAvecFrais) <= 2) {
             body.type_paiement = 'paiement_complet';
             body.description = body.description || `Paiement complet de la commande (${totalCommande} FCFA déjà avec majoration 10%)`;
-            console.log('[TransactionController] Type de paiement détecté: paiement_complet');
           }
           // Si le montant correspond au solde après paiement des frais de livraison
           else if (Math.abs(montantTransaction - soldeApresLivraisonAvecFrais) <= 2 && fraisLivraison > 0) {
             body.type_paiement = 'solde_apres_livraison';
             body.description = body.description || `Paiement du solde après livraison (${soldeApresLivraisonAvecFrais} FCFA)`;
-            console.log('[TransactionController] Type de paiement détecté: solde_apres_livraison');
           }
           // Sinon, c'est un acompte ou un complément
           else if (montantTransaction < totalCommandeAvecFrais) {
             body.type_paiement = body.type_paiement || 'acompte';
             body.description = body.description || `Paiement partiel de ${montantTransaction} FCFA`;
-            console.log('[TransactionController] Type de paiement: acompte');
           }
         }
       }
+
+      // Forcer en_attente : un client public ne peut jamais créer une transaction déjà payée
+      body.statut = 'en_attente';
 
       const transaction = await TransactionModel.createTransaction(body);
 

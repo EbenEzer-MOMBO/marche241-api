@@ -7,6 +7,7 @@ import { WhatsAppService } from '../services/whatsapp.service';
 import jwt from 'jsonwebtoken';
 import { generateToken } from '../utils/jwt.utils';
 import { hasValidMxRecord } from '../utils/email.utils';
+import { logger } from '../utils/logger';
 
 export class VendeurController {
   /**
@@ -132,7 +133,7 @@ export class VendeurController {
       try {
         await WhatsappSubscriberModel.subscribe(telephone, nom);
       } catch (subError: any) {
-        console.error(`[VendeurController] Échec de l'abonnement automatique WhatsApp pour le vendeur ${telephone}:`, subError.message);
+        logger.error(`[VendeurController] Échec de l'abonnement automatique WhatsApp pour le vendeur ${telephone}:`, subError.message);
       }
 
       // Envoyer les données vers le webhook
@@ -189,7 +190,7 @@ export class VendeurController {
           code: process.env.NODE_ENV === 'development' ? code : undefined
         });
       } catch (webhookError: any) {
-        console.error('Erreur lors de l\'envoi au webhook d\'inscription:', webhookError);
+        logger.error('Erreur lors de l\'envoi au webhook d\'inscription:', webhookError);
         
         // Si l'envoi au webhook échoue, on renvoie quand même une réponse positive
         // mais on log l'erreur pour investigation
@@ -211,7 +212,7 @@ export class VendeurController {
         });
       }
     } catch (error: any) {
-      console.error('Erreur dans inscrireVendeur:', error);
+      logger.error('Erreur dans inscrireVendeur:', error);
       
       if (error.message.includes('adresse email existe déjà')) {
         res.status(409).json({
@@ -286,7 +287,7 @@ export class VendeurController {
       try {
         await WhatsappSubscriberModel.subscribe(nouveauVendeur.telephone, nouveauVendeur.nom);
       } catch (subError: any) {
-        console.error(`[VendeurController] Échec de l'abonnement automatique WhatsApp pour le vendeur ${nouveauVendeur.telephone}:`, subError.message);
+        logger.error(`[VendeurController] Échec de l'abonnement automatique WhatsApp pour le vendeur ${nouveauVendeur.telephone}:`, subError.message);
       }
 
       res.status(201).json({
@@ -476,7 +477,7 @@ export class VendeurController {
           code: process.env.NODE_ENV === 'development' ? code : undefined
         });
       } catch (webhookError: any) {
-        console.error('Erreur lors de l\'envoi au webhook:', webhookError);
+        logger.error('Erreur lors de l\'envoi au webhook:', webhookError);
         
         // Si l'envoi au webhook échoue, on renvoie quand même une réponse positive
         // mais on log l'erreur pour investigation
@@ -489,7 +490,7 @@ export class VendeurController {
         });
       }
     } catch (error: any) {
-      console.error('Erreur dans demanderCodeVerification:', error);
+      logger.error('Erreur dans demanderCodeVerification:', error);
       res.status(500).json({
         success: false,
         message: 'Erreur lors de la demande de code de vérification',
@@ -505,10 +506,7 @@ export class VendeurController {
     try {
       let { email, phone, code } = req.body as VerificationCode;
       
-      console.log('[verifierCode] Données reçues:', { email, phone, code });
-      
       if (!code) {
-        console.log('[verifierCode] Code manquant');
         res.status(400).json({
           success: false,
           message: 'Le code est obligatoire'
@@ -518,26 +516,19 @@ export class VendeurController {
 
       // Nettoyer le numéro de téléphone en retirant le +
       if (phone) {
-        console.log('[verifierCode] Numéro avant nettoyage:', phone);
         phone = phone.replace(/^\+/, '').replace(/\s/g, '');
-        console.log('[verifierCode] Numéro après nettoyage:', phone);
       }
       
       // Vérifier si le vendeur existe
       let vendeur;
       if (email) {
-        console.log('[verifierCode] Recherche par email:', email);
         vendeur = await VendeurModel.getVendeurByEmail(email);
       } else if (phone) {
         const phoneToSearch = '+' + phone;
-        console.log('[verifierCode] Recherche par téléphone:', phoneToSearch);
         vendeur = await VendeurModel.getVendeurByTelephone(phoneToSearch);
       }
       
-      console.log('[verifierCode] Vendeur trouvé:', vendeur ? { id: vendeur.id, nom: vendeur.nom, statut: vendeur.statut } : 'null');
-      
       if (!vendeur) {
-        console.log('[verifierCode] Vendeur non trouvé');
         res.status(404).json({
           success: false,
           message: 'Vendeur non trouvé'
@@ -545,25 +536,16 @@ export class VendeurController {
         return;
       }
       
-      console.log('[verifierCode] Code stocké:', vendeur.code_verification);
-      console.log('[verifierCode] Code expiration:', vendeur.code_expiration);
-      console.log('[verifierCode] Tentatives:', vendeur.tentatives_code);
-      
       // Vérifier le code
       let isValid: boolean;
       if (email) {
-        console.log('[verifierCode] Vérification par email');
         isValid = await VendeurModel.verifyCodeByEmail(email, code);
       } else {
         const phoneToVerify = '+' + phone!;
-        console.log('[verifierCode] Vérification par téléphone:', phoneToVerify);
         isValid = await VendeurModel.verifyCode(phoneToVerify, code);
       }
       
-      console.log('[verifierCode] Code valide:', isValid);
-      
       if (!isValid) {
-        console.log('[verifierCode] Code invalide ou expiré');
         res.status(400).json({
           success: false,
           message: 'Code de vérification invalide ou expiré',
@@ -580,10 +562,7 @@ export class VendeurController {
         vendeurMisAJour = await VendeurModel.getVendeurByTelephone('+' + phone!);
       }
       
-      console.log('[verifierCode] Vendeur mis à jour:', vendeurMisAJour ? { id: vendeurMisAJour.id, statut: vendeurMisAJour.statut } : 'null');
-      
       if (!vendeurMisAJour) {
-        console.log('[verifierCode] Erreur récupération vendeur après vérification');
         res.status(500).json({
           success: false,
           message: 'Erreur lors de la récupération du vendeur après vérification'
@@ -593,7 +572,6 @@ export class VendeurController {
       
       // Envoyer un webhook de bienvenue si c'est la première vérification
       if (vendeur.statut === 'en_attente_verification') {
-        console.log('[verifierCode] Envoi webhook de bienvenue');
         try {
           const webhookUrl = process.env.WEBHOOK_REGISTER_URL;
           
@@ -624,18 +602,17 @@ export class VendeurController {
             });
 
             if (!response.ok) {
-              console.error(`[verifierCode] Webhook responded with status ${response.status}`);
+              logger.error(`[verifierCode] Webhook responded with status ${response.status}`);
             }
           }
         } catch (webhookError: any) {
-          console.error('[verifierCode] Erreur lors de l\'envoi du webhook de bienvenue:', webhookError);
+          logger.error('[verifierCode] Erreur lors de l\'envoi du webhook de bienvenue:', webhookError);
           // On continue même si le webhook échoue
         }
       }
       
       // Générer un token JWT
       const token = generateToken(vendeurMisAJour);
-      console.log('[verifierCode] Token généré avec succès');
       
       res.status(200).json({
         success: true,
@@ -644,7 +621,7 @@ export class VendeurController {
         token
       });
     } catch (error: any) {
-      console.error('[verifierCode] Erreur:', error);
+      logger.error('[verifierCode] Erreur:', error);
       res.status(500).json({
         success: false,
         message: 'Erreur lors de la vérification du code',

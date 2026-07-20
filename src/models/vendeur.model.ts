@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '../config/supabase';
 import { Vendeur, CreateVendeurData, ResultatPagine, OptionsPagination } from '../lib/database-types';
+import { logger } from '../utils/logger';
 
 export class VendeurModel {
   private static readonly TABLE_NAME = 'vendeurs';
@@ -229,7 +230,7 @@ export class VendeurModel {
       throw new Error('L\'adresse email est requise pour l\'inscription');
     }
     
-    console.log(`[VendeurModel] Inscription du vendeur: ${email}`);
+    logger.debug(`[VendeurModel] Inscription du vendeur: ${email}`);
     
     // Vérifier si l'email existe déjà
     const vendeurExistantEmail = await this.getVendeurByEmail(email);
@@ -252,8 +253,7 @@ export class VendeurModel {
     const maintenant = new Date();
     const codeExpiration = new Date(maintenant.getTime() + 30 * 60 * 1000);
     
-    console.log(`[VendeurModel] Code généré pour inscription: ${code}`);
-    console.log(`[VendeurModel] Expiration: ${codeExpiration.toISOString()}`);
+    logger.debug(`[VendeurModel] Expiration: ${codeExpiration.toISOString()}`);
     
     // Créer le vendeur avec le code de vérification
     const { data: vendeurCree, error } = await supabaseAdmin
@@ -276,7 +276,7 @@ export class VendeurModel {
       .single();
     
     if (error) {
-      console.error(`[VendeurModel] Erreur lors de la création du vendeur:`, error);
+      logger.error(`[VendeurModel] Erreur lors de la création du vendeur:`, error);
       
       // Gérer les erreurs de contrainte d'unicité
       if (error.code === '23505') { // Code PostgreSQL pour violation de contrainte unique
@@ -290,7 +290,7 @@ export class VendeurModel {
       throw new Error(`Erreur lors de la création du vendeur: ${error.message}`);
     }
     
-    console.log(`[VendeurModel] Vendeur créé avec succès: ID ${vendeurCree.id}`);
+    logger.debug(`[VendeurModel] Vendeur créé avec succès: ID ${vendeurCree.id}`);
     
     return {
       vendeur: vendeurCree as Vendeur,
@@ -309,10 +309,9 @@ export class VendeurModel {
     const maintenant = new Date();
     const codeExpiration = new Date(maintenant.getTime() + 30 * 60 * 1000); // 30 minutes en millisecondes
     
-    console.log(`[VendeurModel] Génération code pour ${email}`);
-    console.log(`[VendeurModel] Heure actuelle: ${maintenant.toISOString()}`);
-    console.log(`[VendeurModel] Expiration: ${codeExpiration.toISOString()}`);
-    console.log(`[VendeurModel] Code généré: ${code}`);
+    logger.debug(`[VendeurModel] Génération code pour ${email}`);
+    logger.debug(`[VendeurModel] Heure actuelle: ${maintenant.toISOString()}`);
+    logger.debug(`[VendeurModel] Expiration: ${codeExpiration.toISOString()}`);
     
     // Mettre à jour le vendeur avec le nouveau code
     const { error } = await supabaseAdmin
@@ -335,10 +334,6 @@ export class VendeurModel {
    * Vérifie un code de vérification (par téléphone)
    */
   static async verifyCode(telephone: string, code: string): Promise<boolean> {
-    console.log(`[VendeurModel.verifyCode] Début vérification pour ${telephone}`);
-    console.log(`[VendeurModel.verifyCode] Code reçu: "${code}" (type: ${typeof code}, longueur: ${code.length})`);
-    
-    // Récupérer le vendeur
     const { data, error } = await supabaseAdmin
       .from(this.TABLE_NAME)
       .select('code_verification, code_expiration, tentatives_code')
@@ -346,38 +341,22 @@ export class VendeurModel {
       .single();
     
     if (error) {
-      console.log(`[VendeurModel.verifyCode] Erreur: ${error.message}`);
       throw new Error(`Erreur lors de la vérification du code: ${error.message}`);
     }
     
     if (!data) {
-      console.log('[VendeurModel.verifyCode] Aucune donnée trouvée');
       return false;
     }
     
-    console.log(`[VendeurModel.verifyCode] Code en DB: "${data.code_verification}" (type: ${typeof data.code_verification})`);
-    console.log(`[VendeurModel.verifyCode] Expiration: ${data.code_expiration}`);
-    console.log(`[VendeurModel.verifyCode] Tentatives: ${data.tentatives_code}`);
-    
-    // Vérifier si le code est expiré (forcer UTC)
-    // Ajouter 'Z' si pas présent pour forcer l'interprétation UTC
     const expirationString = data.code_expiration.endsWith('Z') ? data.code_expiration : data.code_expiration + 'Z';
     const codeExpiration = new Date(expirationString);
     const maintenant = new Date();
     
-    
     if (codeExpiration.getTime() < maintenant.getTime()) {
-      console.log('[VendeurModel.verifyCode] Code expiré');
       return false;
     }
     
-    // Vérifier si le code est correct
-    console.log(`[VendeurModel.verifyCode] Comparaison: "${data.code_verification}" !== "${code}" = ${data.code_verification !== code}`);
-    console.log(`[VendeurModel.verifyCode] Comparaison stricte égale: ${data.code_verification === code}`);
-    
     if (data.code_verification !== code) {
-      console.log('[VendeurModel.verifyCode] Code incorrect');
-      // Incrémenter le nombre de tentatives
       await supabaseAdmin
         .from(this.TABLE_NAME)
         .update({
@@ -389,9 +368,6 @@ export class VendeurModel {
       return false;
     }
     
-    console.log('[VendeurModel.verifyCode] Code correct, mise à jour du vendeur');
-    
-    // Code correct, mettre à jour le statut du vendeur
     await supabaseAdmin
       .from(this.TABLE_NAME)
       .update({
@@ -411,10 +387,6 @@ export class VendeurModel {
    * Vérifie un code de vérification (par email)
    */
   static async verifyCodeByEmail(email: string, code: string): Promise<boolean> {
-    console.log(`[VendeurModel] Vérification du code pour ${email}`);
-    console.log(`[VendeurModel] Code reçu: "${code}" (longueur: ${code.length})`);
-    
-    // Récupérer le vendeur
     const { data, error } = await supabaseAdmin
       .from(this.TABLE_NAME)
       .select('code_verification, code_expiration, tentatives_code')
@@ -422,43 +394,23 @@ export class VendeurModel {
       .single();
     
     if (error) {
-      console.error(`[VendeurModel] Erreur DB lors de la vérification:`, error);
+      logger.error(`[VendeurModel] Erreur DB lors de la vérification:`, error);
       throw new Error(`Erreur lors de la vérification du code: ${error.message}`);
     }
     
     if (!data) {
-      console.log(`[VendeurModel] Aucune donnée trouvée pour ${email}`);
       return false;
     }
     
-    console.log(`[VendeurModel] Code en DB: "${data.code_verification}" (longueur: ${data.code_verification?.length})`);
-    console.log(`[VendeurModel] Expiration: ${data.code_expiration}`);
-    console.log(`[VendeurModel] Tentatives: ${data.tentatives_code}`);
-    
-    // Vérifier si le code est expiré (forcer UTC)
-    // Ajouter 'Z' si pas présent pour forcer l'interprétation UTC
     const expirationString = data.code_expiration.endsWith('Z') ? data.code_expiration : data.code_expiration + 'Z';
     const codeExpiration = new Date(expirationString);
     const maintenant = new Date();
     
-    console.log(`[VendeurModel] Expiration (ISO): ${data.code_expiration}`);
-    console.log(`[VendeurModel] Expiration corrigée: ${expirationString}`);
-    console.log(`[VendeurModel] Expiration (Date): ${codeExpiration.toISOString()}`);
-    console.log(`[VendeurModel] Maintenant (Date): ${maintenant.toISOString()}`);
-    console.log(`[VendeurModel] Temps restant (ms): ${codeExpiration.getTime() - maintenant.getTime()}`);
-    
     if (codeExpiration.getTime() < maintenant.getTime()) {
-      console.log(`[VendeurModel] Code expiré`);
       return false;
     }
     
-    // Vérifier si le code est correct
-    const codeMatch = data.code_verification === code;
-    console.log(`[VendeurModel] Codes correspondent: ${codeMatch}`);
-    
-    if (!codeMatch) {
-      console.log(`[VendeurModel] Code incorrect, incrémentation des tentatives`);
-      // Incrémenter le nombre de tentatives
+    if (data.code_verification !== code) {
       await supabaseAdmin
         .from(this.TABLE_NAME)
         .update({
@@ -470,7 +422,6 @@ export class VendeurModel {
       return false;
     }
     
-    // Code correct, mettre à jour le statut du vendeur
     await supabaseAdmin
       .from(this.TABLE_NAME)
       .update({

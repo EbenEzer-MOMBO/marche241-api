@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '../config/supabase';
+import { logger } from '../utils/logger';
 
 export type TypeEntiteVue = 'boutique' | 'produit';
 
@@ -33,8 +34,6 @@ export class VueModel {
     userAgent?: string,
     referer?: string
   ): Promise<boolean> {
-    console.log(`[VueModel] Enregistrement vue ${typeEntite} ${entiteId} depuis IP ${ipAddress}`);
-    
     try {
       // Appeler la fonction SQL pour enregistrer la vue
       const { data, error } = await supabaseAdmin.rpc('enregistrer_vue', {
@@ -46,15 +45,15 @@ export class VueModel {
       });
 
       if (error) {
-        console.error(`[VueModel] Erreur RPC enregistrer_vue:`, error);
+        logger.error(`[VueModel] Erreur RPC enregistrer_vue:`, error);
         // Fallback: essayer d'insérer directement
         return await this.enregistrerVueDirecte(typeEntite, entiteId, ipAddress, userAgent, referer);
       }
 
-      console.log(`[VueModel] Nouvelle vue enregistrée: ${data}`);
+      logger.debug(`[VueModel] Nouvelle vue enregistrée: ${data}`);
       return data === true;
     } catch (error) {
-      console.error(`[VueModel] Exception dans enregistrerVue:`, error);
+      logger.error(`[VueModel] Exception dans enregistrerVue:`, error);
       // Fallback: essayer d'insérer directement
       return await this.enregistrerVueDirecte(typeEntite, entiteId, ipAddress, userAgent, referer);
     }
@@ -70,7 +69,7 @@ export class VueModel {
     userAgent?: string,
     referer?: string
   ): Promise<boolean> {
-    console.log(`[VueModel] Tentative d'enregistrement direct de la vue`);
+    logger.debug(`[VueModel] Tentative d'enregistrement direct de la vue`);
     
     try {
       // Vérifier si une vue existe déjà pour aujourd'hui
@@ -87,13 +86,13 @@ export class VueModel {
         .maybeSingle();
 
       if (checkError) {
-        console.error(`[VueModel] Erreur lors de la vérification:`, checkError);
+        logger.error(`[VueModel] Erreur lors de la vérification:`, checkError);
         return false;
       }
 
       // Si déjà vue aujourd'hui, ne pas enregistrer
       if (existingVue) {
-        console.log(`[VueModel] Vue déjà enregistrée aujourd'hui pour cette IP`);
+        logger.debug(`[VueModel] Vue déjà enregistrée aujourd'hui pour cette IP`);
         return false;
       }
 
@@ -111,20 +110,20 @@ export class VueModel {
       if (insertError) {
         // Si erreur de contrainte unique, c'est que la vue existe déjà
         if (insertError.code === '23505') {
-          console.log(`[VueModel] Vue déjà existante (contrainte unique)`);
+          logger.debug(`[VueModel] Vue déjà existante (contrainte unique)`);
           return false;
         }
-        console.error(`[VueModel] Erreur lors de l'insertion:`, insertError);
+        logger.error(`[VueModel] Erreur lors de l'insertion:`, insertError);
         return false;
       }
 
       // Incrémenter le compteur de vues
       await this.incrementerCompteurVues(typeEntite, entiteId);
       
-      console.log(`[VueModel] Vue enregistrée avec succès`);
+      logger.debug(`[VueModel] Vue enregistrée avec succès`);
       return true;
     } catch (error) {
-      console.error(`[VueModel] Exception dans enregistrerVueDirecte:`, error);
+      logger.error(`[VueModel] Exception dans enregistrerVueDirecte:`, error);
       return false;
     }
   }
@@ -147,7 +146,7 @@ export class VueModel {
         .single();
 
       if (fetchError) {
-        console.error(`[VueModel] Erreur lors de la récupération de ${tableName}:`, fetchError);
+        logger.error(`[VueModel] Erreur lors de la récupération de ${tableName}:`, fetchError);
         return;
       }
 
@@ -160,10 +159,10 @@ export class VueModel {
         .eq('id', entiteId);
 
       if (updateError) {
-        console.error(`[VueModel] Erreur lors de l'incrémentation:`, updateError);
+        logger.error(`[VueModel] Erreur lors de l'incrémentation:`, updateError);
       }
     } catch (error) {
-      console.error(`[VueModel] Exception dans incrementerCompteurVues:`, error);
+      logger.error(`[VueModel] Exception dans incrementerCompteurVues:`, error);
     }
   }
 
@@ -174,7 +173,7 @@ export class VueModel {
     typeEntite: TypeEntiteVue,
     entiteId: number
   ): Promise<StatsVues> {
-    console.log(`[VueModel] Récupération stats vues ${typeEntite} ${entiteId}`);
+    logger.debug(`[VueModel] Récupération stats vues ${typeEntite} ${entiteId}`);
     
     try {
       // Essayer d'utiliser la fonction RPC
@@ -184,7 +183,7 @@ export class VueModel {
       });
 
       if (error) {
-        console.error(`[VueModel] Erreur RPC stats_vues:`, error);
+        logger.error(`[VueModel] Erreur RPC stats_vues:`, error);
         // Fallback: calculer manuellement
         return await this.getStatsVuesDirectes(typeEntite, entiteId);
       }
@@ -200,7 +199,7 @@ export class VueModel {
 
       return { vues_totales: 0, vues_aujourd_hui: 0, vues_7_jours: 0, vues_30_jours: 0 };
     } catch (error) {
-      console.error(`[VueModel] Exception dans getStatsVues:`, error);
+      logger.error(`[VueModel] Exception dans getStatsVues:`, error);
       return await this.getStatsVuesDirectes(typeEntite, entiteId);
     }
   }
@@ -256,7 +255,7 @@ export class VueModel {
         vues_30_jours: trenteJours || 0
       };
     } catch (error) {
-      console.error(`[VueModel] Exception dans getStatsVuesDirectes:`, error);
+      logger.error(`[VueModel] Exception dans getStatsVuesDirectes:`, error);
       return { vues_totales: 0, vues_aujourd_hui: 0, vues_7_jours: 0, vues_30_jours: 0 };
     }
   }
@@ -279,13 +278,13 @@ export class VueModel {
         .limit(limite);
 
       if (error) {
-        console.error(`[VueModel] Erreur lors de la récupération des vues récentes:`, error);
+        logger.error(`[VueModel] Erreur lors de la récupération des vues récentes:`, error);
         return [];
       }
 
       return data as VueTracking[];
     } catch (error) {
-      console.error(`[VueModel] Exception dans getVuesRecentes:`, error);
+      logger.error(`[VueModel] Exception dans getVuesRecentes:`, error);
       return [];
     }
   }
@@ -300,14 +299,14 @@ export class VueModel {
       });
 
       if (error) {
-        console.error(`[VueModel] Erreur lors du nettoyage:`, error);
+        logger.error(`[VueModel] Erreur lors du nettoyage:`, error);
         return 0;
       }
 
-      console.log(`[VueModel] ${data} anciennes vues supprimées`);
+      logger.debug(`[VueModel] ${data} anciennes vues supprimées`);
       return data || 0;
     } catch (error) {
-      console.error(`[VueModel] Exception dans nettoyerAnciennesVues:`, error);
+      logger.error(`[VueModel] Exception dans nettoyerAnciennesVues:`, error);
       return 0;
     }
   }

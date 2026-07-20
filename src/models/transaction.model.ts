@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '../config/supabase';
 import { Transaction, StatutPaiement } from '../lib/database-types';
+import { logger } from '../utils/logger';
 
 export class TransactionModel {
   /**
@@ -258,8 +259,6 @@ export class TransactionModel {
    * @param referenceOperateur Référence fournie par l'opérateur
    */
   static async findByReferenceOperateur(referenceOperateur: string): Promise<Transaction | null> {
-    console.log(`[TransactionModel] Recherche de transaction avec reference_operateur: ${referenceOperateur}`);
-
     try {
       const { data, error } = await supabaseAdmin
         .from('transactions')
@@ -272,24 +271,15 @@ export class TransactionModel {
 
       if (error) {
         if (error.code === 'PGRST116') {
-          // PGRST116 signifie "Aucun résultat trouvé"
-          console.log(`[TransactionModel] Aucune transaction trouvée avec reference_operateur: ${referenceOperateur}`);
           return null;
-        } else {
-          console.error(`[TransactionModel] Erreur lors de la recherche de transaction:`, error);
-          throw new Error(`Erreur lors de la récupération de la transaction: ${error.message}`);
         }
-      }
-
-      if (data) {
-        console.log(`[TransactionModel] Transaction trouvée avec ID: ${data.id}, commande_id: ${data.commande_id}`);
-      } else {
-        console.log(`[TransactionModel] Aucune transaction trouvée avec reference_operateur: ${referenceOperateur}`);
+        logger.error(`[TransactionModel] Erreur recherche reference_operateur:`, error.message);
+        throw new Error(`Erreur lors de la récupération de la transaction: ${error.message}`);
       }
 
       return data;
     } catch (error) {
-      console.error(`[TransactionModel] Exception dans findByReferenceOperateur:`, error);
+      logger.error(`[TransactionModel] Exception dans findByReferenceOperateur:`, error);
       throw error;
     }
   }

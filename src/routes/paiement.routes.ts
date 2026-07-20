@@ -4,7 +4,7 @@ import { auth } from '../middlewares/auth.middleware';
 import { validate, validateParams } from '../middlewares/validation.middleware';
 import { idParamSchema } from '../utils/validation.schemas';
 import { initierPaiementMobileSchema, initierPaiementVisaSchema, verifierPaiementSchema } from '../utils/validation.schemas.paiement';
-import { paymentLimiter } from '../middlewares/rate-limit.middleware';
+import { paymentLimiter, paymentVerificationLimiter } from '../middlewares/rate-limit.middleware';
 
 const router = Router();
 
@@ -146,6 +146,6 @@ router.post('/visa', paymentLimiter, validate(initierPaiementVisaSchema), Paieme
  * @desc    Vérifie l'état d'un paiement
  * @access  Public
  */
-router.get('/verification/:bill_id', validateParams(verifierPaiementSchema), PaiementController.verifierPaiement);
+router.get('/verification/:bill_id', paymentVerificationLimiter, validateParams(verifierPaiementSchema), PaiementController.verifierPaiement);
 
 export default router;

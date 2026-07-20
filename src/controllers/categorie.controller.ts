@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
 import { CategorieModel, CreateCategorieData } from '../models/categorie.model';
+import { BoutiqueModel } from '../models/boutique.model';
+import { logger } from '../utils/logger';
 
 export class CategorieController {
   /**
@@ -9,8 +11,6 @@ export class CategorieController {
    */
   static async getAllCategories(req: Request, res: Response): Promise<void> {
     try {
-      console.log('[CategorieController] ===== GET ALL CATEGORIES =====');
-      console.log('[CategorieController] Query params:', req.query);
       
       // Utiliser validatedQuery s'il existe, sinon utiliser query
       const query = (req as any).validatedQuery || req.query;
@@ -18,11 +18,9 @@ export class CategorieController {
       // Récupérer le paramètre boutique_id s'il existe
       const boutiqueId = query.boutique_id ? parseInt(query.boutique_id as string) : undefined;
       
-      console.log('[CategorieController] Boutique ID parsé:', boutiqueId);
       
       // Vérifier si boutiqueId est un nombre valide
       if (query.boutique_id && isNaN(boutiqueId as number)) {
-        console.log('[CategorieController] ID de boutique invalide:', query.boutique_id);
         res.status(400).json({
           success: false,
           message: 'ID de boutique invalide'
@@ -32,16 +30,13 @@ export class CategorieController {
       
       const categories = await CategorieModel.getAllCategories(boutiqueId);
       
-      console.log('[CategorieController] Nombre de catégories retournées:', categories.length);
-      console.log('[CategorieController] Catégories globales:', categories.filter(c => !c.boutique_id).length);
-      console.log('[CategorieController] Catégories spécifiques:', categories.filter(c => c.boutique_id).length);
       
       res.status(200).json({
         success: true,
         categories
       });
     } catch (error: any) {
-      console.error('[CategorieController] ERREUR:', error);
+      logger.error('[CategorieController] ERREUR:', error);
       res.status(500).json({
         success: false,
         message: 'Erreur lors de la récupération des catégories',
@@ -144,17 +139,24 @@ export class CategorieController {
         return;
       }
 
-      // Si boutique_id est spécifié, vérifier que l'utilisateur en est propriétaire
-      if (categorieData.boutique_id) {
-        // TODO: Ajouter la vérification de propriété de la boutique
-        // const isOwner = await BoutiqueModel.isBoutiqueOwnedByVendeur(categorieData.boutique_id, user.id);
-        // if (!isOwner) {
-        //   res.status(403).json({
-        //     success: false,
-        //     message: 'Vous n\'êtes pas autorisé à créer des catégories pour cette boutique'
-        //   });
-        //   return;
-        // }
+      // Catégorie globale : admin uniquement. Catégorie boutique : ownership requis.
+      if (!categorieData.boutique_id) {
+        if (!(req as any).isAdmin) {
+          res.status(403).json({
+            success: false,
+            message: 'Seuls les administrateurs peuvent créer des catégories globales'
+          });
+          return;
+        }
+      } else {
+        const isOwner = await BoutiqueModel.isOwnedByVendeur(categorieData.boutique_id, user.id);
+        if (!isOwner && !(req as any).isAdmin) {
+          res.status(403).json({
+            success: false,
+            message: 'Vous n\'êtes pas autorisé à créer des catégories pour cette boutique'
+          });
+          return;
+        }
       }
 
       const categorie = await CategorieModel.createCategorie(categorieData);
@@ -217,17 +219,24 @@ export class CategorieController {
         return;
       }
 
-      // Si la catégorie appartient à une boutique, vérifier les permissions
-      if (existingCategorie.boutique_id) {
-        // TODO: Ajouter la vérification de propriété de la boutique
-        // const isOwner = await BoutiqueModel.isBoutiqueOwnedByVendeur(existingCategorie.boutique_id, user.id);
-        // if (!isOwner) {
-        //   res.status(403).json({
-        //     success: false,
-        //     message: 'Vous n\'êtes pas autorisé à modifier cette catégorie'
-        //   });
-        //   return;
-        // }
+      // Catégorie globale : admin uniquement. Catégorie boutique : ownership requis.
+      if (!existingCategorie.boutique_id) {
+        if (!(req as any).isAdmin) {
+          res.status(403).json({
+            success: false,
+            message: 'Seuls les administrateurs peuvent modifier des catégories globales'
+          });
+          return;
+        }
+      } else {
+        const isOwner = await BoutiqueModel.isOwnedByVendeur(existingCategorie.boutique_id, user.id);
+        if (!isOwner && !(req as any).isAdmin) {
+          res.status(403).json({
+            success: false,
+            message: 'Vous n\'êtes pas autorisé à modifier cette catégorie'
+          });
+          return;
+        }
       }
 
       const categorie = await CategorieModel.updateCategorie(id, categorieData);
@@ -293,17 +302,24 @@ export class CategorieController {
         return;
       }
 
-      // Si la catégorie appartient à une boutique, vérifier les permissions
-      if (existingCategorie.boutique_id) {
-        // TODO: Ajouter la vérification de propriété de la boutique
-        // const isOwner = await BoutiqueModel.isBoutiqueOwnedByVendeur(existingCategorie.boutique_id, user.id);
-        // if (!isOwner) {
-        //   res.status(403).json({
-        //     success: false,
-        //     message: 'Vous n\'êtes pas autorisé à supprimer cette catégorie'
-        //   });
-        //   return;
-        // }
+      // Catégorie globale : admin uniquement. Catégorie boutique : ownership requis.
+      if (!existingCategorie.boutique_id) {
+        if (!(req as any).isAdmin) {
+          res.status(403).json({
+            success: false,
+            message: 'Seuls les administrateurs peuvent supprimer des catégories globales'
+          });
+          return;
+        }
+      } else {
+        const isOwner = await BoutiqueModel.isOwnedByVendeur(existingCategorie.boutique_id, user.id);
+        if (!isOwner && !(req as any).isAdmin) {
+          res.status(403).json({
+            success: false,
+            message: 'Vous n\'êtes pas autorisé à supprimer cette catégorie'
+          });
+          return;
+        }
       }
 
       await CategorieModel.deleteCategorie(id);

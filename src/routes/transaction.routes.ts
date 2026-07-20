@@ -296,6 +296,11 @@ router.get('/:id', auth, validateParams(idParamSchema), TransactionController.ge
 router.post('/', paymentLimiter, validate(createTransactionSchema), TransactionController.createTransaction);
 
 /**
+ * Mutations de statut / mise à jour : réservées admin.
+ * Les mises à jour de paiement légitimes passent par TransactionModel (paiements/commandes).
+ */
+
+/**
  * @swagger
  * /api/v1/transactions/{id}/status:
  *   patch:
@@ -335,7 +340,7 @@ router.post('/', paymentLimiter, validate(createTransactionSchema), TransactionC
  * @desc    Met à jour le statut d'une transaction
  * @access  Private (admin)
  */
-router.patch('/:id/status', validateParams(idParamSchema), validate(updateTransactionStatusSchema), TransactionController.updateTransactionStatus);
+router.patch('/:id/status', auth, isAdmin, validateParams(idParamSchema), validate(updateTransactionStatusSchema), TransactionController.updateTransactionStatus);
 
 /**
  * @swagger
@@ -377,6 +382,6 @@ router.patch('/:id/status', validateParams(idParamSchema), validate(updateTransa
  * @desc    Met à jour une transaction
  * @access  Private (admin)
  */
-router.put('/:id', validateParams(idParamSchema), validate(updateTransactionSchema), TransactionController.updateTransaction);
+router.put('/:id', auth, isAdmin, validateParams(idParamSchema), validate(updateTransactionSchema), TransactionController.updateTransaction);
 
 export default router;

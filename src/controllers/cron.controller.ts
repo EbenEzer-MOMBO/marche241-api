@@ -187,19 +187,7 @@ export class CronController {
       duration?: number;
     }[] = [];
 
-    // Vérification optionnelle de la clé secrète
-    const cronKey = process.env.CRON_SECRET_KEY;
-    const providedKey = req.query.key as string;
-
-    if (cronKey && providedKey !== cronKey) {
-      console.log('[CronController] Clé invalide ou manquante');
-      res.status(401).json({
-        success: false,
-        message: 'Clé d\'authentification invalide'
-      });
-      return;
-    }
-
+    // Authentification gérée par requireCronSecret sur la route
     try {
       // Tâche 1: Retirer le statut "nouveau" des produits anciens
       const task1Start = Date.now();
@@ -346,20 +334,7 @@ export class CronController {
    */
   static async executeNettoyerVues(req: Request, res: Response): Promise<void> {
     try {
-      // Vérification optionnelle de la clé secrète
-      const cronKey = process.env.CRON_SECRET_KEY;
-      const providedKey = req.query.key as string;
-
-      if (cronKey && providedKey !== cronKey) {
-        console.log('[CronController] Clé invalide ou manquante');
-        res.status(401).json({
-          success: false,
-          message: 'Clé d\'authentification invalide'
-        });
-        return;
-      }
-
-      // Récupérer le nombre de jours à conserver (défaut: 30)
+      // Authentification gérée par requireCronSecret sur la route
       const joursRetention = parseInt(req.query.jours as string) || 30;
       
       console.log(`[CronController] Exécution manuelle: nettoyage des vues de plus de ${joursRetention} jours`);
@@ -393,19 +368,7 @@ export class CronController {
    */
   static async executeNettoyerVuesMoisEnCours(req: Request, res: Response): Promise<void> {
     try {
-      // Vérification optionnelle de la clé secrète
-      const cronKey = process.env.CRON_SECRET_KEY;
-      const providedKey = req.query.key as string;
-
-      if (cronKey && providedKey !== cronKey) {
-        console.log('[CronController] Clé invalide ou manquante');
-        res.status(401).json({
-          success: false,
-          message: 'Clé d\'authentification invalide'
-        });
-        return;
-      }
-
+      // Authentification gérée par requireCronSecret sur la route
       console.log('[CronController] Exécution manuelle: nettoyage des vues hors mois en cours');
 
       const result = await CronService.executeNettoyerVuesMoisEnCoursManually();
@@ -435,18 +398,7 @@ export class CronController {
    */
   static async executeAnnulerCommandesOrphelines(req: Request, res: Response): Promise<void> {
     try {
-      // Vérification optionnelle de la clé secrète
-      const cronKey = process.env.CRON_SECRET_KEY;
-      const providedKey = req.query.key as string;
-
-      if (cronKey && providedKey !== cronKey) {
-        console.log('[CronController] Clé invalide ou manquante');
-        res.status(401).json({
-          success: false,
-          message: 'Clé d\'authentification invalide'
-        });
-        return;
-      }
+      // Authentification gérée par requireCronSecret sur la route
 
       // Récupérer le délai en heures (défaut: 1 heure)
       const delaiHeures = parseInt(req.query.heures as string) || 1;

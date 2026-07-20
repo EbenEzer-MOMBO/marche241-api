@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '../config/supabase';
 import { Categorie } from '../lib/database-types';
+import { logger } from '../utils/logger';
 
 export interface CreateCategorieData {
   nom: string;
@@ -18,8 +19,6 @@ export class CategorieModel {
    * ET les catégories spécifiques à cette boutique
    */
   static async getAllCategories(boutiqueId?: number): Promise<Categorie[]> {
-    console.log('[CategorieModel] ===== GET ALL CATEGORIES =====');
-    console.log('[CategorieModel] Boutique ID:', boutiqueId);
     
     // Construire la requête avec le nombre de produits
     let query = supabaseAdmin
@@ -32,21 +31,17 @@ export class CategorieModel {
     
     // Si une boutique est spécifiée, récupérer les catégories globales ET celles de la boutique
     if (boutiqueId) {
-      console.log('[CategorieModel] Filtrage: catégories globales + boutique', boutiqueId);
       query = query.or(`boutique_id.is.null,boutique_id.eq.${boutiqueId}`);
-    } else {
-      console.log('[CategorieModel] Récupération de toutes les catégories (sans filtre)');
     }
     
     // Exécuter la requête
     const { data, error } = await query;
     
     if (error) {
-      console.error('[CategorieModel] ERREUR:', error);
+      logger.error('[CategorieModel] ERREUR:', error);
       throw new Error(`Erreur lors de la récupération des catégories: ${error.message}`);
     }
     
-    console.log('[CategorieModel] Nombre de catégories récupérées:', data?.length || 0);
     
     // Transformer les données pour inclure le nombre de produits
     const categoriesWithCount = (data || []).map(categorie => ({

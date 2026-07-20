@@ -11,7 +11,6 @@ export class WhatsAppController {
     try {
       const { telephone, message } = req.body;
 
-      // Validation des champs obligatoires
       if (!telephone || !message) {
         res.status(400).json({
           success: false,
@@ -20,32 +19,63 @@ export class WhatsAppController {
         return;
       }
 
-      // 1. Tenter d'authentifier l'utilisateur via le token s'il est fourni (facultatif)
+      const otpRegex =
+        /^Votre code de vérification Marché241 est:\s*(\d{4,8})\n\nCe code expire dans 10 minutes\.$/i;
+      const allowedTemplates: RegExp[] = [
+        otpRegex,
+        /^Marché241:/i,
+        /^Nouvelle commande/i,
+        /^Votre commande/i,
+        /^Statut de votre commande/i
+      ];
+
+      const hasInternalSecret =
+        !!process.env.INTERNAL_API_SECRET &&
+        req.headers['x-internal-secret'] === process.env.INTERNAL_API_SECRET;
+
       let isUserAuthenticated = false;
       const authHeader = req.headers.authorization;
       if (authHeader && authHeader.startsWith('Bearer ')) {
         const token = authHeader.substring(7);
         try {
-          const decoded = jwt.verify(token, process.env.JWT_SECRET || '');
-          if (decoded) {
-            isUserAuthenticated = true;
+          const jwtSecret = process.env.JWT_SECRET;
+          if (jwtSecret) {
+            const decoded = jwt.verify(token, jwtSecret);
+            if (decoded) {
+              isUserAuthenticated = true;
+            }
           }
-        } catch (e) {
-          // Token invalide ou expiré, considéré comme anonyme
+        } catch {
+          // Token invalide → traité comme anonyme
         }
       }
 
-      // 2. Si l'utilisateur n'est pas authentifié, restreindre strictement le contenu au format OTP
-      if (!isUserAuthenticated) {
-        // Valider le format du message : il doit correspondre au format d'envoi de code de vérification
-        // Exemple : "Votre code de vérification Marché241 est: 123456\n\nCe code expire dans 10 minutes."
-        const otpRegex = /^Votre code de vérification Marché241 est:\s*(\d{4,8})\n\nCe code expire dans 10 minutes\.$/i;
+      const isTrusted = isUserAuthenticated || hasInternalSecret;
+
+      if (!isTrusted) {
+        // Accès public : uniquement le template OTP Marché241
         if (!otpRegex.test(message.trim())) {
-          console.warn(`[WhatsAppController] Envoi bloqué : format de message non autorisé pour les requêtes anonymes. Destination: ${telephone}`);
+          console.warn(
+            `[WhatsAppController] Envoi bloqué : format non autorisé (anonyme). Destination: ${telephone}`
+          );
           res.status(403).json({
             success: false,
             message: 'Action interdite. Format de message non autorisé pour les requêtes publiques.',
             code: 'FORBIDDEN_MESSAGE_FORMAT'
+          });
+          return;
+        }
+      } else {
+        // Auth / secret interne : allowlist de templates uniquement
+        const matchesAllowlist = allowedTemplates.some((regex) => regex.test(message.trim()));
+        if (!matchesAllowlist) {
+          console.warn(
+            `[WhatsAppController] Envoi bloqué : message hors allowlist. Destination: ${telephone}`
+          );
+          res.status(403).json({
+            success: false,
+            message: 'Action interdite. Message hors allowlist de templates.',
+            code: 'FORBIDDEN_MESSAGE_TEMPLATE'
           });
           return;
         }
@@ -69,7 +99,6 @@ export class WhatsAppController {
           numeroDestination: WhatsAppService.formatPhoneNumber(telephone)
         }
       });
-
     } catch (error: any) {
       console.error('Erreur lors de l\'envoi du message WhatsApp:', error.message);
       res.status(500).json({

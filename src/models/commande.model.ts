@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '../config/supabase';
 import { Commande, CommandeArticle, StatutCommande, StatutPaiement } from '../lib/database-types';
 import { ProduitModel } from './produit.model';
+import { logger } from '../utils/logger';
 
 export class CommandeModel {
   /**
@@ -38,7 +39,7 @@ export class CommandeModel {
       const formattedNumber = sequentialNumber.toString().padStart(4, '0');
       return `${prefix}${formattedNumber}`;
     } catch (error) {
-      console.error('[CommandeModel] Erreur lors de la génération du numéro de commande:', error);
+      logger.error('[CommandeModel] Erreur lors de la génération du numéro de commande:', error);
       // En cas d'erreur, utiliser un numéro aléatoire comme fallback
       const randomNum = Math.floor(1000 + Math.random() * 9000); // Nombre aléatoire à 4 chiffres
       return `${prefix}${randomNum.toString().padStart(4, '0')}`;
@@ -50,14 +51,14 @@ export class CommandeModel {
    * @param commande Données de la commande
    */
   static async createCommande(commande: Omit<Commande, 'id' | 'date_commande' | 'date_modification'>): Promise<Commande> {
-    console.log('[CommandeModel] Début de createCommande');
-    console.log('[CommandeModel] Données reçues:', JSON.stringify(commande, null, 2));
+    logger.debug('[CommandeModel] Début de createCommande');
+    logger.debug('[CommandeModel] Données reçues:', JSON.stringify(commande, null, 2));
     
     try {
       // Générer un numéro de commande si non fourni
       if (!commande.numero_commande) {
         commande.numero_commande = await this.generateNumeroCommande();
-        console.log('[CommandeModel] Numéro de commande généré:', commande.numero_commande);
+        logger.debug('[CommandeModel] Numéro de commande généré:', commande.numero_commande);
       }
 
       // Ajouter les dates
@@ -66,9 +67,9 @@ export class CommandeModel {
         date_commande: new Date(),
         date_modification: new Date()
       };
-      console.log('[CommandeModel] Données finales pour insertion:', JSON.stringify(commandeData, null, 2));
+      logger.debug('[CommandeModel] Données finales pour insertion:', JSON.stringify(commandeData, null, 2));
 
-      console.log('[CommandeModel] Insertion dans la base de données...');
+      logger.debug('[CommandeModel] Insertion dans la base de données...');
       const { data, error } = await supabaseAdmin
         .from('commandes')
         .insert([commandeData])
@@ -76,14 +77,14 @@ export class CommandeModel {
         .single();
       
       if (error) {
-        console.error('[CommandeModel] ERREUR lors de l\'insertion:', error);
+        logger.error('[CommandeModel] ERREUR lors de l\'insertion:', error);
         throw new Error(`Erreur lors de la création de la commande: ${error.message}`);
       }
       
-      console.log('[CommandeModel] Commande créée avec succès:', JSON.stringify(data, null, 2));
+      logger.debug('[CommandeModel] Commande créée avec succès:', JSON.stringify(data, null, 2));
       return data;
     } catch (error) {
-      console.error('[CommandeModel] Exception dans createCommande:', error);
+      logger.error('[CommandeModel] Exception dans createCommande:', error);
       throw error;
     }
   }
@@ -93,8 +94,8 @@ export class CommandeModel {
    * @param article Données de l'article
    */
   static async addArticleToCommande(article: Omit<CommandeArticle, 'id'>): Promise<CommandeArticle> {
-    console.log('[CommandeModel] Début de addArticleToCommande');
-    console.log('[CommandeModel] Données de l\'article:', JSON.stringify(article, null, 2));
+    logger.debug('[CommandeModel] Début de addArticleToCommande');
+    logger.debug('[CommandeModel] Données de l\'article:', JSON.stringify(article, null, 2));
     
     try {
       // Préparer les données de l'article pour l'insertion
@@ -104,10 +105,10 @@ export class CommandeModel {
         variants_selectionnes: article.variants_selectionnes ? article.variants_selectionnes : null
       };
       
-      console.log('[CommandeModel] Données finales de l\'article pour insertion:', JSON.stringify(articleData, null, 2));
-      console.log('[CommandeModel] Type de variants_selectionnes:', articleData.variants_selectionnes ? typeof articleData.variants_selectionnes : 'null');
+      logger.debug('[CommandeModel] Données finales de l\'article pour insertion:', JSON.stringify(articleData, null, 2));
+      logger.debug('[CommandeModel] Type de variants_selectionnes:', articleData.variants_selectionnes ? typeof articleData.variants_selectionnes : 'null');
       
-      console.log('[CommandeModel] Insertion de l\'article dans la base de données...');
+      logger.debug('[CommandeModel] Insertion de l\'article dans la base de données...');
       const { data, error } = await supabaseAdmin
         .from('commande_articles')
         .insert([articleData])
@@ -115,14 +116,14 @@ export class CommandeModel {
         .single();
       
       if (error) {
-        console.error('[CommandeModel] ERREUR lors de l\'insertion de l\'article:', error);
+        logger.error('[CommandeModel] ERREUR lors de l\'insertion de l\'article:', error);
         throw new Error(`Erreur lors de l'ajout de l'article à la commande: ${error.message}`);
       }
       
-      console.log('[CommandeModel] Article ajouté avec succès:', JSON.stringify(data, null, 2));
+      logger.debug('[CommandeModel] Article ajouté avec succès:', JSON.stringify(data, null, 2));
       return data;
     } catch (error) {
-      console.error('[CommandeModel] Exception dans addArticleToCommande:', error);
+      logger.error('[CommandeModel] Exception dans addArticleToCommande:', error);
       throw error;
     }
   }
@@ -133,7 +134,7 @@ export class CommandeModel {
    * @param increment Si true, incrémente le stock (annulation), sinon décrémente (confirmation)
    */
   static async updateProductsStock(commandeId: number, increment: boolean = false): Promise<void> {
-    console.log(`[CommandeModel] Mise à jour du stock pour la commande ${commandeId}, increment: ${increment}`);
+    logger.debug(`[CommandeModel] Mise à jour du stock pour la commande ${commandeId}, increment: ${increment}`);
     
     try {
       // Récupérer les articles de la commande avec les variants sélectionnés
@@ -143,12 +144,12 @@ export class CommandeModel {
         .eq('commande_id', commandeId);
       
       if (error) {
-        console.error(`[CommandeModel] Erreur lors de la récupération des articles: ${error.message}`);
+        logger.error(`[CommandeModel] Erreur lors de la récupération des articles: ${error.message}`);
         throw new Error(`Erreur lors de la récupération des articles: ${error.message}`);
       }
       
       if (!articles || articles.length === 0) {
-        console.log(`[CommandeModel] Aucun article trouvé pour la commande ${commandeId}`);
+        logger.debug(`[CommandeModel] Aucun article trouvé pour la commande ${commandeId}`);
         return;
       }
       
@@ -158,18 +159,18 @@ export class CommandeModel {
         
         // Si l'article a des variants sélectionnés, mettre à jour le stock du variant
         if (article.variants_selectionnes && Object.keys(article.variants_selectionnes).length > 0) {
-          console.log(`[CommandeModel] Mise à jour du stock avec variants pour produit ${article.produit_id}:`, article.variants_selectionnes);
+          logger.debug(`[CommandeModel] Mise à jour du stock avec variants pour produit ${article.produit_id}:`, article.variants_selectionnes);
           await ProduitModel.updateStockWithVariants(article.produit_id, quantite, article.variants_selectionnes);
         } else {
           // Sinon, mettre à jour le stock global
-          console.log(`[CommandeModel] Mise à jour du stock global pour produit ${article.produit_id}`);
+          logger.debug(`[CommandeModel] Mise à jour du stock global pour produit ${article.produit_id}`);
           await ProduitModel.updateStock(article.produit_id, quantite);
         }
       }
       
-      console.log(`[CommandeModel] Stock mis à jour pour tous les produits de la commande ${commandeId}`);
+      logger.debug(`[CommandeModel] Stock mis à jour pour tous les produits de la commande ${commandeId}`);
     } catch (error) {
-      console.error(`[CommandeModel] Exception dans updateProductsStock:`, error);
+      logger.error(`[CommandeModel] Exception dans updateProductsStock:`, error);
       throw error;
     }
   }
@@ -180,7 +181,7 @@ export class CommandeModel {
    * @param statut Nouveau statut
    */
   static async updateCommandeStatus(id: number, statut: StatutCommande): Promise<Commande> {
-    console.log(`[CommandeModel] Mise à jour du statut de la commande ${id} vers ${statut}`);
+    logger.debug(`[CommandeModel] Mise à jour du statut de la commande ${id} vers ${statut}`);
     
     try {
       // Récupérer le statut actuel de la commande
@@ -191,17 +192,17 @@ export class CommandeModel {
         .single();
       
       if (getError) {
-        console.error(`[CommandeModel] Erreur lors de la récupération de la commande: ${getError.message}`);
+        logger.error(`[CommandeModel] Erreur lors de la récupération de la commande: ${getError.message}`);
         throw new Error(`Erreur lors de la récupération de la commande: ${getError.message}`);
       }
       
       if (!commandeActuelle) {
-        console.error(`[CommandeModel] Commande non trouvée: ${id}`);
+        logger.error(`[CommandeModel] Commande non trouvée: ${id}`);
         throw new Error(`Commande non trouvée: ${id}`);
       }
       
       const statutActuel = commandeActuelle.statut;
-      console.log(`[CommandeModel] Statut actuel de la commande ${id}: ${statutActuel}`);
+      logger.debug(`[CommandeModel] Statut actuel de la commande ${id}: ${statutActuel}`);
       
       // Déterminer les champs à mettre à jour en fonction du statut
       const updateFields: any = {
@@ -230,26 +231,26 @@ export class CommandeModel {
         .single();
       
       if (error) {
-        console.error(`[CommandeModel] Erreur lors de la mise à jour du statut: ${error.message}`);
+        logger.error(`[CommandeModel] Erreur lors de la mise à jour du statut: ${error.message}`);
         throw new Error(`Erreur lors de la mise à jour du statut de la commande: ${error.message}`);
       }
       
       // Mettre à jour le stock en fonction du changement de statut
       if (statut === 'confirmee' && statutActuel !== 'confirmee') {
         // Décrémenter le stock lors de la confirmation
-        console.log(`[CommandeModel] Décrémentation du stock pour la commande ${id} confirmée`);
+        logger.debug(`[CommandeModel] Décrémentation du stock pour la commande ${id} confirmée`);
         await this.updateProductsStock(id, false); // false = décrémenter
       } else if ((statut === 'annulee' || statut === 'remboursee') && 
                  (statutActuel === 'confirmee' || statutActuel === 'en_preparation' || statutActuel === 'expedie')) {
         // Incrémenter le stock lors de l'annulation ou du remboursement d'une commande confirmée
-        console.log(`[CommandeModel] Incrémentation du stock pour la commande ${id} annulée/remboursée`);
+        logger.debug(`[CommandeModel] Incrémentation du stock pour la commande ${id} annulée/remboursée`);
         await this.updateProductsStock(id, true); // true = incrémenter
       }
       
-      console.log(`[CommandeModel] Statut de la commande ${id} mis à jour: ${statutActuel} -> ${statut}`);
+      logger.debug(`[CommandeModel] Statut de la commande ${id} mis à jour: ${statutActuel} -> ${statut}`);
       return data;
     } catch (error) {
-      console.error(`[CommandeModel] Exception dans updateCommandeStatus:`, error);
+      logger.error(`[CommandeModel] Exception dans updateCommandeStatus:`, error);
       throw error;
     }
   }
@@ -376,31 +377,31 @@ export class CommandeModel {
    * @param commandeId ID de la commande
    */
   static async calculateCommandeTotals(commandeId: number): Promise<{ sous_total: number, total: number }> {
-    console.log('[CommandeModel] Début de calculateCommandeTotals pour commandeId:', commandeId);
+    logger.debug('[CommandeModel] Début de calculateCommandeTotals pour commandeId:', commandeId);
     
     try {
       // Récupérer les articles de la commande
-      console.log('[CommandeModel] Récupération des articles de la commande...');
+      logger.debug('[CommandeModel] Récupération des articles de la commande...');
       const { data: articles, error } = await supabaseAdmin
         .from('commande_articles')
         .select('*')
         .eq('commande_id', commandeId);
       
       if (error) {
-        console.error('[CommandeModel] ERREUR lors de la récupération des articles:', error);
+        logger.error('[CommandeModel] ERREUR lors de la récupération des articles:', error);
         throw new Error(`Erreur lors de la récupération des articles: ${error.message}`);
       }
       
-      console.log(`[CommandeModel] ${articles?.length || 0} articles trouvés pour la commande`);
+      logger.debug(`[CommandeModel] ${articles?.length || 0} articles trouvés pour la commande`);
       
       // Calculer le sous-total
       const sousTotal = articles?.reduce((sum, article) => {
         return sum + (article.prix_unitaire * article.quantite);
       }, 0) || 0;
-      console.log('[CommandeModel] Sous-total calculé:', sousTotal);
+      logger.debug('[CommandeModel] Sous-total calculé:', sousTotal);
       
       // Récupérer la commande pour les frais de livraison, taxes et remises
-      console.log('[CommandeModel] Récupération des frais de la commande...');
+      logger.debug('[CommandeModel] Récupération des frais de la commande...');
       const { data: commande, error: commandeError } = await supabaseAdmin
         .from('commandes')
         .select('frais_livraison, taxes, remise')
@@ -408,11 +409,11 @@ export class CommandeModel {
         .single();
       
       if (commandeError) {
-        console.error('[CommandeModel] ERREUR lors de la récupération de la commande:', commandeError);
+        logger.error('[CommandeModel] ERREUR lors de la récupération de la commande:', commandeError);
         throw new Error(`Erreur lors de la récupération de la commande: ${commandeError.message}`);
       }
       
-      console.log('[CommandeModel] Frais de la commande:', JSON.stringify(commande, null, 2));
+      logger.debug('[CommandeModel] Frais de la commande:', JSON.stringify(commande, null, 2));
       
       // Calculer le total
       const fraisLivraison = commande?.frais_livraison || 0;
@@ -420,11 +421,11 @@ export class CommandeModel {
       const remise = commande?.remise || 0;
       
       const total = sousTotal + fraisLivraison + taxes - remise;
-      console.log('[CommandeModel] Total calculé:', total);
+      logger.debug('[CommandeModel] Total calculé:', total);
       
       return { sous_total: sousTotal, total };
     } catch (error) {
-      console.error('[CommandeModel] Exception dans calculateCommandeTotals:', error);
+      logger.error('[CommandeModel] Exception dans calculateCommandeTotals:', error);
       throw error;
     }
   }
@@ -434,16 +435,16 @@ export class CommandeModel {
    * @param commandeId ID de la commande
    */
   static async updateCommandeTotals(commandeId: number): Promise<Commande> {
-    console.log('[CommandeModel] Début de updateCommandeTotals pour commandeId:', commandeId);
+    logger.debug('[CommandeModel] Début de updateCommandeTotals pour commandeId:', commandeId);
     
     try {
       // Calculer les totaux
-      console.log('[CommandeModel] Calcul des totaux...');
+      logger.debug('[CommandeModel] Calcul des totaux...');
       const { sous_total, total } = await this.calculateCommandeTotals(commandeId);
-      console.log('[CommandeModel] Totaux calculés:', { sous_total, total });
+      logger.debug('[CommandeModel] Totaux calculés:', { sous_total, total });
       
       // Mettre à jour la commande
-      console.log('[CommandeModel] Mise à jour de la commande avec les totaux...');
+      logger.debug('[CommandeModel] Mise à jour de la commande avec les totaux...');
       const { data, error } = await supabaseAdmin
         .from('commandes')
         .update({
@@ -456,14 +457,14 @@ export class CommandeModel {
         .single();
       
       if (error) {
-        console.error('[CommandeModel] ERREUR lors de la mise à jour des totaux:', error);
+        logger.error('[CommandeModel] ERREUR lors de la mise à jour des totaux:', error);
         throw new Error(`Erreur lors de la mise à jour des totaux: ${error.message}`);
       }
       
-      console.log('[CommandeModel] Commande mise à jour avec succès:', JSON.stringify(data, null, 2));
+      logger.debug('[CommandeModel] Commande mise à jour avec succès:', JSON.stringify(data, null, 2));
       return data;
     } catch (error) {
-      console.error('[CommandeModel] Exception dans updateCommandeTotals:', error);
+      logger.error('[CommandeModel] Exception dans updateCommandeTotals:', error);
       throw error;
     }
   }
@@ -473,7 +474,7 @@ export class CommandeModel {
    * @param commandeId ID de la commande
    */
   static async getCommandeArticlesDetails(commandeId: number): Promise<any[]> {
-    console.log('[CommandeModel] Récupération des détails des articles pour la commande:', commandeId);
+    logger.debug('[CommandeModel] Récupération des détails des articles pour la commande:', commandeId);
     
     try {
       // Récupérer les articles de la commande avec les informations du produit
@@ -486,14 +487,14 @@ export class CommandeModel {
         .eq('commande_id', commandeId);
       
       if (error) {
-        console.error('[CommandeModel] Erreur lors de la récupération des articles:', error);
+        logger.error('[CommandeModel] Erreur lors de la récupération des articles:', error);
         throw new Error(`Erreur lors de la récupération des articles: ${error.message}`);
       }
       
-      console.log(`[CommandeModel] ${articles?.length || 0} articles trouvés`);
+      logger.debug(`[CommandeModel] ${articles?.length || 0} articles trouvés`);
       return articles || [];
     } catch (error) {
-      console.error('[CommandeModel] Exception dans getCommandeArticlesDetails:', error);
+      logger.error('[CommandeModel] Exception dans getCommandeArticlesDetails:', error);
       throw error;
     }
   }
@@ -510,13 +511,13 @@ export class CommandeModel {
       });
 
       if (error) {
-        console.error('[CommandeModel] Erreur lors du recalcul du montant payé:', error);
+        logger.error('[CommandeModel] Erreur lors du recalcul du montant payé:', error);
         throw new Error(`Erreur lors du recalcul du montant payé: ${error.message}`);
       }
 
-      console.log(`[CommandeModel] Montant payé recalculé pour la commande ${commandeId}`);
+      logger.debug(`[CommandeModel] Montant payé recalculé pour la commande ${commandeId}`);
     } catch (error) {
-      console.error('[CommandeModel] Exception dans recalculerMontantPaye:', error);
+      logger.error('[CommandeModel] Exception dans recalculerMontantPaye:', error);
       throw error;
     }
   }
@@ -534,7 +535,7 @@ export class CommandeModel {
 
       return commande.montant_paye >= commande.total;
     } catch (error) {
-      console.error('[CommandeModel] Exception dans isCommandeEntierementPayee:', error);
+      logger.error('[CommandeModel] Exception dans isCommandeEntierementPayee:', error);
       throw error;
     }
   }
@@ -552,7 +553,7 @@ export class CommandeModel {
 
       return commande.montant_paye || 0;
     } catch (error) {
-      console.error('[CommandeModel] Exception dans getMontantPaye:', error);
+      logger.error('[CommandeModel] Exception dans getMontantPaye:', error);
       throw error;
     }
   }
@@ -570,7 +571,7 @@ export class CommandeModel {
 
       return Math.max(0, commande.total - commande.montant_paye);
     } catch (error) {
-      console.error('[CommandeModel] Exception dans getMontantRestant:', error);
+      logger.error('[CommandeModel] Exception dans getMontantRestant:', error);
       throw error;
     }
   }
@@ -580,7 +581,7 @@ export class CommandeModel {
    * @param delaiHeures Délai en heures avant de considérer une commande comme orpheline (défaut: 1 heure)
    */
   static async annulerCommandesOrphelines(delaiHeures: number = 1): Promise<{ nbAnnulees: number }> {
-    console.log(`[CommandeModel] Début de la recherche des commandes orphelines (seuil: ${delaiHeures}h)...`);
+    logger.debug(`[CommandeModel] Début de la recherche des commandes orphelines (seuil: ${delaiHeures}h)...`);
     try {
       const dateLimite = new Date(Date.now() - delaiHeures * 60 * 60 * 1000).toISOString();
 
@@ -592,12 +593,12 @@ export class CommandeModel {
         .lt('date_commande', dateLimite);
 
       if (error) {
-        console.error('[CommandeModel] Erreur lors de la récupération des commandes en attente:', error);
+        logger.error('[CommandeModel] Erreur lors de la récupération des commandes en attente:', error);
         throw new Error(`Erreur lors de la récupération des commandes: ${error.message}`);
       }
 
       if (!commandes || commandes.length === 0) {
-        console.log('[CommandeModel] Aucune commande en attente trouvée avant le seuil.');
+        logger.debug('[CommandeModel] Aucune commande en attente trouvée avant le seuil.');
         return { nbAnnulees: 0 };
       }
 
@@ -614,11 +615,11 @@ export class CommandeModel {
       }
 
       if (orphelineIds.length === 0) {
-        console.log('[CommandeModel] Toutes les commandes en attente ont au moins une transaction associée.');
+        logger.debug('[CommandeModel] Toutes les commandes en attente ont au moins une transaction associée.');
         return { nbAnnulees: 0 };
       }
 
-      console.log(`[CommandeModel] Commandes orphelines trouvées (${orphelineIds.length}):`, orphelineNumeros.join(', '));
+      logger.debug(`[CommandeModel] Commandes orphelines trouvées (${orphelineIds.length}):`, orphelineNumeros.join(', '));
 
       // Mettre à jour ces commandes au statut 'annulee'
       const { error: updateError } = await supabaseAdmin
@@ -630,14 +631,14 @@ export class CommandeModel {
         .in('id', orphelineIds);
 
       if (updateError) {
-        console.error('[CommandeModel] Erreur lors de l\'annulation en masse des commandes orphelines:', updateError);
+        logger.error('[CommandeModel] Erreur lors de l\'annulation en masse des commandes orphelines:', updateError);
         throw new Error(`Erreur lors de l'annulation des commandes: ${updateError.message}`);
       }
 
-      console.log(`[CommandeModel] Succès: ${orphelineIds.length} commandes orphelines annulées.`);
+      logger.debug(`[CommandeModel] Succès: ${orphelineIds.length} commandes orphelines annulées.`);
       return { nbAnnulees: orphelineIds.length };
     } catch (error) {
-      console.error('[CommandeModel] Exception dans annulerCommandesOrphelines:', error);
+      logger.error('[CommandeModel] Exception dans annulerCommandesOrphelines:', error);
       throw error;
     }
   }

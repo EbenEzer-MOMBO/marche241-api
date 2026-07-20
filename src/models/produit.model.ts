@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '../config/supabase';
 import { Produit } from '../lib/database-types';
+import { logger } from '../utils/logger';
 
 export class ProduitModel {
   /**
@@ -39,7 +40,7 @@ export class ProduitModel {
    * @returns Le produit mis à jour
    */
   static async updateStock(produitId: number, quantite: number): Promise<Produit> {
-    console.log(`[ProduitModel] Mise à jour du stock pour le produit ${produitId}, quantité: ${quantite}`);
+    logger.debug(`[ProduitModel] Mise à jour du stock pour le produit ${produitId}, quantité: ${quantite}`);
     
     try {
       // Récupérer le produit actuel pour vérifier le stock disponible
@@ -50,19 +51,19 @@ export class ProduitModel {
         .single();
       
       if (produitError) {
-        console.error(`[ProduitModel] Erreur lors de la récupération du produit: ${produitError.message}`);
+        logger.error(`[ProduitModel] Erreur lors de la récupération du produit: ${produitError.message}`);
         throw new Error(`Erreur lors de la récupération du produit: ${produitError.message}`);
       }
       
       if (!produit) {
-        console.error(`[ProduitModel] Produit non trouvé: ${produitId}`);
+        logger.error(`[ProduitModel] Produit non trouvé: ${produitId}`);
         throw new Error(`Produit non trouvé: ${produitId}`);
       }
       
       // Vérifier si le stock est suffisant
       const nouveauStock = produit.stock - quantite;
       if (nouveauStock < 0) {
-        console.error(`[ProduitModel] Stock insuffisant pour le produit ${produitId}: ${produit.stock} < ${quantite}`);
+        logger.error(`[ProduitModel] Stock insuffisant pour le produit ${produitId}: ${produit.stock} < ${quantite}`);
         throw new Error(`Stock insuffisant pour le produit ${produitId}`);
       }
       
@@ -75,7 +76,7 @@ export class ProduitModel {
       // Incrémenter nombre_ventes seulement lors d'une vente (quantite > 0)
       if (quantite > 0) {
         updateData.nombre_ventes = (produit.nombre_ventes || 0) + quantite;
-        console.log(`[ProduitModel] Incrémentation nombre_ventes: ${produit.nombre_ventes || 0} -> ${updateData.nombre_ventes}`);
+        logger.debug(`[ProduitModel] Incrémentation nombre_ventes: ${produit.nombre_ventes || 0} -> ${updateData.nombre_ventes}`);
       }
       
       // Mettre à jour le stock
@@ -87,14 +88,14 @@ export class ProduitModel {
         .single();
       
       if (updateError) {
-        console.error(`[ProduitModel] Erreur lors de la mise à jour du stock: ${updateError.message}`);
+        logger.error(`[ProduitModel] Erreur lors de la mise à jour du stock: ${updateError.message}`);
         throw new Error(`Erreur lors de la mise à jour du stock: ${updateError.message}`);
       }
       
-      console.log(`[ProduitModel] Stock mis à jour pour le produit ${produitId}: ${produit.stock} -> ${nouveauStock}`);
+      logger.debug(`[ProduitModel] Stock mis à jour pour le produit ${produitId}: ${produit.stock} -> ${nouveauStock}`);
       return produitMisAJour;
     } catch (error) {
-      console.error(`[ProduitModel] Exception dans updateStock:`, error);
+      logger.error(`[ProduitModel] Exception dans updateStock:`, error);
       throw error;
     }
   }
@@ -168,7 +169,7 @@ export class ProduitModel {
   }
 
   static async updateStockWithVariants(produitId: number, quantite: number, variantsSelectionnes: any): Promise<Produit> {
-    console.log(`[ProduitModel] Mise à jour du stock avec variants pour le produit ${produitId}`, {
+    logger.debug(`[ProduitModel] Mise à jour du stock avec variants pour le produit ${produitId}`, {
       quantite,
       variantsSelectionnes
     });
@@ -182,16 +183,16 @@ export class ProduitModel {
         .single();
       
       if (produitError || !produit) {
-        console.error(`[ProduitModel] Erreur lors de la récupération du produit: ${produitError?.message}`);
+        logger.error(`[ProduitModel] Erreur lors de la récupération du produit: ${produitError?.message}`);
         throw new Error(`Produit non trouvé: ${produitId}`);
       }
 
       if (!produit.variants) {
-        console.log(`[ProduitModel] Produit sans variants, mise à jour du stock global`);
+        logger.debug(`[ProduitModel] Produit sans variants, mise à jour du stock global`);
         return await this.updateStock(produitId, quantite);
       }
 
-      console.log(`[ProduitModel] Variants actuels:`, JSON.stringify(produit.variants, null, 2));
+      logger.debug(`[ProduitModel] Variants actuels:`, JSON.stringify(produit.variants, null, 2));
 
       const variantsData = produit.variants as any;
       let variantTrouve = false;
@@ -201,7 +202,7 @@ export class ProduitModel {
       // NOUVEAU FORMAT MODERNE: { type: "vetements"|"chaussures"|"electronique"|..., variants: [...] }
       // ========================================
       if (variantsData.type && variantsData.variants && Array.isArray(variantsData.variants)) {
-        console.log(`[ProduitModel] Format moderne détecté, type: ${variantsData.type}`);
+        logger.debug(`[ProduitModel] Format moderne détecté, type: ${variantsData.type}`);
         
         nouveauxVariantsData = JSON.parse(JSON.stringify(variantsData)); // Deep clone
         
@@ -211,31 +212,31 @@ export class ProduitModel {
         const variantNom = variantSelectionne?.nom || null;
         
         if (!variantId) {
-          console.warn(`[ProduitModel] Pas d'ID de variant dans la sélection, recherche par nom`);
+          logger.warn(`[ProduitModel] Pas d'ID de variant dans la sélection, recherche par nom`);
         }
         
-        console.log(`[ProduitModel] Recherche du variant: ID=${variantId}, Nom=${variantNom}`);
+        logger.debug(`[ProduitModel] Recherche du variant: ID=${variantId}, Nom=${variantNom}`);
         
         // Trouver le variant par son ID
         const variant = this.trouverVariantParId(nouveauxVariantsData.variants, variantId);
         
         if (!variant) {
-          console.error(`[ProduitModel] Variant non trouvé: ${variantId}`);
+          logger.error(`[ProduitModel] Variant non trouvé: ${variantId}`);
           throw new Error(`Variant non trouvé: ${variantId}`);
         }
         
-        console.log(`[ProduitModel] Variant trouvé:`, JSON.stringify(variant, null, 2));
+        logger.debug(`[ProduitModel] Variant trouvé:`, JSON.stringify(variant, null, 2));
         
         // Cas 1 : Vêtements ou Chaussures (avec tailles)
         if ((variantsData.type === 'vetements' || variantsData.type === 'chaussures') && variant.tailles) {
           const tailleRecherchee = this.extraireTaille(variantNom);
           
           if (!tailleRecherchee) {
-            console.error(`[ProduitModel] Impossible d'extraire la taille du nom: ${variantNom}`);
+            logger.error(`[ProduitModel] Impossible d'extraire la taille du nom: ${variantNom}`);
             throw new Error(`Impossible d'extraire la taille du variant: ${variantNom}`);
           }
           
-          console.log(`[ProduitModel] Taille recherchée: ${tailleRecherchee}`);
+          logger.debug(`[ProduitModel] Taille recherchée: ${tailleRecherchee}`);
           
           // Trouver la taille dans le variant
           let tailleTrouvee = false;
@@ -245,12 +246,12 @@ export class ProduitModel {
               const nouveauStock = stockActuel - quantite;
               
               if (nouveauStock < 0) {
-                console.error(`[ProduitModel] Stock insuffisant pour ${variantNom}`);
+                logger.error(`[ProduitModel] Stock insuffisant pour ${variantNom}`);
                 throw new Error(`Stock insuffisant pour ${variantNom} (disponible: ${stockActuel}, demandé: ${quantite})`);
               }
               
               tailleObj.stock = nouveauStock;
-              console.log(`[ProduitModel] Stock de la taille ${tailleRecherchee} mis à jour: ${stockActuel} -> ${nouveauStock}`);
+              logger.debug(`[ProduitModel] Stock de la taille ${tailleRecherchee} mis à jour: ${stockActuel} -> ${nouveauStock}`);
               tailleTrouvee = true;
               variantTrouve = true;
               break;
@@ -258,7 +259,7 @@ export class ProduitModel {
           }
           
           if (!tailleTrouvee) {
-            console.error(`[ProduitModel] Taille non trouvée: ${tailleRecherchee}`);
+            logger.error(`[ProduitModel] Taille non trouvée: ${tailleRecherchee}`);
             throw new Error(`Taille non trouvée: ${tailleRecherchee}`);
           }
         }
@@ -268,12 +269,12 @@ export class ProduitModel {
           const nouveauStock = stockActuel - quantite;
           
           if (nouveauStock < 0) {
-            console.error(`[ProduitModel] Stock insuffisant pour le variant ${variantNom || variantId}`);
+            logger.error(`[ProduitModel] Stock insuffisant pour le variant ${variantNom || variantId}`);
             throw new Error(`Stock insuffisant pour le variant ${variantNom || variantId} (disponible: ${stockActuel}, demandé: ${quantite})`);
           }
           
           variant.stock = nouveauStock;
-          console.log(`[ProduitModel] Stock du variant ${variantNom || variantId} mis à jour: ${stockActuel} -> ${nouveauStock}`);
+          logger.debug(`[ProduitModel] Stock du variant ${variantNom || variantId} mis à jour: ${stockActuel} -> ${nouveauStock}`);
           variantTrouve = true;
         }
         // Cas 3 : Ancien format avec "quantite" au lieu de "stock"
@@ -282,19 +283,19 @@ export class ProduitModel {
           const nouveauStock = stockActuel - quantite;
           
           if (nouveauStock < 0) {
-            console.error(`[ProduitModel] Stock insuffisant pour le variant ${variantNom || variantId}`);
+            logger.error(`[ProduitModel] Stock insuffisant pour le variant ${variantNom || variantId}`);
             throw new Error(`Stock insuffisant pour le variant ${variantNom || variantId} (disponible: ${stockActuel}, demandé: ${quantite})`);
           }
           
           variant.quantite = nouveauStock;
-          console.log(`[ProduitModel] Stock du variant ${variantNom || variantId} mis à jour: ${stockActuel} -> ${nouveauStock}`);
+          logger.debug(`[ProduitModel] Stock du variant ${variantNom || variantId} mis à jour: ${stockActuel} -> ${nouveauStock}`);
           variantTrouve = true;
         }
         
         if (variantTrouve) {
           // Recalculer le stock total
           const quantiteTotale = this.recalculerStockTotal(nouveauxVariantsData);
-          console.log(`[ProduitModel] Nouvelle quantité totale calculée: ${quantiteTotale}`);
+          logger.debug(`[ProduitModel] Nouvelle quantité totale calculée: ${quantiteTotale}`);
           
           // Préparer les données de mise à jour
           const updateData: any = {
@@ -307,7 +308,7 @@ export class ProduitModel {
           // Incrémenter nombre_ventes seulement lors d'une vente (quantite > 0)
           if (quantite > 0) {
             updateData.nombre_ventes = (produit.nombre_ventes || 0) + quantite;
-            console.log(`[ProduitModel] Incrémentation nombre_ventes: ${produit.nombre_ventes || 0} -> ${updateData.nombre_ventes}`);
+            logger.debug(`[ProduitModel] Incrémentation nombre_ventes: ${produit.nombre_ventes || 0} -> ${updateData.nombre_ventes}`);
           }
           
           // Mettre à jour le produit
@@ -319,11 +320,11 @@ export class ProduitModel {
             .single();
           
           if (updateError) {
-            console.error(`[ProduitModel] Erreur lors de la mise à jour: ${updateError.message}`);
+            logger.error(`[ProduitModel] Erreur lors de la mise à jour: ${updateError.message}`);
             throw new Error(`Erreur lors de la mise à jour du stock: ${updateError.message}`);
           }
 
-          console.log(`[ProduitModel] Stock avec variants mis à jour avec succès (format moderne)`);
+          logger.debug(`[ProduitModel] Stock avec variants mis à jour avec succès (format moderne)`);
           return produitMisAJour;
         }
       }
@@ -332,7 +333,7 @@ export class ProduitModel {
       // FORMAT INTERMÉDIAIRE: { variants: [...], options: [...] } sans "type"
       // ========================================
       else if (variantsData.variants && Array.isArray(variantsData.variants) && !variantsData.type) {
-        console.log(`[ProduitModel] Format intermédiaire détecté (variants sans type)`);
+        logger.debug(`[ProduitModel] Format intermédiaire détecté (variants sans type)`);
         
         nouveauxVariantsData = JSON.parse(JSON.stringify(variantsData));
         const nouveauxVariants = nouveauxVariantsData.variants;
@@ -341,7 +342,7 @@ export class ProduitModel {
         const nomVariantSelectionne = variantsSelectionnes.variant?.nom || null;
         
         if (nomVariantSelectionne) {
-          console.log(`[ProduitModel] Recherche du variant par nom: ${nomVariantSelectionne}`);
+          logger.debug(`[ProduitModel] Recherche du variant par nom: ${nomVariantSelectionne}`);
           
           for (let i = 0; i < nouveauxVariants.length; i++) {
             if (nouveauxVariants[i].nom === nomVariantSelectionne) {
@@ -349,12 +350,12 @@ export class ProduitModel {
               const nouvelleQuantite = quantiteActuelle - quantite;
               
               if (nouvelleQuantite < 0) {
-                console.error(`[ProduitModel] Stock insuffisant pour le variant ${nomVariantSelectionne}`);
+                logger.error(`[ProduitModel] Stock insuffisant pour le variant ${nomVariantSelectionne}`);
                 throw new Error(`Stock insuffisant pour le variant ${nomVariantSelectionne} (disponible: ${quantiteActuelle}, demandé: ${quantite})`);
               }
               
               nouveauxVariants[i].quantite = nouvelleQuantite;
-              console.log(`[ProduitModel] Stock du variant ${nomVariantSelectionne} mis à jour: ${quantiteActuelle} -> ${nouvelleQuantite}`);
+              logger.debug(`[ProduitModel] Stock du variant ${nomVariantSelectionne} mis à jour: ${quantiteActuelle} -> ${nouvelleQuantite}`);
               variantTrouve = true;
               break;
             }
@@ -364,7 +365,7 @@ export class ProduitModel {
         if (variantTrouve) {
           // Calculer la quantité totale
           const quantiteTotale = nouveauxVariants.reduce((sum: number, v: any) => sum + (v.quantite || 0), 0);
-          console.log(`[ProduitModel] Nouvelle quantité totale calculée: ${quantiteTotale}`);
+          logger.debug(`[ProduitModel] Nouvelle quantité totale calculée: ${quantiteTotale}`);
           
           // Préparer les données de mise à jour
           const updateData: any = {
@@ -377,7 +378,7 @@ export class ProduitModel {
           // Incrémenter nombre_ventes seulement lors d'une vente (quantite > 0)
           if (quantite > 0) {
             updateData.nombre_ventes = (produit.nombre_ventes || 0) + quantite;
-            console.log(`[ProduitModel] Incrémentation nombre_ventes: ${produit.nombre_ventes || 0} -> ${updateData.nombre_ventes}`);
+            logger.debug(`[ProduitModel] Incrémentation nombre_ventes: ${produit.nombre_ventes || 0} -> ${updateData.nombre_ventes}`);
           }
           
           // Mettre à jour le produit
@@ -389,11 +390,11 @@ export class ProduitModel {
             .single();
           
           if (updateError) {
-            console.error(`[ProduitModel] Erreur lors de la mise à jour: ${updateError.message}`);
+            logger.error(`[ProduitModel] Erreur lors de la mise à jour: ${updateError.message}`);
             throw new Error(`Erreur lors de la mise à jour du stock: ${updateError.message}`);
           }
 
-          console.log(`[ProduitModel] Stock avec variants mis à jour avec succès (format intermédiaire)`);
+          logger.debug(`[ProduitModel] Stock avec variants mis à jour avec succès (format intermédiaire)`);
           return produitMisAJour;
         }
       }
@@ -402,7 +403,7 @@ export class ProduitModel {
       // ANCIEN FORMAT: [{ "nom": "Type", "options": ["A", "B"], "quantites": [8, 4] }]
       // ========================================
       else if (Array.isArray(variantsData)) {
-        console.log(`[ProduitModel] Ancien format détecté (tableau)`);
+        logger.debug(`[ProduitModel] Ancien format détecté (tableau)`);
         
         let nouveauxVariants = JSON.parse(JSON.stringify(variantsData));
 
@@ -421,12 +422,12 @@ export class ProduitModel {
                 const nouvelleQuantite = quantiteActuelle - quantite;
                 
                 if (nouvelleQuantite < 0) {
-                  console.error(`[ProduitModel] Stock insuffisant pour le variant ${nomVariant}:${valeurSelectionnee}`);
+                  logger.error(`[ProduitModel] Stock insuffisant pour le variant ${nomVariant}:${valeurSelectionnee}`);
                   throw new Error(`Stock insuffisant pour le variant ${nomVariant}: ${valeurSelectionnee} (disponible: ${quantiteActuelle}, demandé: ${quantite})`);
                 }
                 
                 nouveauxVariants[i].quantites[indexOption] = nouvelleQuantite;
-                console.log(`[ProduitModel] Stock du variant ${nomVariant}:${valeurSelectionnee} mis à jour: ${quantiteActuelle} -> ${nouvelleQuantite}`);
+                logger.debug(`[ProduitModel] Stock du variant ${nomVariant}:${valeurSelectionnee} mis à jour: ${quantiteActuelle} -> ${nouvelleQuantite}`);
                 variantTrouve = true;
               }
             }
@@ -442,7 +443,7 @@ export class ProduitModel {
             }
           }
 
-          console.log(`[ProduitModel] Nouvelle quantité totale calculée: ${quantiteTotale}`);
+          logger.debug(`[ProduitModel] Nouvelle quantité totale calculée: ${quantiteTotale}`);
 
           // Préparer les données de mise à jour
           const updateData: any = {
@@ -455,7 +456,7 @@ export class ProduitModel {
           // Incrémenter nombre_ventes seulement lors d'une vente (quantite > 0)
           if (quantite > 0) {
             updateData.nombre_ventes = (produit.nombre_ventes || 0) + quantite;
-            console.log(`[ProduitModel] Incrémentation nombre_ventes: ${produit.nombre_ventes || 0} -> ${updateData.nombre_ventes}`);
+            logger.debug(`[ProduitModel] Incrémentation nombre_ventes: ${produit.nombre_ventes || 0} -> ${updateData.nombre_ventes}`);
           }
 
           // Mettre à jour le produit avec les nouveaux variants et la quantité totale
@@ -467,23 +468,23 @@ export class ProduitModel {
             .single();
           
           if (updateError) {
-            console.error(`[ProduitModel] Erreur lors de la mise à jour: ${updateError.message}`);
+            logger.error(`[ProduitModel] Erreur lors de la mise à jour: ${updateError.message}`);
             throw new Error(`Erreur lors de la mise à jour du stock: ${updateError.message}`);
           }
 
-          console.log(`[ProduitModel] Stock avec variants mis à jour avec succès (ancien format)`);
+          logger.debug(`[ProduitModel] Stock avec variants mis à jour avec succès (ancien format)`);
           return produitMisAJour;
         }
       }
 
       if (!variantTrouve) {
-        console.warn(`[ProduitModel] Aucun variant correspondant trouvé, mise à jour du stock global`);
+        logger.warn(`[ProduitModel] Aucun variant correspondant trouvé, mise à jour du stock global`);
         return await this.updateStock(produitId, quantite);
       }
 
       throw new Error('Format de variants non reconnu');
     } catch (error) {
-      console.error(`[ProduitModel] Exception dans updateStockWithVariants:`, error);
+      logger.error(`[ProduitModel] Exception dans updateStockWithVariants:`, error);
       throw error;
     }
   }
@@ -598,14 +599,8 @@ export class ProduitModel {
    * @param boutiqueId ID de la boutique (optionnel)
    */
   static async getTopProduitsByCategories(limite: number = 4, boutiqueId?: number): Promise<{ [key: string]: any }> {
-    console.log('[ProduitModel] Début getTopProduitsByCategories - limite:', limite, 'boutiqueId:', boutiqueId);
-    // Récupérer toutes les catégories
-    console.log('[ProduitModel] Récupération des catégories...');
-    
-    // D'abord, vérifions si la boutique a des produits et dans quelles catégories
-    let categoriesAvecProduits;
+    let categoriesAvecProduits: Set<number> | undefined;
     if (boutiqueId) {
-      console.log(`[ProduitModel] Recherche des catégories avec des produits pour la boutique ${boutiqueId}`);
       const { data: produitsBoutique, error: produitError } = await supabaseAdmin
         .from('produits')
         .select('categorie_id')
@@ -613,99 +608,73 @@ export class ProduitModel {
         .eq('statut', 'actif');
 
       if (produitError) {
-        console.error('[ProduitModel] Erreur lors de la recherche des produits:', produitError.message);
+        logger.error('[ProduitModel] Erreur lors de la recherche des produits:', produitError.message);
       } else {
         categoriesAvecProduits = new Set(produitsBoutique?.map(p => p.categorie_id));
-        console.log('[ProduitModel] Catégories avec des produits:', Array.from(categoriesAvecProduits));
       }
     }
 
-    // Récupérer les catégories
     let { data: categories, error: categoriesError } = await supabaseAdmin
       .from('categories')
       .select('*')
       .eq('statut', 'active')
       .order('ordre_affichage', { ascending: true });
-    
-    console.log('[ProduitModel] Toutes les catégories trouvées:', categories?.map(c => ({ id: c.id, nom: c.nom, statut: c.statut })));
-    
-    // Si on a une boutique spécifique, filtrer les catégories qui ont des produits
+
     if (boutiqueId && categoriesAvecProduits && categories) {
-      const categoriesFiltrees = categories.filter(c => categoriesAvecProduits.has(c.id));
-      console.log('[ProduitModel] Catégories filtrées avec des produits:', categoriesFiltrees.map(c => ({ id: c.id, nom: c.nom })));
-      categories = categoriesFiltrees;
+      categories = categories.filter(c => categoriesAvecProduits!.has(c.id));
     }
 
     if (categoriesError) {
       throw new Error(`Erreur lors de la récupération des catégories: ${categoriesError.message}`);
     }
-    
+
     if (!categories || categories.length === 0) {
       return {};
     }
-    
-    // Récupérer les produits pour chaque catégorie
-    const result: { [key: string]: any } = {};
-    
-    for (const categorie of categories) {
-      // Construire la requête
-      console.log(`[ProduitModel] Construction de la requête pour catégorie ${categorie.id} (${categorie.nom})`);
-      let query = supabaseAdmin
-        .from('produits')
-        .select(`
-          *,
-          boutique:boutique_id(id, nom, slug, logo),
-          categorie:categorie_id(id, nom, slug)
-        `)
-        .eq('categorie_id', categorie.id)
-        .eq('statut', 'actif');
 
-      // Ajouter le filtre par boutique si spécifié
-      if (boutiqueId) {
-        console.log(`[ProduitModel] Ajout du filtre boutique_id = ${boutiqueId}`);
-        query = query.eq('boutique_id', boutiqueId);
-      }
+    const categorieIds = categories.map(c => c.id);
+    let produitsQuery = supabaseAdmin
+      .from('produits')
+      .select(`
+        *,
+        boutique:boutique_id(id, nom, slug, logo),
+        categorie:categorie_id(id, nom, slug)
+      `)
+      .in('categorie_id', categorieIds)
+      .eq('statut', 'actif')
+      .order('note_moyenne', { ascending: false })
+      .order('nombre_ventes', { ascending: false });
 
-      // Ajouter le tri et la limite
-      query = query
-        .order('note_moyenne', { ascending: false })
-        .order('nombre_ventes', { ascending: false })
-        .limit(limite);
-      
-      
-      // Exécuter la requête
-      const { data: produits, error: produitsError } = await query;
-      
-      console.log(`[ProduitModel] Résultats pour catégorie ${categorie.id} (${categorie.nom}):`, {
-        produits: produits ? produits.length : 0,
-        error: produitsError?.message || 'aucun'
-      });
+    if (boutiqueId) {
+      produitsQuery = produitsQuery.eq('boutique_id', boutiqueId);
+    }
 
-      if (produitsError) {
-        console.error(`[ProduitModel] Erreur lors de la récupération des produits pour la catégorie ${categorie.id}: ${produitsError.message}`);
-        continue;
-      }
-      
-      // Ne pas inclure les catégories sans produits
-      if (produits && produits.length > 0) {
-        console.log(`[ProduitModel] Ajout de la catégorie ${categorie.nom} avec ${produits.length} produits`);
-        result[categorie.slug] = {
-          categorie,
-          produits: produits
-        };
-      } else {
-        console.log(`[ProduitModel] Catégorie ${categorie.nom} ignorée car aucun produit trouvé`);
+    const { data: allProduits, error: produitsError } = await produitsQuery;
+
+    if (produitsError) {
+      throw new Error(`Erreur lors de la récupération des produits: ${produitsError.message}`);
+    }
+
+    const produitsParCategorie = new Map<number, any[]>();
+    for (const produit of allProduits || []) {
+      const list = produitsParCategorie.get(produit.categorie_id) || [];
+      if (list.length < limite) {
+        list.push(produit);
+        produitsParCategorie.set(produit.categorie_id, list);
       }
     }
-    
-    console.log('[ProduitModel] Résultat final:', {
-      nombreCategories: Object.keys(result).length,
-      categories: Object.keys(result).map(slug => ({
-        slug,
-        nom: result[slug].categorie.nom,
-        nombreProduits: result[slug].produits.length
-      }))
-    });
+
+    const result: { [key: string]: any } = {};
+    for (const categorie of categories) {
+      const produits = produitsParCategorie.get(categorie.id) || [];
+      if (produits.length > 0) {
+        result[categorie.slug] = {
+          categorie,
+          produits
+        };
+      }
+    }
+
     return result;
   }
 
@@ -713,30 +682,30 @@ export class ProduitModel {
    * Crée un nouveau produit
    */
   static async createProduit(produitData: any): Promise<Produit> {
-    console.log('[ProduitModel] Début createProduit avec les données:', {
+    logger.debug('[ProduitModel] Début createProduit avec les données:', {
       nom: produitData.nom,
       slug: produitData.slug,
       prix: produitData.prix,
       prix_promo: produitData.prix_promo,
       boutique_id: produitData.boutique_id
     });
-    console.log('[ProduitModel] Données complètes reçues:', JSON.stringify(produitData, null, 2));
+    logger.debug('[ProduitModel] Données complètes reçues:', JSON.stringify(produitData, null, 2));
     
     // Vérifier si le slug existe déjà
     const existingProduit = await this.getProduitBySlug(produitData.slug);
     if (existingProduit) {
-      console.log('[ProduitModel] Erreur: Un produit avec ce slug existe déjà:', produitData.slug);
+      logger.debug('[ProduitModel] Erreur: Un produit avec ce slug existe déjà:', produitData.slug);
       throw new Error('Un produit avec ce slug existe déjà');
     }
     
-    console.log('[ProduitModel] Slug disponible, préparation des données du produit');
+    logger.debug('[ProduitModel] Slug disponible, préparation des données du produit');
 
     // Gérer la conversion de en_stock (si c'est un nombre, le convertir en quantite_stock)
     let quantiteStock = produitData.stock || 0;
     let enStock = false;
     
     if (typeof produitData.en_stock === 'number') {
-      console.log('[ProduitModel] en_stock est un nombre:', produitData.en_stock, '- conversion en quantite_stock');
+      logger.debug('[ProduitModel] en_stock est un nombre:', produitData.en_stock, '- conversion en quantite_stock');
       quantiteStock = produitData.en_stock;
       enStock = produitData.en_stock > 0;
     } else if (typeof produitData.en_stock === 'boolean') {
@@ -746,7 +715,7 @@ export class ProduitModel {
     // Gérer les variants avec le nouveau format
     let variantsData = produitData.variants;
     if (variantsData && Array.isArray(variantsData)) {
-      console.log('[ProduitModel] Traitement des variants:', JSON.stringify(variantsData));
+      logger.debug('[ProduitModel] Traitement des variants:', JSON.stringify(variantsData));
       
       // Calculer la quantité totale depuis les variants si disponible
       let totalQuantiteVariants = 0;
@@ -757,7 +726,7 @@ export class ProduitModel {
       });
       
       if (totalQuantiteVariants > 0) {
-        console.log('[ProduitModel] Quantité totale calculée depuis les variants:', totalQuantiteVariants);
+        logger.debug('[ProduitModel] Quantité totale calculée depuis les variants:', totalQuantiteVariants);
         quantiteStock = totalQuantiteVariants;
         enStock = true;
       }
@@ -768,11 +737,11 @@ export class ProduitModel {
     let prixOriginal = produitData.prix_original;
     
     if (produitData.prix_promo !== undefined && produitData.prix_promo !== null) {
-      console.log('[ProduitModel] Prix promotionnel détecté:', produitData.prix_promo);
+      logger.debug('[ProduitModel] Prix promotionnel détecté:', produitData.prix_promo);
       // Le prix_promo devient le prix affiché/actif
       prixOriginal = produitData.prix; // Sauvegarder le prix normal
       prixFinal = produitData.prix_promo; // Le prix promo devient le prix actif
-      console.log('[ProduitModel] Conversion: prix_original =', prixOriginal, ', prix =', prixFinal);
+      logger.debug('[ProduitModel] Conversion: prix_original =', prixOriginal, ', prix =', prixFinal);
     }
 
     // Préparer les données avec les valeurs par défaut
@@ -793,11 +762,11 @@ export class ProduitModel {
     // Supprimer prix_promo des données à insérer (pas une colonne de la base)
     delete produitWithDefaults.prix_promo;
 
-    console.log('[ProduitModel] Données finales à insérer:', {
+    logger.debug('[ProduitModel] Données finales à insérer:', {
       ...produitWithDefaults,
       variants: variantsData ? 'Présent' : 'Absent'
     });
-    console.log('[ProduitModel] Tentative d\'insertion du produit dans la base de données');
+    logger.debug('[ProduitModel] Tentative d\'insertion du produit dans la base de données');
     
     const { data, error } = await supabaseAdmin
       .from('produits')
@@ -810,11 +779,11 @@ export class ProduitModel {
       .single();
 
     if (error) {
-      console.log('[ProduitModel] Erreur lors de l\'insertion du produit:', error.message);
+      logger.debug('[ProduitModel] Erreur lors de l\'insertion du produit:', error.message);
       throw new Error(`Erreur lors de la création du produit: ${error.message}`);
     }
     
-    console.log('[ProduitModel] Produit créé avec succès, ID:', data.id);
+    logger.debug('[ProduitModel] Produit créé avec succès, ID:', data.id);
 
     return data as Produit;
   }
@@ -823,8 +792,8 @@ export class ProduitModel {
    * Met à jour un produit existant
    */
   static async updateProduit(id: number, produitData: any): Promise<Produit> {
-    console.log('[ProduitModel] Début updateProduit pour le produit ID:', id);
-    console.log('[ProduitModel] Données reçues:', produitData);
+    logger.debug('[ProduitModel] Début updateProduit pour le produit ID:', id);
+    logger.debug('[ProduitModel] Données reçues:', produitData);
     
     // Vérifier si le produit existe
     const existingProduit = await this.getProduitById(id);
@@ -849,7 +818,7 @@ export class ProduitModel {
     // Gérer la logique des prix : si prix_promo existe et n'est pas null, c'est le prix actif
     if (updatedData.prix_promo !== undefined) {
       if (updatedData.prix_promo !== null && updatedData.prix_promo !== '') {
-        console.log('[ProduitModel] Mise à jour avec prix promotionnel:', updatedData.prix_promo);
+        logger.debug('[ProduitModel] Mise à jour avec prix promotionnel:', updatedData.prix_promo);
         // Si on modifie le prix, il devient prix_original
         if (updatedData.prix !== undefined) {
           updatedData.prix_original = updatedData.prix; // Le nouveau prix devient prix_original
@@ -858,15 +827,15 @@ export class ProduitModel {
           updatedData.prix_original = existingProduit.prix_original || existingProduit.prix;
         }
         updatedData.prix = updatedData.prix_promo; // Le prix_promo devient le prix actif
-        console.log('[ProduitModel] Conversion update: prix_original =', updatedData.prix_original, ', prix =', updatedData.prix);
+        logger.debug('[ProduitModel] Conversion update: prix_original =', updatedData.prix_original, ', prix =', updatedData.prix);
       } else {
         // prix_promo est null ou vide : supprimer la promotion
-        console.log('[ProduitModel] Suppression de la promotion (prix_promo = null)');
+        logger.debug('[ProduitModel] Suppression de la promotion (prix_promo = null)');
         updatedData.prix_original = null;
         // Si un nouveau prix est fourni, l'utiliser, sinon restaurer l'ancien prix_original
         if (updatedData.prix === undefined) {
           updatedData.prix = existingProduit.prix_original || existingProduit.prix;
-          console.log('[ProduitModel] Restauration du prix original:', updatedData.prix);
+          logger.debug('[ProduitModel] Restauration du prix original:', updatedData.prix);
         }
       }
       
@@ -886,7 +855,7 @@ export class ProduitModel {
       updatedData.en_stock = updatedData.en_stock > 0;
     }
     
-    console.log('[ProduitModel] Données après transformation:', updatedData);
+    logger.debug('[ProduitModel] Données après transformation:', updatedData);
 
     const { data, error } = await supabaseAdmin
       .from('produits')
@@ -900,11 +869,11 @@ export class ProduitModel {
       .single();
 
     if (error) {
-      console.log('[ProduitModel] Erreur lors de la mise à jour:', error.message);
+      logger.debug('[ProduitModel] Erreur lors de la mise à jour:', error.message);
       throw new Error(`Erreur lors de la mise à jour du produit: ${error.message}`);
     }
 
-    console.log('[ProduitModel] Produit mis à jour avec succès');
+    logger.debug('[ProduitModel] Produit mis à jour avec succès');
     return data as Produit;
   }
 
@@ -942,7 +911,7 @@ export class ProduitModel {
    * Récupère les produits les plus vus d'une boutique
    */
   static async getTopVuesProduitsByBoutique(boutiqueId: number, limite: number = 5): Promise<Produit[]> {
-    console.log(`[ProduitModel] Récupération des ${limite} produits les plus vus pour la boutique ${boutiqueId}`);
+    logger.debug(`[ProduitModel] Récupération des ${limite} produits les plus vus pour la boutique ${boutiqueId}`);
     
     const { data, error } = await supabaseAdmin
       .from('produits')
@@ -957,11 +926,11 @@ export class ProduitModel {
       .limit(limite);
     
     if (error) {
-      console.error(`[ProduitModel] Erreur lors de la récupération des produits les plus vus:`, error.message);
+      logger.error(`[ProduitModel] Erreur lors de la récupération des produits les plus vus:`, error.message);
       throw new Error(`Erreur lors de la récupération des produits les plus vus: ${error.message}`);
     }
     
-    console.log(`[ProduitModel] ${data?.length || 0} produits trouvés`);
+    logger.debug(`[ProduitModel] ${data?.length || 0} produits trouvés`);
     return this.transformProduitsForResponse(data || []);
   }
 
