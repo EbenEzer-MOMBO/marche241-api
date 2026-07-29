@@ -161,52 +161,65 @@ export class CronService {
   }
 
   /**
-   * Planifie la tâche pour expirer les transactions en attente
-   * S'exécute toutes les 15 minutes
+   * Planifie la tâche de réconciliation des paiements en attente
+   * S'exécute toutes les 15 minutes (fallback si cron externe indisponible)
    */
   static scheduleExpirerTransactions(): void {
     const jobName = 'expirer-transactions-en-attente';
 
-    // Planifier l'exécution toutes les 15 minutes
-    // Format cron: '*/15 * * * *' = toutes les 15 minutes
     const task = cron.schedule('*/15 * * * *', async () => {
-      console.log('[CronService] Début de la tâche: expirer les transactions en attente');
+      console.log('[CronService] Début de la tâche: réconciliation paiements stale');
 
       try {
         const result = await this.expirerTransactions();
-        console.log(`[CronService] Tâche terminée: ${result.count} transaction(s) expirée(s)`);
+        console.log(
+          `[CronService] Réconciliation terminée: ${result.confirmations} confirmation(s), ${result.echecs_notifies} échec(s) notifié(s), ${result.erreurs} erreur(s)`
+        );
       } catch (error) {
         console.error('[CronService] Erreur lors de la tâche:', error);
       }
     });
 
     this.jobs.set(jobName, task);
-    console.log(`[CronService] Tâche planifiée: ${jobName} - Toutes les 15 minutes`);
+    console.log(`[CronService] Tâche planifiée: ${jobName} - Toutes les 15 minutes (préférer cron externe)`);
   }
 
   /**
-   * Expire les transactions en attente depuis plus d'1 heure
+   * Réconcilie les transactions en_attente via Ebilling (seuil PAYMENT_RECONCILE_AFTER_MINUTES)
    */
-  static async expirerTransactions(): Promise<{ count: number }> {
+  static async expirerTransactions(): Promise<{
+    confirmations: number;
+    echecs_notifies: number;
+    erreurs: number;
+    timeout_minutes: number;
+    examined: number;
+    count: number;
+  }> {
     try {
-      // Importer dynamiquement pour éviter les dépendances circulaires
-      const { TransactionModel } = await import('../models/transaction.model');
-
-      const result = await TransactionModel.expirerTransactionsEnAttente();
-
-      return { count: result.count };
+      const { PaiementController } = await import('../controllers/paiement.controller');
+      const result = await PaiementController.reconcileStalePayments();
+      return {
+        ...result,
+        count: result.confirmations + result.echecs_notifies,
+      };
     } catch (error) {
-      console.error('[CronService] Exception dans expirerTransactions:', error);
+      console.error('[CronService] Exception dans expirerTransactions/reconcile:', error);
       throw error;
     }
   }
 
   /**
-   * Exécute manuellement la tâche d'expiration des transactions
-   * Utile pour les tests ou l'exécution à la demande
+   * Exécute manuellement la réconciliation des paiements
    */
-  static async executeExpirerTransactionsManually(): Promise<{ count: number }> {
-    console.log('[CronService] Exécution manuelle: expirer les transactions en attente');
+  static async executeExpirerTransactionsManually(): Promise<{
+    confirmations: number;
+    echecs_notifies: number;
+    erreurs: number;
+    timeout_minutes: number;
+    examined: number;
+    count: number;
+  }> {
+    console.log('[CronService] Exécution manuelle: réconciliation paiements stale');
     return await this.expirerTransactions();
   }
 
@@ -356,7 +369,9 @@ export class CronService {
   /**
    * Annule les commandes orphelines
    */
-  static async annulerCommandesOrphelines(delaiHeures: number = 1): Promise<{ nbAnnulees: number }> {
+  static async annulerCommandesOrphelines(
+    delaiHeures: number = 1
+  ): Promise<{ nbAnnulees: number; notificationsEnvoyees: number }> {
     try {
       const { CommandeModel } = await import('../models/commande.model');
       return await CommandeModel.annulerCommandesOrphelines(delaiHeures);
@@ -369,7 +384,9 @@ export class CronService {
   /**
    * Exécute manuellement la tâche d'annulation des commandes orphelines
    */
-  static async executeAnnulerCommandesOrphelinesManually(delaiHeures: number = 1): Promise<{ nbAnnulees: number }> {
+  static async executeAnnulerCommandesOrphelinesManually(
+    delaiHeures: number = 1
+  ): Promise<{ nbAnnulees: number; notificationsEnvoyees: number }> {
     console.log(`[CronService] Exécution manuelle: annuler les commandes orphelines de plus de ${delaiHeures}h`);
     return await this.annulerCommandesOrphelines(delaiHeures);
   }

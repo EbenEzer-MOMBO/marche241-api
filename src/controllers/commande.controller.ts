@@ -401,7 +401,10 @@ export class CommandeController {
       if (updatedCommande.client_telephone) {
         try {
           logger.debug(`[CommandeController] Envoi notification WhatsApp pour statut: ${body.statut}`);
-          
+
+          const articles = updatedCommande.articles
+            || await CommandeModel.getCommandeArticlesDetails(id);
+
           const messageId = await WhatsAppService.sendOrderStatusNotification(
             body.statut,
             {
@@ -410,12 +413,15 @@ export class CommandeController {
               numeroCommande: updatedCommande.numero_commande,
               boutiqueName: updatedCommande.boutique?.nom || 'La boutique',
               boutiqueTelephone: updatedCommande.boutique?.telephone,
+              boutiqueSlug: (updatedCommande.boutique as any)?.slug,
               total: updatedCommande.total,
               fraisLivraison: updatedCommande.frais_livraison || 0,
               clientAdresse: updatedCommande.client_adresse,
               clientVille: updatedCommande.client_ville,
               clientCommune: updatedCommande.client_commune,
-              motifAnnulation: body.motif_annulation
+              motifAnnulation: body.motif_annulation,
+              articles,
+              montantPaye: updatedCommande.montant_paye ?? 0,
             }
           );
           
@@ -678,91 +684,7 @@ export class CommandeController {
       
       // Mettre à jour la méthode de paiement de la commande
       await CommandeModel.updatePaymentStatus(commande.id, 'en_attente', body.methode_paiement);
-      
-      // Envoyer les données vers le webhook de paiement
-      try {
-        const webhookUrl = process.env.WEBHOOK_PAYMENT_URL;
-        
-        if (webhookUrl) {
-          logger.debug('[initierPaiement] Envoi des données au webhook de paiement');
-          
-          // Préparer les données du webhook
-          const webhookData = {
-            type: 'payment_initialized',
-            transaction: {
-              id: transaction.id,
-              reference: transaction.reference_transaction,
-              montant: transaction.montant,
-              methode_paiement: transaction.methode_paiement,
-              type_paiement: transaction.type_paiement,
-              statut: transaction.statut,
-              numero_telephone: transaction.numero_telephone,
-              date_creation: transaction.date_creation
-            },
-            commande: {
-              id: commande.id,
-              numero_commande: commande.numero_commande,
-              statut: commande.statut,
-              statut_paiement: commande.statut_paiement,
-              sous_total: commande.sous_total,
-              frais_livraison: commande.frais_livraison,
-              taxes: commande.taxes,
-              remise: commande.remise,
-              total: commande.total,
-              montant_paye: commande.montant_paye,
-              montant_restant: commande.montant_restant,
-              date_commande: commande.date_commande,
-              client_adresse: commande.client_adresse,
-              client_ville: commande.client_ville,
-              client_commune: commande.client_commune,
-              client_instructions: commande.client_instructions
-            },
-            client: {
-              nom: commande.client_nom,
-              telephone: commande.client_telephone,
-              adresse: commande.client_adresse,
-              ville: commande.client_ville,
-              commune: commande.client_commune
-            },
-            boutique: {
-              id: commande.boutique?.id,
-              nom: commande.boutique?.nom,
-              telephone: commande.boutique?.telephone,
-              adresse: commande.boutique?.adresse
-            },
-            articles: articles.map((article: any) => ({
-              produit_id: article.produit_id,
-              nom_produit: article.nom_produit,
-              prix_unitaire: article.prix_unitaire,
-              quantite: article.quantite,
-              sous_total: article.sous_total,
-              variants_selectionnes: article.variants_selectionnes
-            })),
-            timestamp: new Date().toISOString()
-          };
 
-          const response = await fetch(webhookUrl, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${process.env.WEBHOOK_SECRET || ''}`
-            },
-            body: JSON.stringify(webhookData)
-          });
-
-          if (response.ok) {
-            logger.debug('[initierPaiement] Données envoyées au webhook avec succès');
-          } else {
-            logger.error(`[initierPaiement] Webhook responded with status ${response.status}`);
-          }
-        } else {
-          logger.debug('[initierPaiement] WEBHOOK_PAYMENT_URL non configuré, envoi ignoré');
-        }
-      } catch (webhookError: any) {
-        logger.error('[initierPaiement] Erreur lors de l\'envoi au webhook:', webhookError);
-        // On continue même si le webhook échoue, le paiement est déjà initialisé
-      }
-      
       // Retourner la transaction créée
       res.status(200).json({
         success: true,

@@ -2,9 +2,11 @@ import { Request, Response } from 'express';
 import axios from 'axios';
 import { TransactionModel } from '../models/transaction.model';
 import { CommandeModel } from '../models/commande.model';
-import { StatutPaiement, Transaction, MethodePaiement } from '../lib/database-types';
+import { StatutPaiement, Transaction, MethodePaiement, Commande } from '../lib/database-types';
 import { ProduitModel } from '../models/produit.model';
+import { VendeurModel } from '../models/vendeur.model';
 import { WhatsappSubscriberModel } from '../models/whatsapp_subscriber.model';
+import { WhatsAppService } from '../services/whatsapp.service';
 import { logger } from '../utils/logger';
 
 export class PaiementController {
@@ -157,12 +159,7 @@ export class PaiementController {
           payer_msisdn: msisdn
         };
 
-        const ussdResponse = await PaiementController.envoyerUSSDPush(ussdData, accessToken);
-
-        // Webhook Make.com / n8n côté serveur (ne jamais exposer l'URL au client)
-        PaiementController.envoyerWebhookPaiement(billId, reference, amount, payment_system, msisdn).catch((err) => {
-          logger.error('[PaiementController] Erreur webhook paiement (non bloquant):', err?.message || err);
-        });
+        await PaiementController.envoyerUSSDPush(ussdData, accessToken);
 
         res.status(200).json({
           success: true,
@@ -446,7 +443,11 @@ export class PaiementController {
    * @param billId ID de la facture
    * @returns Résultat de la vérification
    */
-  private static async processPaymentVerification(
+  /**
+   * Vérifie une facture Ebilling et met à jour transaction/commande si payée.
+   * Exposé pour la réconciliation cron après 1h.
+   */
+  static async processPaymentVerification(
     billId: string,
     transactionPrechargee?: Transaction | null
   ): Promise<any> {
@@ -597,6 +598,11 @@ export class PaiementController {
               logger.error(`[PaiementController] Échec de l'abonnement automatique WhatsApp pour ${commande.client_telephone}:`, subError.message);
             }
           }
+
+          // Confirmation WhatsApp client + vendeur uniquement au passage en_attente → confirmee
+          if (commande.statut === 'en_attente' && nouveauStatutCommande === 'confirmee') {
+            await this.sendConfirmationNotifications(transaction.commande_id, montantPaye);
+          }
         }
 
         return {
@@ -648,107 +654,217 @@ export class PaiementController {
   }
 
   /**
-   * Envoie le payload paiement au webhook Make.com / n8n (serveur uniquement).
+   * Réconciliation des transactions encore en_attente après le délai configuré.
+   * Relit l'état Ebilling : paid/processed → confirmation ; ready/expired → échec + WhatsApp.
    */
-  private static async envoyerWebhookPaiement(
-    billId: string,
-    reference: string,
-    amount: number,
-    paymentSystem: string,
-    msisdn: string
+  static async reconcileStalePayments(): Promise<{
+    confirmations: number;
+    echecs_notifies: number;
+    erreurs: number;
+    timeout_minutes: number;
+    examined: number;
+  }> {
+    const timeoutMinutes = Math.max(
+      1,
+      parseInt(process.env.PAYMENT_RECONCILE_AFTER_MINUTES || '60', 10) || 60
+    );
+
+    const SERVER_URL = process.env.EBILLING_SERVER_URL || 'https://stg.billing-easy.com/api/v1/merchant/e_bills';
+    const USER_NAME = process.env.EBILLING_USER_NAME || '';
+    const SHARED_KEY = process.env.EBILLING_SHARED_KEY || '';
+
+    let confirmations = 0;
+    let echecs_notifies = 0;
+    let erreurs = 0;
+
+    const staleTransactions = await TransactionModel.getStalePendingTransactions(timeoutMinutes);
+    logger.info(
+      `[PaiementController] Réconciliation: ${staleTransactions.length} transaction(s) en_attente > ${timeoutMinutes} min`
+    );
+
+    for (const transaction of staleTransactions) {
+      const billId = transaction.reference_operateur;
+      if (!billId) {
+        continue;
+      }
+
+      try {
+        const response = await axios.get(`${SERVER_URL}/${billId}`, {
+          auth: { username: USER_NAME, password: SHARED_KEY },
+          headers: { Accept: '*/*' },
+        });
+
+        const billState = String(response.data?.state || '').toLowerCase();
+
+        if (billState === 'processed' || billState === 'paid') {
+          const result = await PaiementController.processPaymentVerification(billId, transaction);
+          if (result.success) {
+            confirmations += 1;
+            logger.info(
+              `[PaiementController] Réconciliation: TX ${transaction.id} confirmée (bill ${billId})`
+            );
+          } else {
+            erreurs += 1;
+            logger.warn(
+              `[PaiementController] Réconciliation: TX ${transaction.id} paid/processed mais process a échoué: ${result.message}`
+            );
+          }
+          continue;
+        }
+
+        if (billState === 'ready' || billState === 'expired') {
+          await TransactionModel.markTransactionAsFailed(
+            transaction.id,
+            transaction.commande_id,
+            `Réconciliation cron: facture Ebilling encore "${billState}" après ${timeoutMinutes} min`
+          );
+
+          const phone =
+            (transaction as any).commande?.client_telephone ||
+            transaction.numero_telephone;
+
+          if (phone) {
+            try {
+              const messageId = await WhatsAppService.notifyPaymentFailed(phone);
+              if (messageId) {
+                echecs_notifies += 1;
+              }
+            } catch (waError: any) {
+              logger.error(
+                `[PaiementController] Réconciliation WhatsApp échec paiement TX ${transaction.id}:`,
+                waError.message
+              );
+            }
+          }
+
+          logger.info(
+            `[PaiementController] Réconciliation: TX ${transaction.id} en échec (bill ${billId}, state=${billState})`
+          );
+          continue;
+        }
+
+        logger.debug(
+          `[PaiementController] Réconciliation: TX ${transaction.id} état Ebilling ignoré: ${billState}`
+        );
+      } catch (error: any) {
+        erreurs += 1;
+        logger.error(
+          `[PaiementController] Réconciliation erreur TX ${transaction.id} (bill ${billId}):`,
+          error.message
+        );
+      }
+    }
+
+    return {
+      confirmations,
+      echecs_notifies,
+      erreurs,
+      timeout_minutes: timeoutMinutes,
+      examined: staleTransactions.length,
+    };
+  }
+
+  /**
+   * Envoie les notifications WhatsApp de confirmation (client + vendeur) après paiement.
+   * Ne bloque jamais le flux de paiement en cas d'échec WhatsApp.
+   */
+  private static async sendConfirmationNotifications(
+    commandeId: number,
+    montantPaye: number
   ): Promise<void> {
-    const webhookUrl = process.env.WEBHOOK_PAYMENT_URL || process.env.WEBHOOK_PAYMENT;
-    if (!webhookUrl) {
-      return;
-    }
+    try {
+      const commande = await CommandeModel.getCommandeById(commandeId);
+      if (!commande) {
+        logger.warn(`[PaiementController] Commande ${commandeId} introuvable pour notifications WhatsApp`);
+        return;
+      }
 
-    const commande = await CommandeModel.getCommandeByNumero(reference);
-    if (!commande) {
-      logger.warn(`[PaiementController] Commande introuvable pour reference=${reference}, webhook partiel`);
-    }
+      const articles = commande.articles || [];
+      const boutiqueName = commande.boutique?.nom || 'La boutique';
+      const boutiqueTelephone = commande.boutique?.telephone;
 
-    const boutique = (commande as any)?.boutique;
-    const articles = (commande as any)?.articles || [];
-
-    const produits: Record<number, unknown> = {};
-    articles.forEach((article: any, index: number) => {
-      produits[index + 1] = {
-        id: article.produit_id,
-        nom: article.nom_produit,
-        prix_unitaire: article.prix_unitaire,
-        quantite: article.quantite,
-        sous_total: article.sous_total,
-        variants: article.variants_selectionnes || undefined,
-        variants_string: article.variants_selectionnes
-          ? JSON.stringify(article.variants_selectionnes)
-          : undefined
-      };
-    });
-
-    const methode =
-      paymentSystem === 'moovmoney' || paymentSystem === 'moovmoney1'
-        ? 'moov_money'
-        : paymentSystem === 'airtelmoney'
-          ? 'airtel_money'
-          : paymentSystem;
-
-    const payload = {
-      billId,
-      boutique: {
-        id: boutique?.id,
-        nom: boutique?.nom,
-        slug: boutique?.slug,
-        telephone: boutique?.telephone,
-        whatsapp: boutique?.telephone
-      },
-      commande: commande
-        ? {
-            id: commande.id,
-            numero_commande: commande.numero_commande,
+      if (commande.client_telephone) {
+        try {
+          const messageId = await WhatsAppService.sendOrderStatusNotification('confirmee', {
+            clientNom: commande.client_nom || 'Client',
+            clientTelephone: commande.client_telephone,
+            numeroCommande: commande.numero_commande,
+            boutiqueName,
+            boutiqueTelephone,
             total: commande.total,
-            sous_total: commande.sous_total,
-            frais_livraison: commande.frais_livraison,
-            taxes: commande.taxes
-          }
-        : { numero_commande: reference },
-      produits,
-      client: commande
-        ? {
-            nom: commande.client_nom,
-            telephone: commande.client_telephone,
-            whatsapp: (commande.client_telephone || '').replace(/^\+/, ''),
-            email: (commande as any).client_email || '',
-            adresse: commande.client_adresse,
-            ville: commande.client_ville,
-            commune: commande.client_commune
-          }
-        : { telephone: msisdn },
-      paiement: {
-        montant: amount,
-        type_paiement: 'paiement',
-        methode_paiement: methode,
-        reference
-      },
-      timestamp: new Date().toISOString()
-    };
+            fraisLivraison: commande.frais_livraison || 0,
+            clientAdresse: commande.client_adresse,
+            clientVille: commande.client_ville,
+            clientCommune: commande.client_commune,
+            articles,
+            montantPaye,
+          });
 
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json'
-    };
-    if (process.env.WEBHOOK_SECRET) {
-      headers.Authorization = `Bearer ${process.env.WEBHOOK_SECRET}`;
+          if (messageId) {
+            logger.debug(`[PaiementController] Confirmation WhatsApp client envoyée: ${messageId}`);
+          } else {
+            logger.debug('[PaiementController] Confirmation WhatsApp client non envoyée');
+          }
+        } catch (clientWaError: any) {
+          logger.error('[PaiementController] Erreur WhatsApp client:', clientWaError.message);
+        }
+      }
+
+      const vendeurTelephone = await this.resolveVendeurWhatsAppPhone(commande);
+      if (!vendeurTelephone) {
+        logger.debug(`[PaiementController] Aucun téléphone vendeur pour commande ${commande.numero_commande}`);
+        return;
+      }
+
+      try {
+        const vendeurMessageId = await WhatsAppService.notifyVendeurNewOrder(vendeurTelephone, {
+          numeroCommande: commande.numero_commande,
+          clientNom: commande.client_nom || 'Client',
+          total: commande.total,
+          nombreArticles: articles.length,
+          articles,
+          montantPaye,
+          clientAdresse: commande.client_adresse,
+          clientVille: commande.client_ville,
+          clientCommune: commande.client_commune,
+        });
+
+        if (vendeurMessageId) {
+          logger.debug(`[PaiementController] Notification WhatsApp vendeur envoyée: ${vendeurMessageId}`);
+        } else {
+          logger.debug('[PaiementController] Notification WhatsApp vendeur non envoyée');
+        }
+      } catch (vendeurWaError: any) {
+        logger.error('[PaiementController] Erreur WhatsApp vendeur:', vendeurWaError.message);
+      }
+    } catch (error: any) {
+      logger.error('[PaiementController] Erreur notifications confirmation WhatsApp:', error.message);
+    }
+  }
+
+  /**
+   * Résout le numéro WhatsApp du vendeur : téléphone vendeur > boutique > numero_paiement
+   */
+  private static async resolveVendeurWhatsAppPhone(commande: Commande): Promise<string | null> {
+    const boutique = commande.boutique;
+    if (!boutique) {
+      return null;
     }
 
-    const response = await fetch(webhookUrl, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(payload)
-    });
-
-    if (!response.ok) {
-      logger.error(`[PaiementController] Webhook responded with status ${response.status}`);
-      return;
+    if (boutique.vendeur_id) {
+      try {
+        const vendeur = await VendeurModel.getVendeurById(boutique.vendeur_id);
+        if (vendeur?.telephone) {
+          return vendeur.telephone;
+        }
+        if (vendeur?.numero_paiement) {
+          return vendeur.numero_paiement;
+        }
+      } catch (error: any) {
+        logger.error(`[PaiementController] Impossible de charger le vendeur ${boutique.vendeur_id}:`, error.message);
+      }
     }
 
+    return boutique.telephone || null;
   }
 }

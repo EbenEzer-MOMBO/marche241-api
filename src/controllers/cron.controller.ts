@@ -241,10 +241,15 @@ export class CronController {
         results.push({
           task: 'annuler_commandes_orphelines',
           success: true,
-          result: { commandes_annulees: result.nbAnnulees },
+          result: {
+            commandes_annulees: result.nbAnnulees,
+            notifications_envoyees: result.notificationsEnvoyees,
+          },
           duration: Date.now() - task3Start
         });
-        console.log(`[CronController] Tâche 3 terminée: ${result.nbAnnulees} commande(s) annulée(s)`);
+        console.log(
+          `[CronController] Tâche 3 terminée: ${result.nbAnnulees} commande(s) annulée(s), ${result.notificationsEnvoyees} notif(s)`
+        );
       } catch (error: any) {
         console.error('[CronController] Erreur tâche 3:', error.message);
         results.push({
@@ -252,6 +257,36 @@ export class CronController {
           success: false,
           error: error.message,
           duration: Date.now() - task3Start
+        });
+      }
+
+      // Tâche 4: Réconciliation paiements stale (Ebilling ≥ 1h)
+      const task4Start = Date.now();
+      try {
+        console.log('[CronController] Tâche 4: Réconciliation paiements stale');
+        const result = await CronService.executeExpirerTransactionsManually();
+        results.push({
+          task: 'reconcile_stale_payments',
+          success: true,
+          result: {
+            confirmations: result.confirmations,
+            echecs_notifies: result.echecs_notifies,
+            erreurs: result.erreurs,
+            timeout_minutes: result.timeout_minutes,
+            examined: result.examined,
+          },
+          duration: Date.now() - task4Start
+        });
+        console.log(
+          `[CronController] Tâche 4 terminée: ${result.confirmations} confirmée(s), ${result.echecs_notifies} échec(s)`
+        );
+      } catch (error: any) {
+        console.error('[CronController] Erreur tâche 4:', error.message);
+        results.push({
+          task: 'reconcile_stale_payments',
+          success: false,
+          error: error.message,
+          duration: Date.now() - task4Start
         });
       }
 
@@ -298,26 +333,30 @@ export class CronController {
   }
 
   /**
-   * Exécute manuellement la tâche d'expiration des transactions en attente
-   * @param req Requête HTTP
-   * @param res Réponse HTTP
+   * Exécute la réconciliation des paiements stale (Ebilling après 1h)
    */
   static async executeExpirerTransactions(req: Request, res: Response): Promise<void> {
     try {
-      console.log('[CronController] Exécution manuelle de l\'expiration des transactions');
+      console.log('[CronController] Exécution manuelle de la réconciliation paiements');
 
       const result = await CronService.executeExpirerTransactionsManually();
 
       res.status(200).json({
         success: true,
-        message: `${result.count} transaction(s) expirée(s) avec succès`,
-        count: result.count
+        message: `Réconciliation terminée: ${result.confirmations} confirmation(s), ${result.echecs_notifies} échec(s) notifié(s)`,
+        confirmations: result.confirmations,
+        echecs_notifies: result.echecs_notifies,
+        erreurs: result.erreurs,
+        timeout_minutes: result.timeout_minutes,
+        examined: result.examined,
+        count: result.count,
+        executed_at: new Date().toISOString(),
       });
     } catch (error: any) {
-      console.error('[CronController] Erreur lors de l\'exécution manuelle:', error);
+      console.error('[CronController] Erreur lors de la réconciliation:', error);
       res.status(500).json({
         success: false,
-        message: 'Erreur lors de l\'expiration des transactions',
+        message: 'Erreur lors de la réconciliation des paiements',
         error: error.message
       });
     }
@@ -411,6 +450,7 @@ export class CronController {
         success: true,
         message: `${result.nbAnnulees} commande(s) orpheline(s) annulée(s) avec succès`,
         count: result.nbAnnulees,
+        notifications_envoyees: result.notificationsEnvoyees,
         delai_heures: delaiHeures,
         executed_at: new Date().toISOString()
       });

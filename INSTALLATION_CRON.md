@@ -235,5 +235,34 @@ La migration SQL n'a pas été exécutée correctement. Réexécutez `migrations
 
 ## Sécurité
 
-Les endpoints de cron sont protégés et nécessitent une authentification admin. Assurez-vous que seuls les utilisateurs autorisés peuvent y accéder.
+Les endpoints de cron publics (`/cron/tasks`, `/cron/expirer-transactions`, etc.) exigent `CRON_SECRET_KEY` via `?key=` ou header `x-cron-key`.
+
+---
+
+## Crons externes (Render free / production)
+
+Sur Render free, le scheduler interne `node-cron` n'est **pas fiable** (sleep). Préférer un cron externe toutes les **5–15 minutes** :
+
+```bash
+# Bundle (orphelines + réconciliation paiements + autres)
+curl "https://VOTRE_API/cron/tasks?key=$CRON_SECRET_KEY"
+
+# Réconciliation Ebilling seule (TX en_attente ≥ PAYMENT_RECONCILE_AFTER_MINUTES)
+curl "https://VOTRE_API/cron/expirer-transactions?key=$CRON_SECRET_KEY"
+
+# Annulation commandes orphelines + WhatsApp annulation
+curl "https://VOTRE_API/api/v1/cron/annuler-commandes-orphelines?key=$CRON_SECRET_KEY"
+```
+
+### Réconciliation paiements (1h)
+
+Config : `PAYMENT_RECONCILE_AFTER_MINUTES=60`
+
+Comportement pour chaque TX encore `en_attente` au-delà du seuil :
+
+1. GET Ebilling bill state
+2. `paid` / `processed` → confirmation commande + WhatsApp acheteur/vendeur
+3. `ready` / `expired` → TX `echec`, commande `annulee` (sans template annulation), WhatsApp `tentative_de_paiement_echouee`
+
+Plus de webhook Make.com : le suivi live reste le poll front (`verifierPaiement`) ; le cron couvre les cas réseau / non aboutis.
 

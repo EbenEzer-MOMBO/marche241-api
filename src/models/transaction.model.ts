@@ -446,98 +446,90 @@ export class TransactionModel {
   }
 
   /**
-   * Expire les transactions en attente créées il y a plus de 1 heure
-   * Met à jour le statut de la transaction en 'echec' et annule la commande associée
-   * @returns Nombre de transactions expirées et liste des transactions
+   * Récupère les transactions encore en_attente au-delà du délai de réconciliation.
    */
-  static async expirerTransactionsEnAttente(): Promise<{ count: number, transactions: Transaction[] }> {
-    try {
-      console.log('[TransactionModel] Recherche des transactions en attente à expirer...');
+  static async getStalePendingTransactions(timeoutMinutes: number): Promise<Transaction[]> {
+    const threshold = new Date(Date.now() - timeoutMinutes * 60 * 1000).toISOString();
 
-      // Récupérer les transactions en attente créées il y a plus d'1 heure
-      const { data: transactionsAExpirer, error: fetchError } = await supabaseAdmin
-        .from('transactions')
-        .select(`
-          *,
-          commande:commande_id(*)
-        `)
-        .eq('statut', 'en_attente')
-        .lt('date_creation', new Date(Date.now() - 60 * 60 * 1000).toISOString()); // 1 heure
+    const { data, error } = await supabaseAdmin
+      .from('transactions')
+      .select(`
+        *,
+        commande:commande_id(
+          id,
+          numero_commande,
+          statut,
+          client_nom,
+          client_telephone,
+          client_adresse,
+          client_ville,
+          client_commune
+        )
+      `)
+      .eq('statut', 'en_attente')
+      .lt('date_creation', threshold)
+      .not('reference_operateur', 'is', null);
 
-      if (fetchError) {
-        console.error('[TransactionModel] Erreur lors de la récupération des transactions:', fetchError);
-        throw new Error(`Erreur lors de la récupération des transactions à expirer: ${fetchError.message}`);
-      }
-
-      if (!transactionsAExpirer || transactionsAExpirer.length === 0) {
-        console.log('[TransactionModel] Aucune transaction à expirer');
-        return { count: 0, transactions: [] };
-      }
-
-      console.log(`[TransactionModel] ${transactionsAExpirer.length} transaction(s) à expirer trouvée(s)`);
-
-      const transactionsExpirees: Transaction[] = [];
-
-      // Expirer chaque transaction
-      for (const transaction of transactionsAExpirer) {
-        try {
-          console.log(`[TransactionModel] Expiration de la transaction ${transaction.id} (commande: ${transaction.commande_id})`);
-
-          // Mettre à jour le statut de la transaction en 'echec'
-          const { data: transactionUpdated, error: updateError } = await supabaseAdmin
-            .from('transactions')
-            .update({
-              statut: 'echec' as StatutPaiement,
-              notes: 'Transaction expirée automatiquement après 1 heure',
-              date_modification: new Date()
-            })
-            .eq('id', transaction.id)
-            .select()
-            .single();
-
-          if (updateError) {
-            console.error(`[TransactionModel] Erreur lors de la mise à jour de la transaction ${transaction.id}:`, updateError);
-            continue;
-          }
-
-          // Si une commande est associée, l'annuler
-          if (transaction.commande_id) {
-            console.log(`[TransactionModel] Annulation de la commande ${transaction.commande_id}`);
-
-            const { error: commandeError } = await supabaseAdmin
-              .from('commandes')
-              .update({
-                statut: 'annulee',
-                date_modification: new Date()
-              })
-              .eq('id', transaction.commande_id);
-
-            if (commandeError) {
-              console.error(`[TransactionModel] Erreur lors de l'annulation de la commande ${transaction.commande_id}:`, commandeError);
-            } else {
-              console.log(`[TransactionModel] Commande ${transaction.commande_id} annulée avec succès`);
-            }
-          }
-
-          transactionsExpirees.push(transactionUpdated);
-          console.log(`[TransactionModel] Transaction ${transaction.id} expirée avec succès`);
-
-        } catch (error: any) {
-          console.error(`[TransactionModel] Erreur lors de l'expiration de la transaction ${transaction.id}:`, error);
-          // Continuer avec les autres transactions même en cas d'erreur
-        }
-      }
-
-      console.log(`[TransactionModel] ${transactionsExpirees.length} transaction(s) expirée(s) avec succès`);
-
-      return {
-        count: transactionsExpirees.length,
-        transactions: transactionsExpirees
-      };
-
-    } catch (error: any) {
-      console.error('[TransactionModel] Exception dans expirerTransactionsEnAttente:', error);
-      throw error;
+    if (error) {
+      throw new Error(`Erreur lors de la récupération des transactions à réconcilier: ${error.message}`);
     }
+
+    return (data || []) as Transaction[];
+  }
+
+  /**
+   * Marque une transaction en échec et annule la commande associée si encore en_attente.
+   * Sans notification WhatsApp d'annulation (gérée séparément via tentative_de_paiement_echouee).
+   */
+  static async markTransactionAsFailed(
+    transactionId: number,
+    commandeId: number | null | undefined,
+    note: string
+  ): Promise<Transaction | null> {
+    const { data: transactionUpdated, error: updateError } = await supabaseAdmin
+      .from('transactions')
+      .update({
+        statut: 'echec' as StatutPaiement,
+        notes: note,
+        date_modification: new Date()
+      })
+      .eq('id', transactionId)
+      .select()
+      .single();
+
+    if (updateError) {
+      throw new Error(`Erreur mise à jour transaction ${transactionId}: ${updateError.message}`);
+    }
+
+    if (commandeId) {
+      const { error: commandeError } = await supabaseAdmin
+        .from('commandes')
+        .update({
+          statut: 'annulee',
+          date_modification: new Date()
+        })
+        .eq('id', commandeId)
+        .eq('statut', 'en_attente');
+
+      if (commandeError) {
+        console.error(
+          `[TransactionModel] Erreur annulation commande ${commandeId} après échec paiement:`,
+          commandeError
+        );
+      }
+    }
+
+    return transactionUpdated as Transaction;
+  }
+
+  /**
+   * @deprecated Utiliser PaiementController.reconcileStalePayments (réconciliation Ebilling).
+   * Conservé pour compatibilité : délègue à la réconciliation via CronService.
+   */
+  static async expirerTransactionsEnAttente(): Promise<{ count: number; transactions: Transaction[] }> {
+    console.warn(
+      '[TransactionModel] expirerTransactionsEnAttente est déprécié — utiliser la réconciliation Ebilling'
+    );
+    return { count: 0, transactions: [] };
   }
 }

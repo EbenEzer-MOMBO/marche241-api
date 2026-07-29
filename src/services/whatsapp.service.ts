@@ -1,26 +1,42 @@
 import { logger } from '../utils/logger';
+import {
+  META_TEMPLATES,
+  OrderArticleLike,
+  TemplateComponent,
+  buildAnnulationComponents,
+  buildConfirmationClientComponents,
+  buildConfirmationVendeurComponents,
+  buildExpeditionComponents,
+  buildLivraisonComponents,
+  formatDeliveryAddress,
+  formatOrderDetails,
+} from './whatsapp-templates';
+
 /**
- * Service d'envoi de messages WhatsApp via GREEN-API
- * Documentation: https://green-api.com/en/docs/api/sending/SendMessage/
+ * Service d'envoi de messages WhatsApp
+ * - Templates Meta Cloud API pour confirmation / expédition / livraison / vendeur
+ * - GREEN-API pour messages texte (fallback + autres statuts + check-number)
  */
 
 interface WhatsAppMessageResponse {
   idMessage: string;
 }
 
-interface WhatsAppError {
-  code: number;
-  message: string;
+interface MetaMessageResponse {
+  messages?: Array<{ id: string }>;
+  error?: { message?: string; code?: number };
 }
 
-// Pied de page commun pour tous les messages de statut
+const META_TEMPLATE_STATUSES = new Set(['confirmee', 'expedie', 'livree', 'annulee']);
+
+// Pied de page commun pour tous les messages de statut (GREEN-API)
 const getFooter = (data: MessageData): string => `
 ───────────────
 *${data.boutiqueName}* 🛍️${data.boutiqueTelephone ? `
 Contacter la boutique: ${data.boutiqueTelephone}` : ''}
 _Équipe Marché241_`;
 
-// Messages personnalisés pour chaque statut de commande
+// Messages personnalisés pour chaque statut de commande (fallback GREEN-API)
 const MESSAGES_STATUT: Record<string, (data: MessageData) => string> = {
   confirmee: (data) => `✅ *Commande confirmée !*
 
@@ -97,12 +113,13 @@ Le montant sera crédité sur votre compte dans un délai de 24 à 72h selon vot
 Merci de votre compréhension.${getFooter(data)}`
 };
 
-interface MessageData {
+export interface MessageData {
   clientNom: string;
   clientTelephone: string;
   numeroCommande: string;
   boutiqueName: string;
   boutiqueTelephone?: string;
+  boutiqueSlug?: string;
   total: number;
   fraisLivraison: number;
   clientAdresse?: string;
@@ -110,6 +127,20 @@ interface MessageData {
   clientCommune?: string;
   motifAnnulation?: string;
   montantRembourse?: number;
+  articles?: OrderArticleLike[];
+  montantPaye?: number;
+}
+
+export interface VendeurOrderNotificationData {
+  numeroCommande: string;
+  clientNom: string;
+  total: number;
+  nombreArticles: number;
+  articles?: OrderArticleLike[];
+  montantPaye?: number;
+  clientAdresse?: string;
+  clientVille?: string;
+  clientCommune?: string;
 }
 
 export class WhatsAppService {
@@ -117,54 +148,124 @@ export class WhatsAppService {
   private static apiTokenInstance = process.env.GREEN_API_TOKEN;
   private static apiUrl = process.env.GREEN_API_URL || 'https://api.green-api.com';
 
+  private static metaAccessToken = process.env.WHATSAPP_ACCESS_TOKEN;
+  private static metaPhoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+  private static metaGraphVersion = process.env.META_WHATSAPP_GRAPH_VERSION || 'v21.0';
+
   /**
-   * Vérifie si le service WhatsApp est configuré
+   * Vérifie si GREEN-API est configuré (messages texte / check-number)
    */
   static isConfigured(): boolean {
     return !!(this.idInstance && this.apiTokenInstance);
   }
 
   /**
-   * Formate un numéro de téléphone pour WhatsApp
-   * @param phone Numéro de téléphone (avec ou sans indicatif)
-   * @returns Numéro formaté pour WhatsApp (ex: 241XXXXXXXX@c.us)
+   * Vérifie si Meta Cloud API est configuré (templates transactionnels)
    */
-  static formatPhoneNumber(phone: string): string {
-    // Supprimer tous les caractères non numériques sauf le +
-    let cleaned = phone.replace(/[^\d+]/g, '');
-    
-    // Supprimer le + s'il existe
-    cleaned = cleaned.replace('+', '');
-    
-    // Si le numéro commence par 0, le remplacer par l'indicatif Gabon (241)
-    if (cleaned.startsWith('0')) {
-      cleaned = '241' + cleaned.substring(1);
-    }
-    
-    // Si le numéro n'a pas d'indicatif (moins de 11 chiffres), ajouter 241
-    if (cleaned.length <= 9) {
-      cleaned = '241' + cleaned;
-    }
-    
-    return `${cleaned}@c.us`;
+  static isMetaConfigured(): boolean {
+    return !!(this.metaAccessToken && this.metaPhoneNumberId);
   }
 
   /**
-   * Envoie un message WhatsApp
-   * @param phone Numéro de téléphone du destinataire
-   * @param message Contenu du message
-   * @returns ID du message envoyé ou null en cas d'erreur
+   * Formate un numéro en digits internationaux (sans + / @c.us)
+   */
+  static formatPhoneDigits(phone: string): string {
+    let cleaned = phone.replace(/[^\d+]/g, '').replace('+', '');
+
+    if (cleaned.startsWith('0')) {
+      cleaned = '241' + cleaned.substring(1);
+    }
+
+    if (cleaned.length <= 9) {
+      cleaned = '241' + cleaned;
+    }
+
+    return cleaned;
+  }
+
+  /**
+   * Formate un numéro de téléphone pour GREEN-API (ex: 241XXXXXXXX@c.us)
+   */
+  static formatPhoneNumber(phone: string): string {
+    return `${this.formatPhoneDigits(phone)}@c.us`;
+  }
+
+  /**
+   * Envoie un template Meta Cloud API
+   */
+  static async sendTemplateMessage(
+    phone: string,
+    templateName: string,
+    languageCode: string,
+    components: TemplateComponent[] = []
+  ): Promise<string | null> {
+    if (!this.isMetaConfigured()) {
+      logger.warn('[WhatsAppService] Meta non configuré. Variables WHATSAPP_ACCESS_TOKEN et WHATSAPP_PHONE_NUMBER_ID requises.');
+      return null;
+    }
+
+    const to = this.formatPhoneDigits(phone);
+    const url = `https://graph.facebook.com/${this.metaGraphVersion}/${this.metaPhoneNumberId}/messages`;
+
+    const payload: Record<string, unknown> = {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to,
+      type: 'template',
+      template: {
+        name: templateName,
+        language: { code: languageCode },
+      },
+    };
+
+    if (components.length > 0) {
+      (payload.template as Record<string, unknown>).components = components;
+    }
+
+    logger.debug(`[WhatsAppService] Envoi template Meta "${templateName}" à ${to}`);
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.metaAccessToken}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json() as MetaMessageResponse;
+
+      if (!response.ok) {
+        logger.error(
+          `[WhatsAppService] Erreur Meta HTTP ${response.status}:`,
+          data.error?.message || JSON.stringify(data)
+        );
+        return null;
+      }
+
+      const messageId = data.messages?.[0]?.id ?? null;
+      logger.debug(`[WhatsAppService] Template Meta envoyé. ID: ${messageId}`);
+      return messageId;
+    } catch (error: any) {
+      logger.error('[WhatsAppService] Erreur lors de l\'envoi du template Meta:', error.message);
+      return null;
+    }
+  }
+
+  /**
+   * Envoie un message WhatsApp texte via GREEN-API
    */
   static async sendMessage(phone: string, message: string): Promise<string | null> {
     if (!this.isConfigured()) {
-      logger.warn('[WhatsAppService] Service non configuré. Variables GREEN_API_ID_INSTANCE et GREEN_API_TOKEN requises.');
+      logger.warn('[WhatsAppService] GREEN-API non configuré. Variables GREEN_API_ID_INSTANCE et GREEN_API_TOKEN requises.');
       return null;
     }
 
     const chatId = this.formatPhoneNumber(phone);
     const url = `${this.apiUrl}/waInstance${this.idInstance}/sendMessage/${this.apiTokenInstance}`;
 
-    logger.debug(`[WhatsAppService] Envoi de message à ${chatId}`);
+    logger.debug(`[WhatsAppService] Envoi de message GREEN-API à ${chatId}`);
 
     try {
       const response = await fetch(url, {
@@ -180,46 +281,144 @@ export class WhatsAppService {
 
       if (!response.ok) {
         const errorText = await response.text();
-        logger.error(`[WhatsAppService] Erreur HTTP ${response.status}: ${errorText}`);
+        logger.error(`[WhatsAppService] Erreur GREEN-API HTTP ${response.status}: ${errorText}`);
         return null;
       }
 
       const data = await response.json() as WhatsAppMessageResponse;
-      logger.debug(`[WhatsAppService] Message envoyé avec succès. ID: ${data.idMessage}`);
+      logger.debug(`[WhatsAppService] Message GREEN-API envoyé. ID: ${data.idMessage}`);
       return data.idMessage;
     } catch (error: any) {
-      logger.error('[WhatsAppService] Erreur lors de l\'envoi du message:', error.message);
+      logger.error('[WhatsAppService] Erreur lors de l\'envoi GREEN-API:', error.message);
       return null;
     }
   }
 
-  /**
-   * Envoie une notification de changement de statut de commande
-   * @param statut Nouveau statut de la commande
-   * @param data Données de la commande
-   * @returns ID du message envoyé ou null
-   */
-  static async sendOrderStatusNotification(
+  private static resolveAdresseLivraison(data: MessageData | VendeurOrderNotificationData): string {
+    return formatDeliveryAddress({
+      adresse: data.clientAdresse,
+      commune: data.clientCommune,
+      ville: data.clientVille,
+    });
+  }
+
+  private static async sendMetaOrderStatus(
     statut: string,
     data: MessageData
   ): Promise<string | null> {
-    // Vérifier si un message est défini pour ce statut
+    const details = formatOrderDetails(data.articles);
+    const adresseLivraison = this.resolveAdresseLivraison(data);
+    const montantPaye = data.montantPaye ?? 0;
+
+    if (statut === 'confirmee') {
+      const tpl = META_TEMPLATES.confirmationClient;
+      return this.sendTemplateMessage(
+        data.clientTelephone,
+        tpl.name,
+        tpl.language,
+        buildConfirmationClientComponents({
+          numeroCommande: data.numeroCommande,
+          details,
+          total: data.total,
+          montantPaye,
+          adresseLivraison,
+          contactBoutique: data.boutiqueTelephone || data.boutiqueName,
+        })
+      );
+    }
+
+    if (statut === 'expedie') {
+      const tpl = META_TEMPLATES.expedition;
+      return this.sendTemplateMessage(
+        data.clientTelephone,
+        tpl.name,
+        tpl.language,
+        buildExpeditionComponents({
+          numeroCommande: data.numeroCommande,
+          clientNom: data.clientNom,
+          adresseLivraison,
+        })
+      );
+    }
+
+    if (statut === 'livree') {
+      const tpl = META_TEMPLATES.livraison;
+      return this.sendTemplateMessage(
+        data.clientTelephone,
+        tpl.name,
+        tpl.language,
+        buildLivraisonComponents({
+          clientNom: data.clientNom,
+          numeroCommande: data.numeroCommande,
+          boutiqueName: data.boutiqueName,
+        })
+      );
+    }
+
+    if (statut === 'annulee') {
+      const tpl = META_TEMPLATES.annulation;
+      return this.sendTemplateMessage(
+        data.clientTelephone,
+        tpl.name,
+        tpl.language,
+        buildAnnulationComponents({
+          clientNom: data.clientNom,
+          boutiqueSlug: data.boutiqueSlug || 'boutiques',
+        })
+      );
+    }
+
+    return null;
+  }
+
+  private static async sendGreenApiOrderStatus(
+    statut: string,
+    data: MessageData
+  ): Promise<string | null> {
     const messageGenerator = MESSAGES_STATUT[statut];
-    
+
     if (!messageGenerator) {
       logger.debug(`[WhatsAppService] Pas de message défini pour le statut: ${statut}`);
       return null;
     }
 
-    const message = messageGenerator(data);
-    return this.sendMessage(data.clientTelephone, message);
+    return this.sendMessage(data.clientTelephone, messageGenerator(data));
   }
 
   /**
-   * Envoie un message personnalisé
-   * @param phone Numéro de téléphone
-   * @param templateName Nom du template (optionnel)
-   * @param customMessage Message personnalisé
+   * Envoie une notification de changement de statut de commande
+   * Meta template pour confirmee / expedie / livree / annulee, sinon GREEN-API texte
+   */
+  static async sendOrderStatusNotification(
+    statut: string,
+    data: MessageData
+  ): Promise<string | null> {
+    if (META_TEMPLATE_STATUSES.has(statut) && this.isMetaConfigured()) {
+      const metaId = await this.sendMetaOrderStatus(statut, data);
+      if (metaId) {
+        return metaId;
+      }
+      logger.warn(`[WhatsAppService] Échec Meta pour statut ${statut}, fallback GREEN-API`);
+    }
+
+    return this.sendGreenApiOrderStatus(statut, data);
+  }
+
+  /**
+   * Notifie l'acheteur d'un échec / expiration de tentative de paiement (Meta uniquement)
+   */
+  static async notifyPaymentFailed(phone: string): Promise<string | null> {
+    if (!this.isMetaConfigured()) {
+      logger.warn('[WhatsAppService] Meta non configuré — tentative_de_paiement_echouee non envoyée');
+      return null;
+    }
+
+    const tpl = META_TEMPLATES.paiementEchoue;
+    return this.sendTemplateMessage(phone, tpl.name, tpl.language, []);
+  }
+
+  /**
+   * Envoie un message personnalisé (GREEN-API)
    */
   static async sendCustomMessage(
     phone: string,
@@ -229,17 +428,34 @@ export class WhatsAppService {
   }
 
   /**
-   * Envoie une notification au vendeur pour une nouvelle commande
+   * Notifie le vendeur d'une nouvelle commande (template Meta + fallback GREEN-API)
    */
   static async notifyVendeurNewOrder(
     vendeurTelephone: string,
-    data: {
-      numeroCommande: string;
-      clientNom: string;
-      total: number;
-      nombreArticles: number;
-    }
+    data: VendeurOrderNotificationData
   ): Promise<string | null> {
+    if (this.isMetaConfigured()) {
+      const tpl = META_TEMPLATES.confirmationVendeur;
+      const metaId = await this.sendTemplateMessage(
+        vendeurTelephone,
+        tpl.name,
+        tpl.language,
+        buildConfirmationVendeurComponents({
+          numeroCommande: data.numeroCommande,
+          clientNom: data.clientNom,
+          details: formatOrderDetails(data.articles),
+          total: data.total,
+          montantPaye: data.montantPaye ?? 0,
+          adresseLivraison: this.resolveAdresseLivraison(data),
+        })
+      );
+
+      if (metaId) {
+        return metaId;
+      }
+      logger.warn('[WhatsAppService] Échec Meta notif vendeur, fallback GREEN-API');
+    }
+
     const message = `🛒 *Nouvelle commande !*
 
 Vous avez reçu une nouvelle commande *#${data.numeroCommande}*.
@@ -254,7 +470,7 @@ Connectez-vous à votre espace vendeur pour traiter cette commande.`;
   }
 
   /**
-   * Envoie une notification de paiement reçu
+   * Envoie une notification de paiement reçu (GREEN-API texte)
    */
   static async notifyPaymentReceived(
     phone: string,
@@ -268,8 +484,8 @@ Connectez-vous à votre espace vendeur pour traiter cette commande.`;
 
 Votre paiement de *${data.montant} FCFA* pour la commande *#${data.numeroCommande}* a été confirmé.
 
-Type : ${data.typePaiement === 'paiement_complet' ? 'Paiement complet' : 
-        data.typePaiement === 'frais_livraison' ? 'Frais de livraison' : 
+Type : ${data.typePaiement === 'paiement_complet' ? 'Paiement complet' :
+        data.typePaiement === 'frais_livraison' ? 'Frais de livraison' :
         data.typePaiement === 'solde_apres_livraison' ? 'Solde après livraison' : data.typePaiement}
 
 Merci pour votre confiance ! 🙏`;
@@ -277,21 +493,19 @@ Merci pour votre confiance ! 🙏`;
     return this.sendMessage(phone, message);
   }
 
-  /**
-   * Vérifie si un numéro de téléphone dispose d'un compte WhatsApp
-   * @param phone Numéro de téléphone
-   */
   private static checkNumberCache = new Map<string, { existsWhatsapp: boolean; expiresAt: number }>();
   private static readonly CHECK_NUMBER_TTL_MS = 24 * 60 * 60 * 1000;
 
+  /**
+   * Vérifie si un numéro de téléphone dispose d'un compte WhatsApp (GREEN-API)
+   */
   static async checkWhatsAppNumber(phone: string): Promise<{ existsWhatsapp: boolean } | null> {
     if (!this.isConfigured()) {
-      logger.warn('[WhatsAppService] Service non configuré. Variables GREEN_API_ID_INSTANCE et GREEN_API_TOKEN requises.');
+      logger.warn('[WhatsAppService] GREEN-API non configuré. Variables GREEN_API_ID_INSTANCE et GREEN_API_TOKEN requises.');
       return null;
     }
 
-    const formattedChatId = this.formatPhoneNumber(phone);
-    const cleanDigits = formattedChatId.split('@')[0];
+    const cleanDigits = this.formatPhoneDigits(phone);
 
     const cached = this.checkNumberCache.get(cleanDigits);
     if (cached && Date.now() < cached.expiresAt) {
@@ -329,4 +543,3 @@ Merci pour votre confiance ! 🙏`;
     }
   }
 }
-

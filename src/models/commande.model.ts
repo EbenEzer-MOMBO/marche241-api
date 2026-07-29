@@ -226,7 +226,7 @@ export class CommandeModel {
         .eq('id', id)
         .select(`
           *,
-          boutique:boutiques(id, nom, telephone, adresse)
+          boutique:boutiques(id, nom, telephone, adresse, slug)
         `)
         .single();
       
@@ -578,17 +578,32 @@ export class CommandeModel {
 
   /**
    * Annule les commandes orphelines (statut 'en_attente' de plus de X heures sans aucune transaction)
+   * et notifie les clients via WhatsApp (template Meta commande_annulee_notification).
    * @param delaiHeures Délai en heures avant de considérer une commande comme orpheline (défaut: 1 heure)
    */
-  static async annulerCommandesOrphelines(delaiHeures: number = 1): Promise<{ nbAnnulees: number }> {
+  static async annulerCommandesOrphelines(
+    delaiHeures: number = 1
+  ): Promise<{ nbAnnulees: number; notificationsEnvoyees: number }> {
     logger.debug(`[CommandeModel] Début de la recherche des commandes orphelines (seuil: ${delaiHeures}h)...`);
     try {
       const dateLimite = new Date(Date.now() - delaiHeures * 60 * 60 * 1000).toISOString();
 
-      // Récupérer les commandes en attente créées avant la date limite, avec leurs transactions
       const { data: commandes, error } = await supabaseAdmin
         .from('commandes')
-        .select('id, numero_commande, date_commande, transactions(id)')
+        .select(`
+          id,
+          numero_commande,
+          date_commande,
+          client_nom,
+          client_telephone,
+          client_adresse,
+          client_ville,
+          client_commune,
+          total,
+          frais_livraison,
+          boutique:boutique_id(id, nom, telephone, slug),
+          transactions(id)
+        `)
         .eq('statut', 'en_attente')
         .lt('date_commande', dateLimite);
 
@@ -599,29 +614,25 @@ export class CommandeModel {
 
       if (!commandes || commandes.length === 0) {
         logger.debug('[CommandeModel] Aucune commande en attente trouvée avant le seuil.');
-        return { nbAnnulees: 0 };
+        return { nbAnnulees: 0, notificationsEnvoyees: 0 };
       }
 
-      // Filtrer les commandes qui n'ont aucune transaction associée
-      const orphelineIds: number[] = [];
-      const orphelineNumeros: string[] = [];
-
-      for (const cmd of commandes) {
+      const orphelines = commandes.filter((cmd) => {
         const txs = cmd.transactions as any[];
-        if (!txs || txs.length === 0) {
-          orphelineIds.push(cmd.id);
-          orphelineNumeros.push(cmd.numero_commande || cmd.id.toString());
-        }
-      }
+        return !txs || txs.length === 0;
+      });
 
-      if (orphelineIds.length === 0) {
+      if (orphelines.length === 0) {
         logger.debug('[CommandeModel] Toutes les commandes en attente ont au moins une transaction associée.');
-        return { nbAnnulees: 0 };
+        return { nbAnnulees: 0, notificationsEnvoyees: 0 };
       }
 
-      logger.debug(`[CommandeModel] Commandes orphelines trouvées (${orphelineIds.length}):`, orphelineNumeros.join(', '));
+      const orphelineIds = orphelines.map((cmd) => cmd.id);
+      logger.debug(
+        `[CommandeModel] Commandes orphelines trouvées (${orphelines.length}):`,
+        orphelines.map((c) => c.numero_commande || c.id).join(', ')
+      );
 
-      // Mettre à jour ces commandes au statut 'annulee'
       const { error: updateError } = await supabaseAdmin
         .from('commandes')
         .update({
@@ -635,8 +646,46 @@ export class CommandeModel {
         throw new Error(`Erreur lors de l'annulation des commandes: ${updateError.message}`);
       }
 
-      logger.debug(`[CommandeModel] Succès: ${orphelineIds.length} commandes orphelines annulées.`);
-      return { nbAnnulees: orphelineIds.length };
+      const { WhatsAppService } = await import('../services/whatsapp.service');
+      let notificationsEnvoyees = 0;
+
+      for (const cmd of orphelines) {
+        if (!cmd.client_telephone) {
+          continue;
+        }
+
+        try {
+          const boutique = cmd.boutique as any;
+          const messageId = await WhatsAppService.sendOrderStatusNotification('annulee', {
+            clientNom: cmd.client_nom || 'Client',
+            clientTelephone: cmd.client_telephone,
+            numeroCommande: cmd.numero_commande || String(cmd.id),
+            boutiqueName: boutique?.nom || 'La boutique',
+            boutiqueTelephone: boutique?.telephone,
+            boutiqueSlug: boutique?.slug,
+            total: cmd.total || 0,
+            fraisLivraison: cmd.frais_livraison || 0,
+            clientAdresse: cmd.client_adresse,
+            clientVille: cmd.client_ville,
+            clientCommune: cmd.client_commune,
+            motifAnnulation: 'Commande expirée sans paiement',
+          });
+
+          if (messageId) {
+            notificationsEnvoyees += 1;
+          }
+        } catch (waError: any) {
+          logger.error(
+            `[CommandeModel] Erreur WhatsApp annulation commande ${cmd.numero_commande}:`,
+            waError.message
+          );
+        }
+      }
+
+      logger.debug(
+        `[CommandeModel] Succès: ${orphelines.length} commandes orphelines annulées, ${notificationsEnvoyees} notif(s) WhatsApp.`
+      );
+      return { nbAnnulees: orphelines.length, notificationsEnvoyees };
     } catch (error) {
       logger.error('[CommandeModel] Exception dans annulerCommandesOrphelines:', error);
       throw error;

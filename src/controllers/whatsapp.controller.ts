@@ -152,7 +152,9 @@ export class WhatsAppController {
           clientAdresse,
           clientVille,
           clientCommune,
-          motifAnnulation
+          motifAnnulation,
+          articles: req.body.articles,
+          montantPaye: req.body.montantPaye ?? req.body.montant_paye ?? 0,
         }
       );
 
@@ -218,14 +220,19 @@ export class WhatsAppController {
           numeroCommande,
           clientNom: nomClient,
           total,
-          nombreArticles
+          nombreArticles,
+          articles: req.body.articles,
+          montantPaye: req.body.montantPaye ?? req.body.montant_paye ?? 0,
+          clientAdresse: req.body.clientAdresse || req.body.client_adresse,
+          clientVille: req.body.clientVille || req.body.client_ville,
+          clientCommune: req.body.clientCommune || req.body.client_commune,
         }
       );
 
       if (!messageId) {
         res.status(500).json({
           success: false,
-          message: 'Échec de l\'envoi de la notification. Vérifiez la configuration GREEN-API.'
+          message: 'Échec de l\'envoi de la notification. Vérifiez la configuration Meta (WHATSAPP_*) ou GREEN-API.'
         });
         return;
       }
@@ -320,16 +327,27 @@ Ce message confirme que la configuration WhatsApp GREEN-API fonctionne correctem
    */
   static async getStatus(req: Request, res: Response): Promise<void> {
     try {
-      const isConfigured = WhatsAppService.isConfigured();
+      const greenConfigured = WhatsAppService.isConfigured();
+      const metaConfigured = WhatsAppService.isMetaConfigured();
 
       res.status(200).json({
         success: true,
         data: {
-          configured: isConfigured,
-          provider: 'GREEN-API',
-          apiUrl: process.env.GREEN_API_URL || 'https://api.green-api.com',
-          instanceConfigured: !!process.env.GREEN_API_ID_INSTANCE,
-          tokenConfigured: !!process.env.GREEN_API_TOKEN
+          configured: greenConfigured || metaConfigured,
+          greenApi: {
+            configured: greenConfigured,
+            provider: 'GREEN-API',
+            apiUrl: process.env.GREEN_API_URL || 'https://api.green-api.com',
+            instanceConfigured: !!process.env.GREEN_API_ID_INSTANCE,
+            tokenConfigured: !!process.env.GREEN_API_TOKEN,
+          },
+          meta: {
+            configured: metaConfigured,
+            provider: 'Meta Cloud API',
+            graphVersion: process.env.META_WHATSAPP_GRAPH_VERSION || 'v21.0',
+            phoneNumberIdConfigured: !!process.env.WHATSAPP_PHONE_NUMBER_ID,
+            accessTokenConfigured: !!process.env.WHATSAPP_ACCESS_TOKEN,
+          },
         }
       });
 
