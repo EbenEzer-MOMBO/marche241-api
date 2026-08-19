@@ -26,7 +26,7 @@ const deleteImageSchema = Joi.object({
  * /api/v1/upload/image:
  *   post:
  *     summary: Upload une seule image
- *     description: Upload une image vers Supabase Storage
+ *     description: Upload une image vers le stockage objet
  *     tags: [Upload]
  *     security:
  *       - bearerAuth: []
@@ -88,7 +88,7 @@ const deleteImageSchema = Joi.object({
  *         description: Erreur serveur
  * 
  * @route   POST /api/v1/upload/image
- * @desc    Upload une image vers Supabase Storage
+ * @desc    Upload une image vers le stockage objet
  * @access  Private
  */
 router.post('/image', auth, uploadImage('image'), UploadController.uploadImage);
@@ -98,7 +98,7 @@ router.post('/image', auth, uploadImage('image'), UploadController.uploadImage);
  * /api/v1/upload/images:
  *   post:
  *     summary: Upload plusieurs images
- *     description: Upload plusieurs images vers Supabase Storage (max 5 images)
+ *     description: Upload plusieurs images vers le stockage objet (max 5 images)
  *     tags: [Upload]
  *     security:
  *       - bearerAuth: []
@@ -163,7 +163,7 @@ router.post('/image', auth, uploadImage('image'), UploadController.uploadImage);
  *         description: Erreur serveur
  * 
  * @route   POST /api/v1/upload/images
- * @desc    Upload plusieurs images vers Supabase Storage
+ * @desc    Upload plusieurs images vers le stockage objet
  * @access  Private
  */
 // Utiliser le champ 'images' pour l'upload multiple
@@ -174,7 +174,7 @@ router.post('/images', auth, uploadMultipleImages('images', 5), UploadController
  * /api/v1/upload/delete:
  *   delete:
  *     summary: Supprime une image
- *     description: Supprime une image de Supabase Storage
+ *     description: Supprime une image du stockage objet
  *     tags: [Upload]
  *     security:
  *       - bearerAuth: []
@@ -213,7 +213,7 @@ router.post('/images', auth, uploadMultipleImages('images', 5), UploadController
  *         description: Erreur serveur
  * 
  * @route   DELETE /api/v1/upload/delete
- * @desc    Supprime une image de Supabase Storage
+ * @desc    Supprime une image du stockage objet
  * @access  Private
  */
 router.delete('/delete', auth, validate(deleteImageSchema), UploadController.deleteImage);

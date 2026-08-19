@@ -3,7 +3,7 @@ import { uploadFromRequest } from '../utils/storage.utils';
 
 export class UploadController {
   /**
-   * Upload une image vers Supabase Storage
+   * Upload une image vers le stockage objet
    * @param req Requête Express
    * @param res Réponse Express
    */
@@ -31,7 +31,7 @@ export class UploadController {
       
       console.log('[UploadController] uploadImage - modifiedReq.files:', modifiedReq.files);
       
-      // Uploader le fichier vers Supabase Storage
+      // Uploader le fichier vers le stockage objet
       const result = await uploadFromRequest(modifiedReq, req.file.fieldname, {
         folder: folder,
         maxSize: 5 * 1024 * 1024, // 5MB
@@ -69,7 +69,7 @@ export class UploadController {
   }
   
   /**
-   * Upload plusieurs images vers Supabase Storage
+   * Upload plusieurs images vers le stockage objet
    * @param req Requête Express
    * @param res Réponse Express
    */
@@ -92,7 +92,7 @@ export class UploadController {
       // Tableau pour stocker les résultats d'upload
       const uploadResults: any[] = [];
       
-      // Uploader chaque fichier vers Supabase Storage
+      // Uploader chaque fichier vers le stockage objet
       let files: Express.Multer.File[] = [];
       
       if (Array.isArray(req.files)) {
@@ -161,7 +161,7 @@ export class UploadController {
   }
   
   /**
-   * Supprime une image de Supabase Storage
+   * Supprime une image du stockage objet
    * @param req Requête Express
    * @param res Réponse Express
    */
