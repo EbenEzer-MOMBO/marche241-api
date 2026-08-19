@@ -1,6 +1,5 @@
-import { supabaseAdmin } from '../config/supabase';
+import { query } from '../config/database';
 import { Categorie } from '../lib/database-types';
-import { logger } from '../utils/logger';
 
 export interface CreateCategorieData {
   nom: string;
@@ -11,80 +10,75 @@ export interface CreateCategorieData {
   boutique_id?: number;
 }
 
+/**
+ * Colonnes modifiables via les méthodes de création et de mise à jour.
+ * Les noms de colonnes étant interpolés dans le SQL, ils sont valides
+ * uniquement s'ils proviennent de cette liste.
+ */
+const COLONNES_AUTORISEES = [
+  'nom',
+  'slug',
+  'description',
+  'parent_id',
+  'ordre_affichage',
+  'boutique_id',
+  'statut'
+] as const;
+
+/**
+ * Ne conserve que les champs correspondant à une colonne autorisée.
+ * @param donnees Données fournies par l'appelant
+ */
+const filtrerColonnes = (donnees: Record<string, unknown>): Array<[string, unknown]> =>
+  Object.entries(donnees).filter(([colonne]) =>
+    (COLONNES_AUTORISEES as readonly string[]).includes(colonne)
+  );
+
 export class CategorieModel {
   /**
    * Récupère toutes les catégories
    * @param boutiqueId ID de la boutique (optionnel)
-   * Si un boutiqueId est fourni, retourne les catégories globales (sans boutique_id) 
+   * Si un boutiqueId est fourni, retourne les catégories globales (sans boutique_id)
    * ET les catégories spécifiques à cette boutique
    */
-  static async getAllCategories(boutiqueId?: number): Promise<Categorie[]> {
-    
-    // Construire la requête avec le nombre de produits
-    let query = supabaseAdmin
-      .from('categories')
-      .select(`
-        *,
-        produits:produits(count)
-      `)
-      .order('ordre_affichage', { ascending: true });
-    
+  static async getAllCategories(boutiqueId?: number): Promise<Array<Categorie & { nombre_produits: number }>> {
     // Si une boutique est spécifiée, récupérer les catégories globales ET celles de la boutique
-    if (boutiqueId) {
-      query = query.or(`boutique_id.is.null,boutique_id.eq.${boutiqueId}`);
-    }
-    
-    // Exécuter la requête
-    const { data, error } = await query;
-    
-    if (error) {
-      logger.error('[CategorieModel] ERREUR:', error);
-      throw new Error(`Erreur lors de la récupération des catégories: ${error.message}`);
-    }
-    
-    
-    // Transformer les données pour inclure le nombre de produits
-    const categoriesWithCount = (data || []).map(categorie => ({
+    const conditions = boutiqueId ? 'WHERE c.boutique_id IS NULL OR c.boutique_id = $1' : '';
+    const params = boutiqueId ? [boutiqueId] : [];
+
+    const { rows } = await query<Categorie & { nombre_produits: string }>(
+      `SELECT c.*, COUNT(p.id) AS nombre_produits
+       FROM categories c
+       LEFT JOIN produits p ON p.categorie_id = c.id
+       ${conditions}
+       GROUP BY c.id
+       ORDER BY c.ordre_affichage ASC`,
+      params
+    );
+
+    // `COUNT` est retourné en chaîne par le driver : le ramener en nombre
+    return rows.map((categorie) => ({
       ...categorie,
-      nombre_produits: categorie.produits?.[0]?.count || 0,
-      produits: undefined // Supprimer la propriété produits temporaire
+      nombre_produits: Number(categorie.nombre_produits)
     }));
-    
-    return categoriesWithCount;
   }
 
   /**
    * Récupère une catégorie par son ID
    */
   static async getCategorieById(id: number): Promise<Categorie | null> {
-    const { data, error } = await supabaseAdmin
-      .from('categories')
-      .select('*')
-      .eq('id', id)
-      .single();
-    
-    if (error && error.code !== 'PGRST116') {
-      throw new Error(`Erreur lors de la récupération de la catégorie: ${error.message}`);
-    }
-    
-    return data;
+    const { rows } = await query<Categorie>(`SELECT * FROM categories WHERE id = $1`, [id]);
+
+    return rows[0] ?? null;
   }
 
   /**
    * Récupère une catégorie par son slug
    */
   static async getCategorieBySlug(slug: string): Promise<Categorie | null> {
-    const { data, error } = await supabaseAdmin
-      .from('categories')
-      .select('*')
-      .eq('slug', slug)
-      .single();
-    
-    if (error && error.code !== 'PGRST116') {
-      throw new Error(`Erreur lors de la récupération de la catégorie: ${error.message}`);
-    }
-    
-    return data;
+    const { rows } = await query<Categorie>(`SELECT * FROM categories WHERE slug = $1`, [slug]);
+
+    return rows[0] ?? null;
   }
 
   /**
@@ -100,36 +94,31 @@ export class CategorieModel {
     // Déterminer l'ordre d'affichage si non spécifié
     let ordreAffichage = categorieData.ordre_affichage;
     if (!ordreAffichage) {
-      const { data: maxOrdre } = await supabaseAdmin
-        .from('categories')
-        .select('ordre_affichage')
-        .order('ordre_affichage', { ascending: false })
-        .limit(1)
-        .single();
-      
-      ordreAffichage = maxOrdre ? maxOrdre.ordre_affichage + 1 : 1;
+      const { rows: maxOrdre } = await query<{ ordre_affichage: number }>(
+        `SELECT ordre_affichage FROM categories ORDER BY ordre_affichage DESC LIMIT 1`
+      );
+
+      ordreAffichage = maxOrdre[0] ? maxOrdre[0].ordre_affichage + 1 : 1;
     }
 
     // Préparer les données avec les valeurs par défaut
-    const categorieWithDefaults = {
+    const champs = filtrerColonnes({
       ...categorieData,
       ordre_affichage: ordreAffichage,
-      statut: 'active' as const,
-      date_creation: new Date().toISOString(),
-      date_modification: new Date().toISOString()
-    };
+      statut: 'active'
+    });
 
-    const { data, error } = await supabaseAdmin
-      .from('categories')
-      .insert(categorieWithDefaults)
-      .select()
-      .single();
+    const colonnes = champs.map(([colonne]) => colonne);
+    const placeholders = champs.map((_, i) => `$${i + 1}`);
 
-    if (error) {
-      throw new Error(`Erreur lors de la création de la catégorie: ${error.message}`);
-    }
+    const { rows } = await query<Categorie>(
+      `INSERT INTO categories (${colonnes.join(', ')}, date_creation, date_modification)
+       VALUES (${placeholders.join(', ')}, NOW(), NOW())
+       RETURNING *`,
+      champs.map(([, valeur]) => valeur)
+    );
 
-    return data as Categorie;
+    return rows[0];
   }
 
   /**
@@ -150,24 +139,28 @@ export class CategorieModel {
       }
     }
 
-    // Préparer les données de mise à jour
-    const updatedData = {
-      ...categorieData,
-      date_modification: new Date().toISOString()
-    };
+    const champs = filtrerColonnes(categorieData as Record<string, unknown>);
 
-    const { data, error } = await supabaseAdmin
-      .from('categories')
-      .update(updatedData)
-      .eq('id', id)
-      .select()
-      .single();
+    // Sans champ à modifier, seule la date de modification est rafraîchie
+    if (champs.length === 0) {
+      const { rows } = await query<Categorie>(
+        `UPDATE categories SET date_modification = NOW() WHERE id = $1 RETURNING *`,
+        [id]
+      );
 
-    if (error) {
-      throw new Error(`Erreur lors de la mise à jour de la catégorie: ${error.message}`);
+      return rows[0];
     }
 
-    return data as Categorie;
+    const affectations = champs.map(([colonne], i) => `${colonne} = $${i + 1}`);
+
+    const { rows } = await query<Categorie>(
+      `UPDATE categories SET ${affectations.join(', ')}, date_modification = NOW()
+       WHERE id = $${champs.length + 1}
+       RETURNING *`,
+      [...champs.map(([, valeur]) => valeur), id]
+    );
+
+    return rows[0];
   }
 
   /**
@@ -181,49 +174,37 @@ export class CategorieModel {
     }
 
     // Vérifier s'il y a des catégories enfants
-    const { data: enfants } = await supabaseAdmin
-      .from('categories')
-      .select('id')
-      .eq('parent_id', id);
+    const { rows: enfants } = await query<{ id: number }>(
+      `SELECT id FROM categories WHERE parent_id = $1 LIMIT 1`,
+      [id]
+    );
 
-    if (enfants && enfants.length > 0) {
+    if (enfants.length > 0) {
       throw new Error('Impossible de supprimer une catégorie qui a des sous-catégories');
     }
 
     // Vérifier s'il y a des produits associés
-    const { data: produits } = await supabaseAdmin
-      .from('produits')
-      .select('id')
-      .eq('categorie_id', id);
+    const { rows: produits } = await query<{ id: number }>(
+      `SELECT id FROM produits WHERE categorie_id = $1 LIMIT 1`,
+      [id]
+    );
 
-    if (produits && produits.length > 0) {
+    if (produits.length > 0) {
       throw new Error('Impossible de supprimer une catégorie qui contient des produits');
     }
 
-    const { error } = await supabaseAdmin
-      .from('categories')
-      .delete()
-      .eq('id', id);
-
-    if (error) {
-      throw new Error(`Erreur lors de la suppression de la catégorie: ${error.message}`);
-    }
+    await query(`DELETE FROM categories WHERE id = $1`, [id]);
   }
 
   /**
    * Vérifie si une catégorie appartient à une boutique spécifique
    */
   static async isCategorieOwnedByBoutique(categorieId: number, boutiqueId: number): Promise<boolean> {
-    const { data, error } = await supabaseAdmin
-      .from('categories')
-      .select('boutique_id')
-      .eq('id', categorieId)
-      .single();
+    const { rows } = await query<{ boutique_id: number | null }>(
+      `SELECT boutique_id FROM categories WHERE id = $1`,
+      [categorieId]
+    );
 
-    if (error) {
-      return false;
-    }
-
-    return data?.boutique_id === boutiqueId;
+    return rows[0]?.boutique_id === boutiqueId;
   }
 }

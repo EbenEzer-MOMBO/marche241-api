@@ -94,7 +94,10 @@ export interface Categorie {
   date_creation: Date;
   date_modification: Date;
   boutique_id?: number;
-  
+
+  // Champ calculé, renseigné par les listes de catégories
+  nombre_produits?: number;
+
   // Relations
   parent?: Categorie;
   enfants?: Categorie[];

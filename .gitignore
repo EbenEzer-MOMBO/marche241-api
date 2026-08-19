@@ -155,3 +155,6 @@ schema.ts
 trig.ts
 dm.ts
 test-*.ts
+constr.ts
+chk.ts
+cnt.ts

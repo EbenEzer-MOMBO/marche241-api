@@ -1,4 +1,4 @@
-import { supabaseAdmin } from '../config/supabase';
+import { query } from '../config/database';
 
 export interface WhatsappSubscriber {
   id?: number;
@@ -42,67 +42,26 @@ export class WhatsappSubscriberModel {
       throw new Error('Le numéro de téléphone ne peut pas être vide ou invalide');
     }
 
-    // Rechercher si l'abonné existe déjà
-    const { data: existing, error: getError } = await supabaseAdmin
-      .from(this.TABLE_NAME)
-      .select('*')
-      .eq('phone', cleanedPhone)
-      .maybeSingle();
+    try {
+      // `phone` étant unique, l'insertion et la réactivation se font en une
+      // seule requête atomique : deux appels concurrents ne peuvent pas créer
+      // de doublon. Le nom existant est conservé si aucun nom n'est fourni.
+      const { rows } = await query<WhatsappSubscriber>(
+        `INSERT INTO ${this.TABLE_NAME} (phone, name, status)
+         VALUES ($1, $2, 'active')
+         ON CONFLICT (phone) DO UPDATE
+           SET status = 'active',
+               name = COALESCE($2, ${this.TABLE_NAME}.name),
+               updated_at = NOW()
+         RETURNING *`,
+        [cleanedPhone, name || null]
+      );
 
-    if (getError) {
-      console.error(`[WhatsappSubscriberModel] Erreur lors de la recherche de l'abonné ${cleanedPhone}:`, getError.message);
-      throw new Error(`Erreur lors de la recherche de l'abonné: ${getError.message}`);
-    }
-
-    if (existing) {
-      // Si l'abonné existe déjà, mettre à jour son statut à "active"
-      const updateData: Partial<WhatsappSubscriber> = {
-        status: 'active',
-        updated_at: new Date().toISOString()
-      };
-      
-      // Mettre à jour le nom si fourni
-      if (name) {
-        updateData.name = name;
-      }
-
-      console.log(`[WhatsappSubscriberModel] Mise à jour de l'abonné existant (ID: ${existing.id}, Phone: ${cleanedPhone})`);
-      const { data: updated, error: updateError } = await supabaseAdmin
-        .from(this.TABLE_NAME)
-        .update(updateData)
-        .eq('id', existing.id)
-        .select()
-        .single();
-
-      if (updateError) {
-        console.error(`[WhatsappSubscriberModel] Erreur lors de la mise à jour de l'abonné ${cleanedPhone}:`, updateError.message);
-        throw new Error(`Erreur lors de la mise à jour de l'abonné: ${updateError.message}`);
-      }
-
-      return updated as WhatsappSubscriber;
-    } else {
-      // Créer un nouvel abonné actif
-      const insertData = {
-        phone: cleanedPhone,
-        name: name || null,
-        status: 'active' as const,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
-
-      console.log(`[WhatsappSubscriberModel] Création d'un nouvel abonné (Phone: ${cleanedPhone})`);
-      const { data: inserted, error: insertError } = await supabaseAdmin
-        .from(this.TABLE_NAME)
-        .insert(insertData)
-        .select()
-        .single();
-
-      if (insertError) {
-        console.error(`[WhatsappSubscriberModel] Erreur lors de l'insertion de l'abonné ${cleanedPhone}:`, insertError.message);
-        throw new Error(`Erreur lors de la création de l'abonné: ${insertError.message}`);
-      }
-
-      return inserted as WhatsappSubscriber;
+      return rows[0];
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`[WhatsappSubscriberModel] Erreur lors de l'abonnement de ${cleanedPhone}:`, message);
+      throw new Error(`Erreur lors de la création de l'abonné: ${message}`);
     }
   }
 
@@ -117,40 +76,27 @@ export class WhatsappSubscriberModel {
       throw new Error('Le numéro de téléphone ne peut pas être vide ou invalide');
     }
 
-    // Rechercher si l'abonné existe
-    const { data: existing, error: getError } = await supabaseAdmin
-      .from(this.TABLE_NAME)
-      .select('*')
-      .eq('phone', cleanedPhone)
-      .maybeSingle();
+    try {
+      const { rows } = await query<WhatsappSubscriber>(
+        `UPDATE ${this.TABLE_NAME}
+         SET status = 'inactive', updated_at = NOW()
+         WHERE phone = $1
+         RETURNING *`,
+        [cleanedPhone]
+      );
 
-    if (getError) {
-      console.error(`[WhatsappSubscriberModel] Erreur lors de la recherche pour désabonnement ${cleanedPhone}:`, getError.message);
-      throw new Error(`Erreur lors de la recherche de l'abonné: ${getError.message}`);
+      if (!rows[0]) {
+        console.log(`[WhatsappSubscriberModel] Aucun abonné trouvé pour le numéro ${cleanedPhone} pour désabonnement`);
+
+        return null;
+      }
+
+      return rows[0];
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`[WhatsappSubscriberModel] Erreur lors du désabonnement de ${cleanedPhone}:`, message);
+      throw new Error(`Erreur lors du désabonnement: ${message}`);
     }
-
-    if (!existing) {
-      console.log(`[WhatsappSubscriberModel] Aucun abonné trouvé pour le numéro ${cleanedPhone} pour désabonnement`);
-      return null;
-    }
-
-    console.log(`[WhatsappSubscriberModel] Passage du statut à inactive pour l'abonné (ID: ${existing.id}, Phone: ${cleanedPhone})`);
-    const { data: updated, error: updateError } = await supabaseAdmin
-      .from(this.TABLE_NAME)
-      .update({
-        status: 'inactive',
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', existing.id)
-      .select()
-      .single();
-
-    if (updateError) {
-      console.error(`[WhatsappSubscriberModel] Erreur lors du désabonnement de l'abonné ${cleanedPhone}:`, updateError.message);
-      throw new Error(`Erreur lors du désabonnement: ${updateError.message}`);
-    }
-
-    return updated as WhatsappSubscriber;
   }
 
   /**
@@ -162,40 +108,26 @@ export class WhatsappSubscriberModel {
       throw new Error("L'identifiant de l'abonné est invalide");
     }
 
-    // Rechercher si l'abonné existe
-    const { data: existing, error: getError } = await supabaseAdmin
-      .from(this.TABLE_NAME)
-      .select('*')
-      .eq('id', id)
-      .maybeSingle();
+    try {
+      const { rows } = await query<WhatsappSubscriber>(
+        `UPDATE ${this.TABLE_NAME}
+         SET status = 'inactive', updated_at = NOW()
+         WHERE id = $1
+         RETURNING *`,
+        [id]
+      );
 
-    if (getError) {
-      console.error(`[WhatsappSubscriberModel] Erreur lors de la recherche pour désabonnement ID ${id}:`, getError.message);
-      throw new Error(`Erreur lors de la recherche de l'abonné: ${getError.message}`);
+      if (!rows[0]) {
+        console.log(`[WhatsappSubscriberModel] Aucun abonné trouvé pour l'ID ${id} pour désabonnement`);
+
+        return null;
+      }
+
+      return rows[0];
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`[WhatsappSubscriberModel] Erreur lors du désabonnement de l'ID ${id}:`, message);
+      throw new Error(`Erreur lors du désabonnement: ${message}`);
     }
-
-    if (!existing) {
-      console.log(`[WhatsappSubscriberModel] Aucun abonné trouvé pour l'ID ${id} pour désabonnement`);
-      return null;
-    }
-
-    console.log(`[WhatsappSubscriberModel] Passage du statut à inactive pour l'abonné (ID: ${id}, Phone: ${existing.phone})`);
-    const { data: updated, error: updateError } = await supabaseAdmin
-      .from(this.TABLE_NAME)
-      .update({
-        status: 'inactive',
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', id)
-      .select()
-      .single();
-
-    if (updateError) {
-      console.error(`[WhatsappSubscriberModel] Erreur lors du désabonnement de l'abonné ID ${id}:`, updateError.message);
-      throw new Error(`Erreur lors du désabonnement: ${updateError.message}`);
-    }
-
-    return updated as WhatsappSubscriber;
   }
 }
-
