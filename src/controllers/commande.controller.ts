@@ -163,49 +163,40 @@ export class CommandeController {
       
       logger.debug('Données de la commande:', JSON.stringify(commandeToCreate, null, 2));
       
-      logger.debug('Appel à CommandeModel.createCommande');
-      const commande = await CommandeModel.createCommande(commandeToCreate);
-      logger.debug('Commande créée avec ID:', commande.id);
-      
-      // Ajouter les articles à la commande
-      if (body.articles && Array.isArray(body.articles)) {
-        logger.debug(`Ajout de ${body.articles.length} articles à la commande`);
-        for (const article of body.articles) {
-          logger.debug('Ajout de l\'article:', JSON.stringify(article, null, 2));
-          
+      // Préparer les articles à rattacher à la commande
+      const articlesToCreate = (body.articles && Array.isArray(body.articles) ? body.articles : []).map(
+        (article: any) => {
           // N'inclure que les champs qui existent dans la table commande_articles
           const { description, ...articleSansDescription } = article;
-          
+
           // Calculer le sous-total pour cet article
           const prix_unitaire = articleSansDescription.prix_unitaire || 0;
           const quantite = articleSansDescription.quantite || 0;
-          const sous_total = prix_unitaire * quantite;
-          
-          // S'assurer que variants_selectionnes est correctement préservé
-          const variants_selectionnes = article.variants_selectionnes ? 
-            JSON.parse(JSON.stringify(article.variants_selectionnes)) : null;
-          
-          logger.debug('Variants sélectionnés avant insertion:', JSON.stringify(variants_selectionnes, null, 2));
-          
-          await CommandeModel.addArticleToCommande({
-            commande_id: commande.id,
+
+          return {
             produit_id: articleSansDescription.produit_id,
             nom_produit: articleSansDescription.nom_produit,
             prix_unitaire,
             quantite,
-            sous_total,
-            variants_selectionnes
-          });
+            sous_total: prix_unitaire * quantite,
+            // S'assurer que variants_selectionnes est correctement préservé
+            variants_selectionnes: article.variants_selectionnes
+              ? JSON.parse(JSON.stringify(article.variants_selectionnes))
+              : null
+          };
         }
-        logger.debug('Tous les articles ont été ajoutés');
-      } else {
-        logger.debug('Aucun article à ajouter');
-      }
-      
-      // Mettre à jour les totaux de la commande
-      logger.debug('Mise à jour des totaux de la commande');
-      const commandeAvecTotaux = await CommandeModel.updateCommandeTotals(commande.id);
-      logger.debug('Totaux mis à jour:', JSON.stringify(commandeAvecTotaux, null, 2));
+      );
+
+      // La commande, ses articles et ses totaux sont écrits en une seule
+      // transaction : un échec en cours de route ne laisse pas de commande
+      // orpheline ou aux totaux incohérents
+      logger.debug(`Appel à CommandeModel.createCommandeAvecArticles (${articlesToCreate.length} articles)`);
+      const commandeAvecTotaux = await CommandeModel.createCommandeAvecArticles(
+        commandeToCreate,
+        articlesToCreate
+      );
+      const commande = commandeAvecTotaux;
+      logger.debug('Commande créée avec ID:', commande.id);
       
       logger.debug('Envoi de la réponse au client');
       res.status(201).json({

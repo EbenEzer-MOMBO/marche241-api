@@ -1,47 +1,124 @@
-import { supabaseAdmin } from '../config/supabase';
+import { PoolClient, QueryResultRow } from 'pg';
+import { query, withTransaction } from '../config/database';
 import { Commande, CommandeArticle, StatutCommande, StatutPaiement } from '../lib/database-types';
 import { ProduitModel } from './produit.model';
 import { logger } from '../utils/logger';
+
+/**
+ * Exécute une requête sur la transaction en cours si un client est fourni,
+ * sinon sur le pool. Permet aux méthodes de participer à une transaction
+ * ouverte par l'appelant sans dupliquer leur code.
+ * @param client Client de transaction, ou undefined pour utiliser le pool
+ */
+const executer = <T extends QueryResultRow>(
+  client: PoolClient | undefined,
+  text: string,
+  params: unknown[] = []
+): Promise<{ rows: T[] }> =>
+  client ? client.query<T>(text, params) : query<T>(text, params);
+
+/**
+ * Colonnes modifiables lors de la création d'une commande.
+ * Les noms de colonnes étant interpolés dans le SQL, ils sont valides
+ * uniquement s'ils proviennent de cette liste.
+ */
+const COLONNES_COMMANDE = [
+  'numero_commande',
+  'boutique_id',
+  'client_nom',
+  'client_telephone',
+  'client_adresse',
+  'client_ville',
+  'client_commune',
+  'client_instructions',
+  'sous_total',
+  'frais_livraison',
+  'taxes',
+  'remise',
+  'total',
+  'statut',
+  'statut_paiement',
+  'methode_paiement',
+  'montant_paye'
+] as const;
+
+/** Colonnes de type enum, nécessitant un cast explicite */
+const COLONNES_ENUM: Record<string, string> = {
+  statut: 'statut_commande',
+  statut_paiement: 'statut_paiement',
+  methode_paiement: 'methode_paiement'
+};
+
+/**
+ * Jointures complètes d'une commande : boutique, articles et transactions.
+ * Reproduit les relations imbriquées de l'ancien client.
+ */
+const JOINTURES_COMMANDE = `
+  (SELECT row_to_json(b) FROM boutiques b WHERE b.id = c.boutique_id) AS boutique,
+  (SELECT COALESCE(json_agg(a), '[]'::json) FROM commande_articles a WHERE a.commande_id = c.id) AS articles,
+  (SELECT COALESCE(json_agg(t), '[]'::json) FROM transactions t WHERE t.commande_id = c.id) AS transactions`;
+
+/**
+ * Ne conserve que les champs correspondant à une colonne autorisée.
+ * @param donnees Données fournies par l'appelant
+ */
+const filtrerColonnes = (donnees: Record<string, unknown>): Array<[string, unknown]> =>
+  Object.entries(donnees).filter(([colonne]) =>
+    (COLONNES_COMMANDE as readonly string[]).includes(colonne)
+  );
+
+/**
+ * Construit le placeholder d'une colonne, avec le cast d'enum requis.
+ * @param colonne Nom de la colonne
+ * @param position Position du paramètre dans la requête
+ */
+const placeholder = (colonne: string, position: number): string =>
+  COLONNES_ENUM[colonne] ? `$${position}::${COLONNES_ENUM[colonne]}` : `$${position}`;
 
 export class CommandeModel {
   /**
    * Génère un numéro de commande unique
    * Format: COM-YYYY-MMXXXX (où MM est le mois en cours et XXXX est un numéro séquentiel)
+   * @param client Client de transaction, pour lire dans la même transaction que l'insertion
    */
-  static async generateNumeroCommande(): Promise<string> {
+  static async generateNumeroCommande(client?: PoolClient): Promise<string> {
     const now = new Date();
     const year = now.getFullYear();
     const month = (now.getMonth() + 1).toString().padStart(2, '0'); // Mois sur 2 chiffres (01-12)
-    
+
     // Récupérer le dernier numéro de commande du mois en cours
     const prefix = `COM-${year}-${month}`;
-    
+
     try {
       // Rechercher la dernière commande avec ce préfixe
-      const { data } = await supabaseAdmin
-        .from('commandes')
-        .select('numero_commande')
-        .like('numero_commande', `${prefix}%`)
-        .order('numero_commande', { ascending: false })
-        .limit(1);
-      
+      const { rows } = await executer<{ numero_commande: string }>(
+        client,
+        `SELECT numero_commande FROM commandes
+         WHERE numero_commande LIKE $1
+         ORDER BY numero_commande DESC
+         LIMIT 1`,
+        [`${prefix}%`]
+      );
+
       let sequentialNumber = 1;
-      
-      if (data && data.length > 0 && data[0].numero_commande) {
+
+      if (rows[0]?.numero_commande) {
         // Extraire le numéro séquentiel de la dernière commande
-        const lastNumber = parseInt(data[0].numero_commande.substring(prefix.length), 10);
+        const lastNumber = parseInt(rows[0].numero_commande.substring(prefix.length), 10);
         if (!isNaN(lastNumber)) {
           sequentialNumber = lastNumber + 1;
         }
       }
-      
+
       // Formater le numéro séquentiel sur 4 chiffres
       const formattedNumber = sequentialNumber.toString().padStart(4, '0');
+
       return `${prefix}${formattedNumber}`;
     } catch (error) {
       logger.error('[CommandeModel] Erreur lors de la génération du numéro de commande:', error);
       // En cas d'erreur, utiliser un numéro aléatoire comme fallback
       const randomNum = Math.floor(1000 + Math.random() * 9000); // Nombre aléatoire à 4 chiffres
+
       return `${prefix}${randomNum.toString().padStart(4, '0')}`;
     }
   }
@@ -49,40 +126,41 @@ export class CommandeModel {
   /**
    * Crée une nouvelle commande
    * @param commande Données de la commande
+   * @param client Client de transaction, si la création participe à une transaction
    */
-  static async createCommande(commande: Omit<Commande, 'id' | 'date_commande' | 'date_modification'>): Promise<Commande> {
+  static async createCommande(
+    commande: Omit<Commande, 'id' | 'date_commande' | 'date_modification'>,
+    client?: PoolClient
+  ): Promise<Commande> {
     logger.debug('[CommandeModel] Début de createCommande');
-    logger.debug('[CommandeModel] Données reçues:', JSON.stringify(commande, null, 2));
-    
+
     try {
       // Générer un numéro de commande si non fourni
       if (!commande.numero_commande) {
-        commande.numero_commande = await this.generateNumeroCommande();
+        commande.numero_commande = await this.generateNumeroCommande(client);
         logger.debug('[CommandeModel] Numéro de commande généré:', commande.numero_commande);
       }
 
-      // Ajouter les dates
-      const commandeData = {
-        ...commande,
-        date_commande: new Date(),
-        date_modification: new Date()
-      };
-      logger.debug('[CommandeModel] Données finales pour insertion:', JSON.stringify(commandeData, null, 2));
+      const champs = filtrerColonnes(commande as Record<string, unknown>);
 
-      logger.debug('[CommandeModel] Insertion dans la base de données...');
-      const { data, error } = await supabaseAdmin
-        .from('commandes')
-        .insert([commandeData])
-        .select()
-        .single();
-      
-      if (error) {
-        logger.error('[CommandeModel] ERREUR lors de l\'insertion:', error);
-        throw new Error(`Erreur lors de la création de la commande: ${error.message}`);
+      if (champs.length === 0) {
+        throw new Error('Erreur lors de la création de la commande: aucune donnée fournie');
       }
-      
-      logger.debug('[CommandeModel] Commande créée avec succès:', JSON.stringify(data, null, 2));
-      return data;
+
+      const colonnes = champs.map(([colonne]) => colonne);
+      const placeholders = champs.map(([colonne], i) => placeholder(colonne, i + 1));
+
+      const { rows } = await executer<Commande>(
+        client,
+        `INSERT INTO commandes (${colonnes.join(', ')}, date_commande, date_modification)
+         VALUES (${placeholders.join(', ')}, NOW(), NOW())
+         RETURNING *`,
+        champs.map(([, valeur]) => valeur)
+      );
+
+      logger.debug('[CommandeModel] Commande créée avec succès, ID:', rows[0].id);
+
+      return rows[0];
     } catch (error) {
       logger.error('[CommandeModel] Exception dans createCommande:', error);
       throw error;
@@ -92,40 +170,64 @@ export class CommandeModel {
   /**
    * Ajoute un article à une commande
    * @param article Données de l'article
+   * @param client Client de transaction, si l'ajout participe à une transaction
    */
-  static async addArticleToCommande(article: Omit<CommandeArticle, 'id'>): Promise<CommandeArticle> {
+  static async addArticleToCommande(
+    article: Omit<CommandeArticle, 'id'>,
+    client?: PoolClient
+  ): Promise<CommandeArticle> {
     logger.debug('[CommandeModel] Début de addArticleToCommande');
-    logger.debug('[CommandeModel] Données de l\'article:', JSON.stringify(article, null, 2));
-    
+
     try {
-      // Préparer les données de l'article pour l'insertion
-      // S'assurer que variants_selectionnes est correctement formaté pour PostgreSQL JSON
-      const articleData = {
-        ...article,
-        variants_selectionnes: article.variants_selectionnes ? article.variants_selectionnes : null
-      };
-      
-      logger.debug('[CommandeModel] Données finales de l\'article pour insertion:', JSON.stringify(articleData, null, 2));
-      logger.debug('[CommandeModel] Type de variants_selectionnes:', articleData.variants_selectionnes ? typeof articleData.variants_selectionnes : 'null');
-      
-      logger.debug('[CommandeModel] Insertion de l\'article dans la base de données...');
-      const { data, error } = await supabaseAdmin
-        .from('commande_articles')
-        .insert([articleData])
-        .select()
-        .single();
-      
-      if (error) {
-        logger.error('[CommandeModel] ERREUR lors de l\'insertion de l\'article:', error);
-        throw new Error(`Erreur lors de l'ajout de l'article à la commande: ${error.message}`);
-      }
-      
-      logger.debug('[CommandeModel] Article ajouté avec succès:', JSON.stringify(data, null, 2));
-      return data;
+      const { rows } = await executer<CommandeArticle>(
+        client,
+        `INSERT INTO commande_articles
+           (commande_id, produit_id, nom_produit, prix_unitaire, quantite, variants_selectionnes, sous_total)
+         VALUES ($1, $2, $3, $4, $5, $6::json, $7)
+         RETURNING *`,
+        [
+          article.commande_id,
+          article.produit_id,
+          article.nom_produit,
+          article.prix_unitaire,
+          article.quantite,
+          article.variants_selectionnes ? JSON.stringify(article.variants_selectionnes) : null,
+          article.sous_total
+        ]
+      );
+
+      logger.debug('[CommandeModel] Article ajouté avec succès, ID:', rows[0].id);
+
+      return rows[0];
     } catch (error) {
       logger.error('[CommandeModel] Exception dans addArticleToCommande:', error);
       throw error;
     }
+  }
+
+  /**
+   * Crée une commande et ses articles, puis met à jour ses totaux, de façon
+   * atomique : un échec à n'importe quelle étape annule l'ensemble, ce qui
+   * évite les commandes sans articles ou aux totaux incohérents.
+   * @param commande Données de la commande
+   * @param articles Articles à rattacher à la commande
+   */
+  static async createCommandeAvecArticles(
+    commande: Omit<Commande, 'id' | 'date_commande' | 'date_modification'>,
+    articles: Array<Omit<CommandeArticle, 'id' | 'commande_id'>>
+  ): Promise<Commande> {
+    return withTransaction(async (client) => {
+      const commandeCreee = await this.createCommande(commande, client);
+
+      for (const article of articles) {
+        await this.addArticleToCommande(
+          { ...article, commande_id: commandeCreee.id } as Omit<CommandeArticle, 'id'>,
+          client
+        );
+      }
+
+      return this.updateCommandeTotals(commandeCreee.id, client);
+    });
   }
 
   /**
@@ -135,31 +237,27 @@ export class CommandeModel {
    */
   static async updateProductsStock(commandeId: number, increment: boolean = false): Promise<void> {
     logger.debug(`[CommandeModel] Mise à jour du stock pour la commande ${commandeId}, increment: ${increment}`);
-    
+
     try {
       // Récupérer les articles de la commande avec les variants sélectionnés
-      const { data: articles, error } = await supabaseAdmin
-        .from('commande_articles')
-        .select('produit_id, quantite, variants_selectionnes')
-        .eq('commande_id', commandeId);
-      
-      if (error) {
-        logger.error(`[CommandeModel] Erreur lors de la récupération des articles: ${error.message}`);
-        throw new Error(`Erreur lors de la récupération des articles: ${error.message}`);
-      }
-      
-      if (!articles || articles.length === 0) {
+      const { rows: articles } = await query<CommandeArticle>(
+        `SELECT * FROM commande_articles WHERE commande_id = $1`,
+        [commandeId]
+      );
+
+      if (articles.length === 0) {
         logger.debug(`[CommandeModel] Aucun article trouvé pour la commande ${commandeId}`);
+
         return;
       }
-      
+
       // Mettre à jour le stock de chaque produit
       for (const article of articles) {
         const quantite = increment ? -article.quantite : article.quantite;
-        
+
         // Si l'article a des variants sélectionnés, mettre à jour le stock du variant
         if (article.variants_selectionnes && Object.keys(article.variants_selectionnes).length > 0) {
-          logger.debug(`[CommandeModel] Mise à jour du stock avec variants pour produit ${article.produit_id}:`, article.variants_selectionnes);
+          logger.debug(`[CommandeModel] Mise à jour du stock avec variants pour produit ${article.produit_id}`);
           await ProduitModel.updateStockWithVariants(article.produit_id, quantite, article.variants_selectionnes);
         } else {
           // Sinon, mettre à jour le stock global
@@ -167,10 +265,10 @@ export class CommandeModel {
           await ProduitModel.updateStock(article.produit_id, quantite);
         }
       }
-      
+
       logger.debug(`[CommandeModel] Stock mis à jour pour tous les produits de la commande ${commandeId}`);
     } catch (error) {
-      logger.error(`[CommandeModel] Exception dans updateProductsStock:`, error);
+      logger.error('[CommandeModel] Exception dans updateProductsStock:', error);
       throw error;
     }
   }
@@ -182,75 +280,71 @@ export class CommandeModel {
    */
   static async updateCommandeStatus(id: number, statut: StatutCommande): Promise<Commande> {
     logger.debug(`[CommandeModel] Mise à jour du statut de la commande ${id} vers ${statut}`);
-    
+
     try {
       // Récupérer le statut actuel de la commande
-      const { data: commandeActuelle, error: getError } = await supabaseAdmin
-        .from('commandes')
-        .select('statut')
-        .eq('id', id)
-        .single();
-      
-      if (getError) {
-        logger.error(`[CommandeModel] Erreur lors de la récupération de la commande: ${getError.message}`);
-        throw new Error(`Erreur lors de la récupération de la commande: ${getError.message}`);
-      }
-      
-      if (!commandeActuelle) {
+      const { rows: actuelles } = await query<{ statut: StatutCommande }>(
+        `SELECT statut FROM commandes WHERE id = $1`,
+        [id]
+      );
+
+      if (!actuelles[0]) {
         logger.error(`[CommandeModel] Commande non trouvée: ${id}`);
         throw new Error(`Commande non trouvée: ${id}`);
       }
-      
-      const statutActuel = commandeActuelle.statut;
+
+      const statutActuel = actuelles[0].statut;
       logger.debug(`[CommandeModel] Statut actuel de la commande ${id}: ${statutActuel}`);
-      
-      // Déterminer les champs à mettre à jour en fonction du statut
-      const updateFields: any = {
-        statut,
-        date_modification: new Date()
-      };
-      
+
       // Ajouter les dates spécifiques en fonction du statut
+      const affectations = ['statut = $1::statut_commande', 'date_modification = NOW()'];
+
       if (statut === 'confirmee') {
-        updateFields.date_confirmation = new Date();
+        affectations.push('date_confirmation = NOW()');
       } else if (statut === 'expedie') {
-        updateFields.date_expedition = new Date();
+        affectations.push('date_expedition = NOW()');
       } else if (statut === 'livree') {
-        updateFields.date_livraison = new Date();
+        affectations.push('date_livraison = NOW()');
       }
-      
-      // Mettre à jour la commande
-      const { data, error } = await supabaseAdmin
-        .from('commandes')
-        .update(updateFields)
-        .eq('id', id)
-        .select(`
-          *,
-          boutique:boutiques(id, nom, telephone, adresse, slug)
-        `)
-        .single();
-      
-      if (error) {
-        logger.error(`[CommandeModel] Erreur lors de la mise à jour du statut: ${error.message}`);
-        throw new Error(`Erreur lors de la mise à jour du statut de la commande: ${error.message}`);
-      }
-      
-      // Mettre à jour le stock en fonction du changement de statut
-      if (statut === 'confirmee' && statutActuel !== 'confirmee') {
-        // Décrémenter le stock lors de la confirmation
+
+      // Déterminer l'ajustement de stock induit par le changement de statut
+      const doitDecrementer = statut === 'confirmee' && statutActuel !== 'confirmee';
+      const doitIncrementer =
+        (statut === 'annulee' || statut === 'remboursee') &&
+        (statutActuel === 'confirmee' || statutActuel === 'en_preparation' || statutActuel === 'expedie');
+
+      // Le stock est ajusté avant le changement de statut : un stock
+      // insuffisant interrompt l'opération sans que la commande passe en
+      // « confirmée ». `updateProductsStock` s'appuie sur ProduitModel, qui
+      // possède ses propres garanties d'atomicité par produit.
+      if (doitDecrementer) {
         logger.debug(`[CommandeModel] Décrémentation du stock pour la commande ${id} confirmée`);
         await this.updateProductsStock(id, false); // false = décrémenter
-      } else if ((statut === 'annulee' || statut === 'remboursee') && 
-                 (statutActuel === 'confirmee' || statutActuel === 'en_preparation' || statutActuel === 'expedie')) {
-        // Incrémenter le stock lors de l'annulation ou du remboursement d'une commande confirmée
+      } else if (doitIncrementer) {
         logger.debug(`[CommandeModel] Incrémentation du stock pour la commande ${id} annulée/remboursée`);
         await this.updateProductsStock(id, true); // true = incrémenter
       }
-      
+
+      const { rows: misesAJour } = await query<Commande>(
+        `UPDATE commandes SET ${affectations.join(', ')} WHERE id = $2 RETURNING *`,
+        [statut, id]
+      );
+      const commande = misesAJour[0];
+
+      // Recharger avec la boutique associée, comme le faisait la jointure d'origine
+      const { rows } = await query<Commande>(
+        `SELECT c.*, (SELECT row_to_json(b) FROM (
+           SELECT b.id, b.nom, b.telephone, b.adresse, b.slug FROM boutiques b WHERE b.id = c.boutique_id
+         ) b) AS boutique
+         FROM commandes c WHERE c.id = $1`,
+        [id]
+      );
+
       logger.debug(`[CommandeModel] Statut de la commande ${id} mis à jour: ${statutActuel} -> ${statut}`);
-      return data;
+
+      return rows[0] ?? commande;
     } catch (error) {
-      logger.error(`[CommandeModel] Exception dans updateCommandeStatus:`, error);
+      logger.error('[CommandeModel] Exception dans updateCommandeStatus:', error);
       throw error;
     }
   }
@@ -262,27 +356,26 @@ export class CommandeModel {
    * @param methodePaiement Méthode de paiement (optionnel)
    */
   static async updatePaymentStatus(id: number, statutPaiement: StatutPaiement, methodePaiement?: string): Promise<Commande> {
-    const updateData: any = {
-      statut_paiement: statutPaiement,
-      date_modification: new Date()
-    };
+    const affectations = ['statut_paiement = $1::statut_paiement', 'date_modification = NOW()'];
+    const params: unknown[] = [statutPaiement];
 
     if (methodePaiement) {
-      updateData.methode_paiement = methodePaiement;
+      params.push(methodePaiement);
+      affectations.push(`methode_paiement = $${params.length}::methode_paiement`);
     }
-    
-    const { data, error } = await supabaseAdmin
-      .from('commandes')
-      .update(updateData)
-      .eq('id', id)
-      .select()
-      .single();
-    
-    if (error) {
-      throw new Error(`Erreur lors de la mise à jour du statut de paiement: ${error.message}`);
+
+    params.push(id);
+
+    const { rows } = await query<Commande>(
+      `UPDATE commandes SET ${affectations.join(', ')} WHERE id = $${params.length} RETURNING *`,
+      params
+    );
+
+    if (!rows[0]) {
+      throw new Error('Erreur lors de la mise à jour du statut de paiement: commande introuvable');
     }
-    
-    return data;
+
+    return rows[0];
   }
 
   /**
@@ -290,22 +383,12 @@ export class CommandeModel {
    * @param id ID de la commande
    */
   static async getCommandeById(id: number): Promise<Commande | null> {
-    const { data, error } = await supabaseAdmin
-      .from('commandes')
-      .select(`
-        *,
-        boutique:boutique_id(*),
-        articles:commande_articles(*),
-        transactions:transactions(*)
-      `)
-      .eq('id', id)
-      .single();
-    
-    if (error && error.code !== 'PGRST116') {
-      throw new Error(`Erreur lors de la récupération de la commande: ${error.message}`);
-    }
-    
-    return data;
+    const { rows } = await query<Commande>(
+      `SELECT c.*, ${JOINTURES_COMMANDE} FROM commandes c WHERE c.id = $1`,
+      [id]
+    );
+
+    return rows[0] ?? null;
   }
 
   /**
@@ -313,22 +396,12 @@ export class CommandeModel {
    * @param numeroCommande Numéro de la commande
    */
   static async getCommandeByNumero(numeroCommande: string): Promise<Commande | null> {
-    const { data, error } = await supabaseAdmin
-      .from('commandes')
-      .select(`
-        *,
-        boutique:boutique_id(*),
-        articles:commande_articles(*),
-        transactions:transactions(*)
-      `)
-      .eq('numero_commande', numeroCommande)
-      .single();
-    
-    if (error && error.code !== 'PGRST116') {
-      throw new Error(`Erreur lors de la récupération de la commande: ${error.message}`);
-    }
-    
-    return data;
+    const { rows } = await query<Commande>(
+      `SELECT c.*, ${JOINTURES_COMMANDE} FROM commandes c WHERE c.numero_commande = $1`,
+      [numeroCommande]
+    );
+
+    return rows[0] ?? null;
   }
 
   /**
@@ -340,89 +413,64 @@ export class CommandeModel {
   static async getCommandesByBoutique(boutiqueId: number, page: number = 1, limite: number = 10): Promise<{ commandes: Commande[], total: number }> {
     // Calculer l'offset pour la pagination
     const offset = (page - 1) * limite;
-    
+
     // Récupérer le nombre total de commandes
-    const { count, error: countError } = await supabaseAdmin
-      .from('commandes')
-      .select('*', { count: 'exact', head: true })
-      .eq('boutique_id', boutiqueId);
-    
-    if (countError) {
-      throw new Error(`Erreur lors du comptage des commandes: ${countError.message}`);
-    }
-    
+    const { rows: total } = await query<{ count: string }>(
+      `SELECT COUNT(*) AS count FROM commandes WHERE boutique_id = $1`,
+      [boutiqueId]
+    );
+
     // Récupérer les commandes avec pagination
-    const { data, error } = await supabaseAdmin
-      .from('commandes')
-      .select(`
-        *,
-        boutique:boutique_id(*)
-      `)
-      .eq('boutique_id', boutiqueId)
-      .order('date_commande', { ascending: false })
-      .range(offset, offset + limite - 1);
-    
-    if (error) {
-      throw new Error(`Erreur lors de la récupération des commandes: ${error.message}`);
-    }
-    
+    const { rows } = await query<Commande>(
+      `SELECT c.*, (SELECT row_to_json(b) FROM boutiques b WHERE b.id = c.boutique_id) AS boutique
+       FROM commandes c
+       WHERE c.boutique_id = $1
+       ORDER BY c.date_commande DESC
+       LIMIT $2 OFFSET $3`,
+      [boutiqueId, limite, offset]
+    );
+
     return {
-      commandes: data || [],
-      total: count || 0
+      commandes: rows,
+      total: Number(total[0].count)
     };
   }
 
   /**
    * Calcule les totaux d'une commande
    * @param commandeId ID de la commande
+   * @param client Client de transaction, pour lire les articles de la transaction en cours
    */
-  static async calculateCommandeTotals(commandeId: number): Promise<{ sous_total: number, total: number }> {
+  static async calculateCommandeTotals(
+    commandeId: number,
+    client?: PoolClient
+  ): Promise<{ sous_total: number, total: number }> {
     logger.debug('[CommandeModel] Début de calculateCommandeTotals pour commandeId:', commandeId);
-    
+
     try {
-      // Récupérer les articles de la commande
-      logger.debug('[CommandeModel] Récupération des articles de la commande...');
-      const { data: articles, error } = await supabaseAdmin
-        .from('commande_articles')
-        .select('*')
-        .eq('commande_id', commandeId);
-      
-      if (error) {
-        logger.error('[CommandeModel] ERREUR lors de la récupération des articles:', error);
-        throw new Error(`Erreur lors de la récupération des articles: ${error.message}`);
+      // Le sous-total et les frais sont agrégés par la base en une requête
+      const { rows } = await executer<{
+        sous_total: string; frais_livraison: number; taxes: number; remise: number;
+      }>(
+        client,
+        `SELECT
+           COALESCE((SELECT SUM(prix_unitaire * quantite) FROM commande_articles WHERE commande_id = c.id), 0) AS sous_total,
+           COALESCE(c.frais_livraison, 0) AS frais_livraison,
+           COALESCE(c.taxes, 0) AS taxes,
+           COALESCE(c.remise, 0) AS remise
+         FROM commandes c WHERE c.id = $1`,
+        [commandeId]
+      );
+
+      if (!rows[0]) {
+        throw new Error(`Erreur lors de la récupération de la commande: commande ${commandeId} introuvable`);
       }
-      
-      logger.debug(`[CommandeModel] ${articles?.length || 0} articles trouvés pour la commande`);
-      
-      // Calculer le sous-total
-      const sousTotal = articles?.reduce((sum, article) => {
-        return sum + (article.prix_unitaire * article.quantite);
-      }, 0) || 0;
-      logger.debug('[CommandeModel] Sous-total calculé:', sousTotal);
-      
-      // Récupérer la commande pour les frais de livraison, taxes et remises
-      logger.debug('[CommandeModel] Récupération des frais de la commande...');
-      const { data: commande, error: commandeError } = await supabaseAdmin
-        .from('commandes')
-        .select('frais_livraison, taxes, remise')
-        .eq('id', commandeId)
-        .single();
-      
-      if (commandeError) {
-        logger.error('[CommandeModel] ERREUR lors de la récupération de la commande:', commandeError);
-        throw new Error(`Erreur lors de la récupération de la commande: ${commandeError.message}`);
-      }
-      
-      logger.debug('[CommandeModel] Frais de la commande:', JSON.stringify(commande, null, 2));
-      
-      // Calculer le total
-      const fraisLivraison = commande?.frais_livraison || 0;
-      const taxes = commande?.taxes || 0;
-      const remise = commande?.remise || 0;
-      
-      const total = sousTotal + fraisLivraison + taxes - remise;
-      logger.debug('[CommandeModel] Total calculé:', total);
-      
+
+      const sousTotal = Number(rows[0].sous_total);
+      const total = sousTotal + rows[0].frais_livraison + rows[0].taxes - rows[0].remise;
+
+      logger.debug('[CommandeModel] Totaux calculés:', { sousTotal, total });
+
       return { sous_total: sousTotal, total };
     } catch (error) {
       logger.error('[CommandeModel] Exception dans calculateCommandeTotals:', error);
@@ -433,36 +481,31 @@ export class CommandeModel {
   /**
    * Met à jour les totaux d'une commande
    * @param commandeId ID de la commande
+   * @param client Client de transaction, si la mise à jour participe à une transaction
    */
-  static async updateCommandeTotals(commandeId: number): Promise<Commande> {
+  static async updateCommandeTotals(commandeId: number, client?: PoolClient): Promise<Commande> {
     logger.debug('[CommandeModel] Début de updateCommandeTotals pour commandeId:', commandeId);
-    
+
     try {
       // Calculer les totaux
-      logger.debug('[CommandeModel] Calcul des totaux...');
-      const { sous_total, total } = await this.calculateCommandeTotals(commandeId);
-      logger.debug('[CommandeModel] Totaux calculés:', { sous_total, total });
-      
+      const { sous_total, total } = await this.calculateCommandeTotals(commandeId, client);
+
       // Mettre à jour la commande
-      logger.debug('[CommandeModel] Mise à jour de la commande avec les totaux...');
-      const { data, error } = await supabaseAdmin
-        .from('commandes')
-        .update({
-          sous_total,
-          total,
-          date_modification: new Date()
-        })
-        .eq('id', commandeId)
-        .select()
-        .single();
-      
-      if (error) {
-        logger.error('[CommandeModel] ERREUR lors de la mise à jour des totaux:', error);
-        throw new Error(`Erreur lors de la mise à jour des totaux: ${error.message}`);
+      const { rows } = await executer<Commande>(
+        client,
+        `UPDATE commandes SET sous_total = $1, total = $2, date_modification = NOW()
+         WHERE id = $3
+         RETURNING *`,
+        [sous_total, total, commandeId]
+      );
+
+      if (!rows[0]) {
+        throw new Error(`Erreur lors de la mise à jour des totaux: commande ${commandeId} introuvable`);
       }
-      
-      logger.debug('[CommandeModel] Commande mise à jour avec succès:', JSON.stringify(data, null, 2));
-      return data;
+
+      logger.debug('[CommandeModel] Commande mise à jour avec succès');
+
+      return rows[0];
     } catch (error) {
       logger.error('[CommandeModel] Exception dans updateCommandeTotals:', error);
       throw error;
@@ -475,24 +518,18 @@ export class CommandeModel {
    */
   static async getCommandeArticlesDetails(commandeId: number): Promise<any[]> {
     logger.debug('[CommandeModel] Récupération des détails des articles pour la commande:', commandeId);
-    
+
     try {
-      // Récupérer les articles de la commande avec les informations du produit
-      const { data: articles, error } = await supabaseAdmin
-        .from('commande_articles')
-        .select(`
-          *,
-          produit:produit_id(*)
-        `)
-        .eq('commande_id', commandeId);
-      
-      if (error) {
-        logger.error('[CommandeModel] Erreur lors de la récupération des articles:', error);
-        throw new Error(`Erreur lors de la récupération des articles: ${error.message}`);
-      }
-      
-      logger.debug(`[CommandeModel] ${articles?.length || 0} articles trouvés`);
-      return articles || [];
+      const { rows } = await query<CommandeArticle>(
+        `SELECT a.*, (SELECT row_to_json(p) FROM produits p WHERE p.id = a.produit_id) AS produit
+         FROM commande_articles a
+         WHERE a.commande_id = $1`,
+        [commandeId]
+      );
+
+      logger.debug(`[CommandeModel] ${rows.length} articles trouvés`);
+
+      return rows;
     } catch (error) {
       logger.error('[CommandeModel] Exception dans getCommandeArticlesDetails:', error);
       throw error;
@@ -506,14 +543,7 @@ export class CommandeModel {
   static async recalculerMontantPaye(commandeId: number): Promise<void> {
     try {
       // Utiliser la fonction SQL créée dans la migration
-      const { error } = await supabaseAdmin.rpc('recalculer_montant_paye_commande', {
-        p_commande_id: commandeId
-      });
-
-      if (error) {
-        logger.error('[CommandeModel] Erreur lors du recalcul du montant payé:', error);
-        throw new Error(`Erreur lors du recalcul du montant payé: ${error.message}`);
-      }
+      await query(`SELECT recalculer_montant_paye_commande($1)`, [commandeId]);
 
       logger.debug(`[CommandeModel] Montant payé recalculé pour la commande ${commandeId}`);
     } catch (error) {
@@ -527,17 +557,9 @@ export class CommandeModel {
    * @param commandeId ID de la commande
    */
   static async isCommandeEntierementPayee(commandeId: number): Promise<boolean> {
-    try {
-      const commande = await this.getCommandeById(commandeId);
-      if (!commande) {
-        throw new Error('Commande non trouvée');
-      }
+    const { montant_paye, total } = await this.getMontants(commandeId);
 
-      return commande.montant_paye >= commande.total;
-    } catch (error) {
-      logger.error('[CommandeModel] Exception dans isCommandeEntierementPayee:', error);
-      throw error;
-    }
+    return montant_paye >= total;
   }
 
   /**
@@ -545,17 +567,9 @@ export class CommandeModel {
    * @param commandeId ID de la commande
    */
   static async getMontantPaye(commandeId: number): Promise<number> {
-    try {
-      const commande = await this.getCommandeById(commandeId);
-      if (!commande) {
-        throw new Error('Commande non trouvée');
-      }
+    const { montant_paye } = await this.getMontants(commandeId);
 
-      return commande.montant_paye || 0;
-    } catch (error) {
-      logger.error('[CommandeModel] Exception dans getMontantPaye:', error);
-      throw error;
-    }
+    return montant_paye;
   }
 
   /**
@@ -563,17 +577,26 @@ export class CommandeModel {
    * @param commandeId ID de la commande
    */
   static async getMontantRestant(commandeId: number): Promise<number> {
-    try {
-      const commande = await this.getCommandeById(commandeId);
-      if (!commande) {
-        throw new Error('Commande non trouvée');
-      }
+    const { montant_paye, total } = await this.getMontants(commandeId);
 
-      return Math.max(0, commande.total - commande.montant_paye);
-    } catch (error) {
-      logger.error('[CommandeModel] Exception dans getMontantRestant:', error);
-      throw error;
+    return Math.max(0, total - montant_paye);
+  }
+
+  /**
+   * Récupère le total et le montant payé d'une commande.
+   * @param commandeId ID de la commande
+   */
+  private static async getMontants(commandeId: number): Promise<{ montant_paye: number; total: number }> {
+    const { rows } = await query<{ montant_paye: number; total: number }>(
+      `SELECT COALESCE(montant_paye, 0) AS montant_paye, total FROM commandes WHERE id = $1`,
+      [commandeId]
+    );
+
+    if (!rows[0]) {
+      throw new Error('Commande non trouvée');
     }
+
+    return rows[0];
   }
 
   /**
@@ -585,45 +608,30 @@ export class CommandeModel {
     delaiHeures: number = 1
   ): Promise<{ nbAnnulees: number; notificationsEnvoyees: number }> {
     logger.debug(`[CommandeModel] Début de la recherche des commandes orphelines (seuil: ${delaiHeures}h)...`);
+
     try {
-      const dateLimite = new Date(Date.now() - delaiHeures * 60 * 60 * 1000).toISOString();
-
-      const { data: commandes, error } = await supabaseAdmin
-        .from('commandes')
-        .select(`
-          id,
-          numero_commande,
-          date_commande,
-          client_nom,
-          client_telephone,
-          client_adresse,
-          client_ville,
-          client_commune,
-          total,
-          frais_livraison,
-          boutique:boutique_id(id, nom, telephone, slug),
-          transactions(id)
-        `)
-        .eq('statut', 'en_attente')
-        .lt('date_commande', dateLimite);
-
-      if (error) {
-        logger.error('[CommandeModel] Erreur lors de la récupération des commandes en attente:', error);
-        throw new Error(`Erreur lors de la récupération des commandes: ${error.message}`);
-      }
-
-      if (!commandes || commandes.length === 0) {
-        logger.debug('[CommandeModel] Aucune commande en attente trouvée avant le seuil.');
-        return { nbAnnulees: 0, notificationsEnvoyees: 0 };
-      }
-
-      const orphelines = commandes.filter((cmd) => {
-        const txs = cmd.transactions as any[];
-        return !txs || txs.length === 0;
-      });
+      // L'absence de transaction est évaluée par la base plutôt qu'après
+      // chargement de toutes les commandes en attente
+      const { rows: orphelines } = await query<{
+        id: number; numero_commande: string; client_nom: string; client_telephone: string;
+        client_adresse: string; client_ville: string; client_commune: string;
+        total: number; frais_livraison: number; boutique: { nom?: string; telephone?: string; slug?: string } | null;
+      }>(
+        `SELECT c.id, c.numero_commande, c.date_commande, c.client_nom, c.client_telephone,
+                c.client_adresse, c.client_ville, c.client_commune, c.total, c.frais_livraison,
+                (SELECT row_to_json(b) FROM (
+                   SELECT b.id, b.nom, b.telephone, b.slug FROM boutiques b WHERE b.id = c.boutique_id
+                 ) b) AS boutique
+         FROM commandes c
+         WHERE c.statut = 'en_attente'
+           AND c.date_commande < NOW() - ($1 || ' hours')::interval
+           AND NOT EXISTS (SELECT 1 FROM transactions t WHERE t.commande_id = c.id)`,
+        [String(delaiHeures)]
+      );
 
       if (orphelines.length === 0) {
-        logger.debug('[CommandeModel] Toutes les commandes en attente ont au moins une transaction associée.');
+        logger.debug('[CommandeModel] Aucune commande orpheline trouvée.');
+
         return { nbAnnulees: 0, notificationsEnvoyees: 0 };
       }
 
@@ -633,18 +641,11 @@ export class CommandeModel {
         orphelines.map((c) => c.numero_commande || c.id).join(', ')
       );
 
-      const { error: updateError } = await supabaseAdmin
-        .from('commandes')
-        .update({
-          statut: 'annulee',
-          date_modification: new Date()
-        })
-        .in('id', orphelineIds);
-
-      if (updateError) {
-        logger.error('[CommandeModel] Erreur lors de l\'annulation en masse des commandes orphelines:', updateError);
-        throw new Error(`Erreur lors de l'annulation des commandes: ${updateError.message}`);
-      }
+      await query(
+        `UPDATE commandes SET statut = 'annulee'::statut_commande, date_modification = NOW()
+         WHERE id = ANY($1)`,
+        [orphelineIds]
+      );
 
       const { WhatsAppService } = await import('../services/whatsapp.service');
       let notificationsEnvoyees = 0;
@@ -655,7 +656,7 @@ export class CommandeModel {
         }
 
         try {
-          const boutique = cmd.boutique as any;
+          const boutique = cmd.boutique;
           const messageId = await WhatsAppService.sendOrderStatusNotification('annulee', {
             clientNom: cmd.client_nom || 'Client',
             clientTelephone: cmd.client_telephone,
@@ -685,6 +686,7 @@ export class CommandeModel {
       logger.debug(
         `[CommandeModel] Succès: ${orphelines.length} commandes orphelines annulées, ${notificationsEnvoyees} notif(s) WhatsApp.`
       );
+
       return { nbAnnulees: orphelines.length, notificationsEnvoyees };
     } catch (error) {
       logger.error('[CommandeModel] Exception dans annulerCommandesOrphelines:', error);
@@ -692,4 +694,3 @@ export class CommandeModel {
     }
   }
 }
-
