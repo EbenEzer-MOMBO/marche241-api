@@ -69,6 +69,8 @@ export interface Boutique {
   couleur_secondaire: string;
   adresse?: string;
   telephone?: string;
+  email?: string;
+  ville: string;
   statut: StatutBoutique;
   date_creation: Date;
   date_modification: Date;
