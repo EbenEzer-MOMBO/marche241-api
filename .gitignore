@@ -137,3 +137,8 @@ verify-storage.ts
 migration-run.log
 spotcheck.ts
 oddurl.ts
+rewrite-urls.ts
+url-backup.json
+final-check.ts
+dump-urls.ts
+urls-check.txt
