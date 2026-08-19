@@ -129,3 +129,11 @@ tmp/
 # Script temporaire de verification migration Neon
 check-neon.ts
 check-r2.ts
+inventory-supabase.ts
+supabase-inventory.json
+migrate-storage.ts
+migration-storage.log
+verify-storage.ts
+migration-run.log
+spotcheck.ts
+oddurl.ts
