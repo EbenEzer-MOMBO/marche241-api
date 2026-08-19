@@ -1,5 +1,5 @@
 import cron, { ScheduledTask } from 'node-cron';
-import { supabaseAdmin } from '../config/supabase';
+import { query } from '../config/database';
 
 /**
  * Service pour gérer les tâches planifiées (cron jobs)
@@ -58,15 +58,12 @@ export class CronService {
    */
   static async retirerStatutNouveauProduits(): Promise<{ count: number }> {
     try {
-      // Appeler la fonction SQL via RPC
-      const { data, error } = await supabaseAdmin.rpc('retirer_statut_nouveau_produits');
+      // Appeler la fonction SQL dédiée
+      const { rows } = await query<{ count: number }>(
+        `SELECT retirer_statut_nouveau_produits() AS count`
+      );
 
-      if (error) {
-        console.error('[CronService] Erreur lors de l\'appel RPC:', error);
-        throw new Error(`Erreur lors de la mise à jour des produits: ${error.message}`);
-      }
-
-      return { count: data || 0 };
+      return { count: Number(rows[0]?.count) || 0 };
     } catch (error) {
       console.error('[CronService] Exception dans retirerStatutNouveauProduits:', error);
       throw error;
@@ -83,14 +80,14 @@ export class CronService {
     produits_nouveau_anciens: number;
   }> {
     try {
-      const { data, error } = await supabaseAdmin.rpc('stats_produits_nouveau');
+      const { rows } = await query<{
+        total_produits: number;
+        produits_nouveau: number;
+        produits_nouveau_recents: number;
+        produits_nouveau_anciens: number;
+      }>(`SELECT * FROM stats_produits_nouveau()`);
 
-      if (error) {
-        console.error('[CronService] Erreur lors de l\'appel RPC stats:', error);
-        throw new Error(`Erreur lors de la récupération des statistiques: ${error.message}`);
-      }
-
-      return data?.[0] || {
+      return rows[0] || {
         total_produits: 0,
         produits_nouveau: 0,
         produits_nouveau_recents: 0,
@@ -255,17 +252,13 @@ export class CronService {
     try {
       console.log(`[CronService] Nettoyage des vues de plus de ${joursRetention} jours`);
 
-      // Appeler la fonction SQL via RPC
-      const { data, error } = await supabaseAdmin.rpc('nettoyer_anciennes_vues', {
-        p_jours_retention: joursRetention
-      });
+      // Appeler la fonction SQL dédiée
+      const { rows } = await query<{ count: number }>(
+        `SELECT nettoyer_anciennes_vues($1) AS count`,
+        [joursRetention]
+      );
 
-      if (error) {
-        console.error('[CronService] Erreur lors de l\'appel RPC nettoyer_anciennes_vues:', error);
-        throw new Error(`Erreur lors du nettoyage des vues: ${error.message}`);
-      }
-
-      const count = data || 0;
+      const count = Number(rows[0]?.count) || 0;
       console.log(`[CronService] ${count} vue(s) supprimée(s) (plus de ${joursRetention} jours)`);
 
       return { count };
@@ -281,39 +274,23 @@ export class CronService {
    */
   static async nettoyerVuesHorsMoisEnCours(): Promise<{ count: number; mois_conserve: string }> {
     try {
-      // Calculer le 1er jour du mois en cours
-      const now = new Date();
-      const premierJourMois = new Date(now.getFullYear(), now.getMonth(), 1);
-      const moisConserve = premierJourMois.toISOString().slice(0, 7); // Format: "2026-03"
+      // Le 1er jour du mois est calculé par la base : le faire côté
+      // application décalerait la borne du fuseau horaire du serveur
+      const { rows: bornes } = await query<{ mois_conserve: string }>(
+        `SELECT to_char(date_trunc('month', NOW()), 'YYYY-MM') AS mois_conserve`
+      );
+      const moisConserve = bornes[0].mois_conserve;
 
-      console.log(`[CronService] Nettoyage des vues antérieures au ${premierJourMois.toISOString()}`);
       console.log(`[CronService] Conservation des vues du mois: ${moisConserve}`);
 
-      // Compter d'abord le nombre de vues à supprimer
-      const { count: countToDelete, error: countError } = await supabaseAdmin
-        .from('vues_tracking')
-        .select('*', { count: 'exact', head: true })
-        .lt('date_vue', premierJourMois.toISOString());
+      // Supprimer toutes les vues antérieures au 1er jour du mois en cours.
+      // Le comptage porte sur les lignes réellement supprimées, plutôt que
+      // sur un dénombrement préalable qui pourrait diverger.
+      const { rows } = await query<{ id: number }>(
+        `DELETE FROM vues_tracking WHERE date_vue < date_trunc('month', NOW()) RETURNING id`
+      );
 
-      if (countError) {
-        console.error('[CronService] Erreur lors du comptage des vues:', countError);
-        throw new Error(`Erreur lors du comptage des vues: ${countError.message}`);
-      }
-
-      const nombreASupprimer = countToDelete || 0;
-
-      // Supprimer toutes les vues antérieures au 1er jour du mois en cours
-      const { error } = await supabaseAdmin
-        .from('vues_tracking')
-        .delete()
-        .lt('date_vue', premierJourMois.toISOString());
-
-      if (error) {
-        console.error('[CronService] Erreur lors de la suppression des vues:', error);
-        throw new Error(`Erreur lors du nettoyage des vues: ${error.message}`);
-      }
-
-      const nombreSupprimes = nombreASupprimer;
+      const nombreSupprimes = rows.length;
       console.log(`[CronService] ${nombreSupprimes} vue(s) supprimée(s) (antérieures à ${moisConserve})`);
 
       return { 
