@@ -1,9 +1,9 @@
-import { supabaseAdmin } from '../config/supabase';
+import { PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import { Request } from 'express';
-import multer from 'multer';
+import { s3Client, storageBucket, buildPublicUrl } from '../config/storage';
 
 // Interface pour les options d'upload
 export interface UploadOptions {
@@ -37,7 +37,7 @@ const generateUniqueFileName = (originalName: string): string => {
   const baseName = path.basename(originalName, ext);
   const timestamp = Date.now();
   const randomString = crypto.randomBytes(4).toString('hex');
-  
+
   return `${baseName.replace(/[^a-zA-Z0-9]/g, '_')}_${timestamp}_${randomString}${ext}`;
 };
 
@@ -52,12 +52,41 @@ const isMimeTypeAllowed = (mimeType: string, allowedTypes?: string[]): boolean =
     // Par défaut, autoriser uniquement les images
     return mimeType.startsWith('image/');
   }
-  
+
   return allowedTypes.includes(mimeType);
 };
 
 /**
- * Upload un fichier vers Supabase Storage
+ * Détecte le type MIME d'un buffer à partir de sa signature binaire.
+ * `file-type` (v21) est un module ESM pur : il doit être chargé par un
+ * import dynamique et non par `require`, qui échoue sur ce type de module.
+ * @param buffer Contenu du fichier
+ * @returns Type MIME détecté, ou `application/octet-stream` si inconnu
+ */
+const detectMimeType = async (buffer: Buffer): Promise<string> => {
+  const { fileTypeFromBuffer } = await import('file-type');
+  const fileInfo = await fileTypeFromBuffer(buffer);
+
+  return fileInfo?.mime || 'application/octet-stream';
+};
+
+/**
+ * Envoie un buffer vers le bucket et retourne son URL publique
+ * @param storagePath Chemin de destination dans le bucket
+ * @param body Contenu du fichier
+ * @param mimeType Type MIME du fichier
+ */
+const putObject = async (storagePath: string, body: Buffer, mimeType: string): Promise<void> => {
+  await s3Client.send(new PutObjectCommand({
+    Bucket: storageBucket,
+    Key: storagePath,
+    Body: body,
+    ContentType: mimeType
+  }));
+};
+
+/**
+ * Upload un fichier vers le stockage objet
  * @param filePath Chemin local du fichier à uploader
  * @param options Options d'upload
  * @returns Résultat de l'upload
@@ -68,75 +97,50 @@ export const uploadFile = async (filePath: string, options: UploadOptions): Prom
     if (!fs.existsSync(filePath)) {
       return { success: false, error: 'Le fichier n\'existe pas' };
     }
-    
+
     // Obtenir les informations sur le fichier
     const fileStats = fs.statSync(filePath);
     const fileBuffer = fs.readFileSync(filePath);
     const fileSize = fileStats.size;
-    
+
     // Vérifier la taille du fichier
     const maxSize = options.maxSize || 5 * 1024 * 1024; // 5MB par défaut
     if (fileSize > maxSize) {
-      return { 
-        success: false, 
+      return {
+        success: false,
         error: `La taille du fichier dépasse la limite autorisée (${Math.round(maxSize / 1024 / 1024)}MB)`,
         fileSize
       };
     }
-    
+
     // Déterminer le type MIME
-    const fileType = require('file-type');
-    const fileInfo = await fileType.fromBuffer(fileBuffer);
-    const mimeType = fileInfo?.mime || 'application/octet-stream';
-    
+    const mimeType = await detectMimeType(fileBuffer);
+
     // Vérifier le type MIME
     if (!isMimeTypeAllowed(mimeType, options.allowedMimeTypes)) {
-      return { 
-        success: false, 
+      return {
+        success: false,
         error: `Type de fichier non autorisé: ${mimeType}`,
         mimeType
       };
     }
-    
+
     // Générer un nom de fichier unique si non spécifié
     const fileName = options.fileName || generateUniqueFileName(path.basename(filePath));
-    
+
     // Construire le chemin de stockage
     const storagePath = `${options.folder}/${fileName}`;
-    
-    // Récupérer le nom du bucket depuis les variables d'environnement
-    const bucketName = process.env.SUPABASE_STORAGE_BUCKET || 'marche241-uploads';
-    
-    // Upload le fichier vers Supabase Storage
-    const { data, error } = await supabaseAdmin
-      .storage
-      .from(bucketName)
-      .upload(storagePath, fileBuffer, {
-        contentType: mimeType,
-        upsert: false
-      });
-      
-    if (error) {
-      return { 
-        success: false, 
-        error: error.message
-      };
-    }
-    
-    // Générer l'URL publique
-    const { data: urlData } = supabaseAdmin
-      .storage
-      .from(bucketName)
-      .getPublicUrl(storagePath);
-      
+
+    await putObject(storagePath, fileBuffer, mimeType);
+
     return {
       success: true,
-      url: urlData.publicUrl,
+      url: buildPublicUrl(storagePath),
       path: storagePath,
       fileSize,
       mimeType
     };
-    
+
   } catch (error) {
     return {
       success: false,
@@ -153,8 +157,8 @@ export const uploadFile = async (filePath: string, options: UploadOptions): Prom
  * @returns Résultat de l'upload
  */
 export const uploadFromRequest = async (
-  req: Request & { files?: { [fieldname: string]: Express.Multer.File[] } | Express.Multer.File[] }, 
-  fieldName: string, 
+  req: Request & { files?: { [fieldname: string]: Express.Multer.File[] } | Express.Multer.File[] },
+  fieldName: string,
   options: UploadOptions
 ): Promise<UploadResult> => {
   try {
@@ -162,9 +166,9 @@ export const uploadFromRequest = async (
     if (!req.files) {
       return { success: false, error: `Aucun fichier trouvé pour le champ ${fieldName}` };
     }
-    
+
     let file: Express.Multer.File | undefined;
-    
+
     // Vérifier si req.files est un tableau ou un objet
     if (Array.isArray(req.files)) {
       // Si c'est un tableau, chercher le fichier avec le bon fieldname
@@ -176,69 +180,46 @@ export const uploadFromRequest = async (
         file = files[0];
       }
     }
-    
+
     if (!file) {
       return { success: false, error: `Aucun fichier trouvé pour le champ ${fieldName}` };
     }
-    
+
     // Vérifier la taille du fichier
     const maxSize = options.maxSize || 5 * 1024 * 1024; // 5MB par défaut
     if (file.size > maxSize) {
-      return { 
-        success: false, 
+      return {
+        success: false,
         error: `La taille du fichier dépasse la limite autorisée (${Math.round(maxSize / 1024 / 1024)}MB)`,
         fileSize: file.size
       };
     }
-    
+
     // Vérifier le type MIME
     if (!isMimeTypeAllowed(file.mimetype, options.allowedMimeTypes)) {
-      return { 
-        success: false, 
+      return {
+        success: false,
         error: `Type de fichier non autorisé: ${file.mimetype}`,
         mimeType: file.mimetype
       };
     }
-    
+
     // Générer un nom de fichier unique si non spécifié
     const fileName = options.fileName || generateUniqueFileName(file.originalname);
-    
+
     // Construire le chemin de stockage
     const storagePath = `${options.folder}/${fileName}`;
-    
-    // Récupérer le nom du bucket depuis les variables d'environnement
-    const bucketName = process.env.SUPABASE_STORAGE_BUCKET || 'marche241-uploads';
-    
-    // Upload le fichier vers Supabase Storage
-    const { data, error } = await supabaseAdmin
-      .storage
-      .from(bucketName)
-      .upload(storagePath, file.buffer, {
-        contentType: file.mimetype,
-        upsert: false
-      });
-      
-    if (error) {
-      return { 
-        success: false, 
-        error: error.message
-      };
-    }
-    
-    // Générer l'URL publique
-    const { data: urlData } = supabaseAdmin
-      .storage
-      .from(bucketName)
-      .getPublicUrl(storagePath);
-      
+
+    await putObject(storagePath, file.buffer, file.mimetype);
+
     return {
       success: true,
-      url: urlData.publicUrl,
+      url: buildPublicUrl(storagePath),
       path: storagePath,
       fileSize: file.size,
       mimeType: file.mimetype
     };
-    
+
   } catch (error) {
     return {
       success: false,
@@ -248,31 +229,21 @@ export const uploadFromRequest = async (
 };
 
 /**
- * Supprime un fichier de Supabase Storage
+ * Supprime un fichier du stockage objet
  * @param filePath Chemin du fichier dans le bucket
  * @returns Résultat de la suppression
  */
 export const deleteFile = async (filePath: string): Promise<{success: boolean, error?: string}> => {
   try {
-    // Récupérer le nom du bucket depuis les variables d'environnement
-    const bucketName = process.env.SUPABASE_STORAGE_BUCKET || 'marche241-uploads';
-    
-    const { data, error } = await supabaseAdmin
-      .storage
-      .from(bucketName)
-      .remove([filePath]);
-      
-    if (error) {
-      return { 
-        success: false, 
-        error: error.message
-      };
-    }
-    
+    await s3Client.send(new DeleteObjectCommand({
+      Bucket: storageBucket,
+      Key: filePath
+    }));
+
     return {
       success: true
     };
-    
+
   } catch (error) {
     return {
       success: false,

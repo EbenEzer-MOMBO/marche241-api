@@ -11,8 +11,12 @@
   },
   "author": "MOMBO Eben",
   "license": "ISC",
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "description": "API pour la plateforme Marché 241",
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1113.0",
     "@supabase/supabase-js": "^2.39.3",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
