@@ -169,3 +169,5 @@ audit2.ts
 compteur-backup.json
 verif-sync.ts
 chk3.ts
+cp.ts
+dup.ts
