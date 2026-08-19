@@ -126,3 +126,5 @@ uploads/
 # Temporary files
 temp/
 tmp/
+# Script temporaire de verification migration Neon
+check-neon.ts

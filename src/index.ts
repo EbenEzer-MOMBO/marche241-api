@@ -5,6 +5,7 @@ import http from 'http';
 import { WebSocketService } from './services/websocket.service';
 import { MonitorService } from './services/monitor.service';
 import { CronService } from './services/cron.service';
+import { closePool } from './config/database';
 
 // Charger les variables d'environnement
 dotenv.config();
@@ -63,13 +64,17 @@ server.listen(port, '0.0.0.0', () => {
 });
 
 // Gestion propre de l'arrêt du serveur
-process.on('SIGTERM', () => {
-  console.log('Signal SIGTERM reçu. Arrêt propre du serveur...');
+const shutdown = (signal: string): void => {
+  console.log(`Signal ${signal} reçu. Arrêt propre du serveur...`);
   MonitorService.cleanup();
   WebSocketService.cleanup();
   CronService.stopAll();
-  server.close(() => {
+  server.close(async () => {
+    await closePool();
     console.log('Serveur arrêté avec succès');
     process.exit(0);
   });
-});
+};
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
