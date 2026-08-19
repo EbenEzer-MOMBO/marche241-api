@@ -1,4 +1,4 @@
-import { supabaseAdmin } from '../config/supabase';
+import { query } from '../config/database';
 import { logger } from '../utils/logger';
 
 export type TypeEntiteVue = 'boutique' | 'produit';
@@ -20,6 +20,13 @@ export interface StatsVues {
   vues_30_jours: number;
 }
 
+const STATS_VIDES: StatsVues = {
+  vues_totales: 0,
+  vues_aujourd_hui: 0,
+  vues_7_jours: 0,
+  vues_30_jours: 0
+};
+
 export class VueModel {
   private static readonly TABLE_NAME = 'vues_tracking';
 
@@ -36,31 +43,24 @@ export class VueModel {
   ): Promise<boolean> {
     try {
       // Appeler la fonction SQL pour enregistrer la vue
-      const { data, error } = await supabaseAdmin.rpc('enregistrer_vue', {
-        p_type_entite: typeEntite,
-        p_entite_id: entiteId,
-        p_ip_address: ipAddress,
-        p_user_agent: userAgent || null,
-        p_referer: referer || null
-      });
+      const { rows } = await query<{ enregistrer_vue: boolean }>(
+        `SELECT enregistrer_vue($1::type_entite_vue, $2, $3, $4, $5) AS enregistrer_vue`,
+        [typeEntite, entiteId, ipAddress, userAgent || null, referer || null]
+      );
 
-      if (error) {
-        logger.error(`[VueModel] Erreur RPC enregistrer_vue:`, error);
-        // Fallback: essayer d'insérer directement
-        return await this.enregistrerVueDirecte(typeEntite, entiteId, ipAddress, userAgent, referer);
-      }
+      logger.debug(`[VueModel] Nouvelle vue enregistrée: ${rows[0]?.enregistrer_vue}`);
 
-      logger.debug(`[VueModel] Nouvelle vue enregistrée: ${data}`);
-      return data === true;
+      return rows[0]?.enregistrer_vue === true;
     } catch (error) {
-      logger.error(`[VueModel] Exception dans enregistrerVue:`, error);
+      logger.error('[VueModel] Erreur lors de l\'appel de enregistrer_vue:', error);
+
       // Fallback: essayer d'insérer directement
-      return await this.enregistrerVueDirecte(typeEntite, entiteId, ipAddress, userAgent, referer);
+      return this.enregistrerVueDirecte(typeEntite, entiteId, ipAddress, userAgent, referer);
     }
   }
 
   /**
-   * Méthode de fallback pour enregistrer une vue directement sans fonction RPC
+   * Méthode de fallback pour enregistrer une vue directement sans fonction SQL
    */
   private static async enregistrerVueDirecte(
     typeEntite: TypeEntiteVue,
@@ -69,61 +69,40 @@ export class VueModel {
     userAgent?: string,
     referer?: string
   ): Promise<boolean> {
-    logger.debug(`[VueModel] Tentative d'enregistrement direct de la vue`);
-    
+    logger.debug('[VueModel] Tentative d\'enregistrement direct de la vue');
+
     try {
-      // Vérifier si une vue existe déjà pour aujourd'hui
-      const today = new Date().toISOString().split('T')[0];
-      
-      const { data: existingVue, error: checkError } = await supabaseAdmin
-        .from(this.TABLE_NAME)
-        .select('id')
-        .eq('type_entite', typeEntite)
-        .eq('entite_id', entiteId)
-        .eq('ip_address', ipAddress)
-        .gte('date_vue', `${today}T00:00:00`)
-        .lt('date_vue', `${today}T23:59:59`)
-        .maybeSingle();
+      // Une seule vue par entité et par IP sur la journée en cours
+      const { rows } = await query<{ id: number }>(
+        `INSERT INTO ${this.TABLE_NAME} (type_entite, entite_id, ip_address, user_agent, referer)
+         SELECT $1::type_entite_vue, $2::integer, $3::varchar, $4::text, $5::text
+         WHERE NOT EXISTS (
+           SELECT 1 FROM ${this.TABLE_NAME}
+           WHERE type_entite = $1::type_entite_vue
+             AND entite_id = $2::integer
+             AND ip_address = $3::varchar
+             AND date_vue >= CURRENT_DATE
+             AND date_vue < CURRENT_DATE + INTERVAL '1 day'
+         )
+         RETURNING id`,
+        [typeEntite, entiteId, ipAddress, userAgent || null, referer || null]
+      );
 
-      if (checkError) {
-        logger.error(`[VueModel] Erreur lors de la vérification:`, checkError);
-        return false;
-      }
+      if (rows.length === 0) {
+        logger.debug('[VueModel] Vue déjà enregistrée aujourd\'hui pour cette IP');
 
-      // Si déjà vue aujourd'hui, ne pas enregistrer
-      if (existingVue) {
-        logger.debug(`[VueModel] Vue déjà enregistrée aujourd'hui pour cette IP`);
-        return false;
-      }
-
-      // Insérer la nouvelle vue
-      const { error: insertError } = await supabaseAdmin
-        .from(this.TABLE_NAME)
-        .insert({
-          type_entite: typeEntite,
-          entite_id: entiteId,
-          ip_address: ipAddress,
-          user_agent: userAgent,
-          referer: referer
-        });
-
-      if (insertError) {
-        // Si erreur de contrainte unique, c'est que la vue existe déjà
-        if (insertError.code === '23505') {
-          logger.debug(`[VueModel] Vue déjà existante (contrainte unique)`);
-          return false;
-        }
-        logger.error(`[VueModel] Erreur lors de l'insertion:`, insertError);
         return false;
       }
 
       // Incrémenter le compteur de vues
       await this.incrementerCompteurVues(typeEntite, entiteId);
-      
-      logger.debug(`[VueModel] Vue enregistrée avec succès`);
+
+      logger.debug('[VueModel] Vue enregistrée avec succès');
+
       return true;
     } catch (error) {
-      logger.error(`[VueModel] Exception dans enregistrerVueDirecte:`, error);
+      logger.error('[VueModel] Exception dans enregistrerVueDirecte:', error);
+
       return false;
     }
   }
@@ -135,34 +114,18 @@ export class VueModel {
     typeEntite: TypeEntiteVue,
     entiteId: number
   ): Promise<void> {
+    // Le type d'entité provient d'une union fermée : la table est sûre
     const tableName = typeEntite === 'boutique' ? 'boutiques' : 'produits';
-    
+
     try {
-      // Récupérer le nombre actuel de vues
-      const { data: entity, error: fetchError } = await supabaseAdmin
-        .from(tableName)
-        .select('nombre_vues')
-        .eq('id', entiteId)
-        .single();
-
-      if (fetchError) {
-        logger.error(`[VueModel] Erreur lors de la récupération de ${tableName}:`, fetchError);
-        return;
-      }
-
-      const nombreVuesActuel = entity?.nombre_vues || 0;
-
-      // Mettre à jour le compteur
-      const { error: updateError } = await supabaseAdmin
-        .from(tableName)
-        .update({ nombre_vues: nombreVuesActuel + 1 })
-        .eq('id', entiteId);
-
-      if (updateError) {
-        logger.error(`[VueModel] Erreur lors de l'incrémentation:`, updateError);
-      }
+      // L'incrément est fait par la base pour éviter toute perte de mise à
+      // jour entre deux vues concurrentes
+      await query(
+        `UPDATE ${tableName} SET nombre_vues = COALESCE(nombre_vues, 0) + 1 WHERE id = $1`,
+        [entiteId]
+      );
     } catch (error) {
-      logger.error(`[VueModel] Exception dans incrementerCompteurVues:`, error);
+      logger.error('[VueModel] Exception dans incrementerCompteurVues:', error);
     }
   }
 
@@ -174,33 +137,30 @@ export class VueModel {
     entiteId: number
   ): Promise<StatsVues> {
     logger.debug(`[VueModel] Récupération stats vues ${typeEntite} ${entiteId}`);
-    
+
     try {
-      // Essayer d'utiliser la fonction RPC
-      const { data, error } = await supabaseAdmin.rpc('stats_vues', {
-        p_type_entite: typeEntite,
-        p_entite_id: entiteId
-      });
+      // Essayer d'utiliser la fonction SQL dédiée
+      const { rows } = await query<Record<keyof StatsVues, string>>(
+        `SELECT * FROM stats_vues($1::type_entite_vue, $2)`,
+        [typeEntite, entiteId]
+      );
 
-      if (error) {
-        logger.error(`[VueModel] Erreur RPC stats_vues:`, error);
-        // Fallback: calculer manuellement
-        return await this.getStatsVuesDirectes(typeEntite, entiteId);
+      if (rows.length === 0) {
+        return { ...STATS_VIDES };
       }
 
-      if (data && data.length > 0) {
-        return {
-          vues_totales: data[0].vues_totales || 0,
-          vues_aujourd_hui: data[0].vues_aujourd_hui || 0,
-          vues_7_jours: data[0].vues_7_jours || 0,
-          vues_30_jours: data[0].vues_30_jours || 0
-        };
-      }
-
-      return { vues_totales: 0, vues_aujourd_hui: 0, vues_7_jours: 0, vues_30_jours: 0 };
+      // Les compteurs sont des bigint, renvoyés en chaîne par le driver
+      return {
+        vues_totales: Number(rows[0].vues_totales) || 0,
+        vues_aujourd_hui: Number(rows[0].vues_aujourd_hui) || 0,
+        vues_7_jours: Number(rows[0].vues_7_jours) || 0,
+        vues_30_jours: Number(rows[0].vues_30_jours) || 0
+      };
     } catch (error) {
-      logger.error(`[VueModel] Exception dans getStatsVues:`, error);
-      return await this.getStatsVuesDirectes(typeEntite, entiteId);
+      logger.error('[VueModel] Erreur lors de l\'appel de stats_vues:', error);
+
+      // Fallback: calculer manuellement
+      return this.getStatsVuesDirectes(typeEntite, entiteId);
     }
   }
 
@@ -212,51 +172,28 @@ export class VueModel {
     entiteId: number
   ): Promise<StatsVues> {
     try {
-      const now = new Date();
-      const today = now.toISOString().split('T')[0];
-      const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
-      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
-
-      // Total
-      const { count: total } = await supabaseAdmin
-        .from(this.TABLE_NAME)
-        .select('*', { count: 'exact', head: true })
-        .eq('type_entite', typeEntite)
-        .eq('entite_id', entiteId);
-
-      // Aujourd'hui
-      const { count: aujourdhui } = await supabaseAdmin
-        .from(this.TABLE_NAME)
-        .select('*', { count: 'exact', head: true })
-        .eq('type_entite', typeEntite)
-        .eq('entite_id', entiteId)
-        .gte('date_vue', `${today}T00:00:00`);
-
-      // 7 jours
-      const { count: septJours } = await supabaseAdmin
-        .from(this.TABLE_NAME)
-        .select('*', { count: 'exact', head: true })
-        .eq('type_entite', typeEntite)
-        .eq('entite_id', entiteId)
-        .gte('date_vue', sevenDaysAgo);
-
-      // 30 jours
-      const { count: trenteJours } = await supabaseAdmin
-        .from(this.TABLE_NAME)
-        .select('*', { count: 'exact', head: true })
-        .eq('type_entite', typeEntite)
-        .eq('entite_id', entiteId)
-        .gte('date_vue', thirtyDaysAgo);
+      // Les quatre compteurs sont obtenus en une seule requête
+      const { rows } = await query<Record<keyof StatsVues, string>>(
+        `SELECT
+           COUNT(*) AS vues_totales,
+           COUNT(*) FILTER (WHERE date_vue >= CURRENT_DATE) AS vues_aujourd_hui,
+           COUNT(*) FILTER (WHERE date_vue >= NOW() - INTERVAL '7 days') AS vues_7_jours,
+           COUNT(*) FILTER (WHERE date_vue >= NOW() - INTERVAL '30 days') AS vues_30_jours
+         FROM ${this.TABLE_NAME}
+         WHERE type_entite = $1::type_entite_vue AND entite_id = $2`,
+        [typeEntite, entiteId]
+      );
 
       return {
-        vues_totales: total || 0,
-        vues_aujourd_hui: aujourdhui || 0,
-        vues_7_jours: septJours || 0,
-        vues_30_jours: trenteJours || 0
+        vues_totales: Number(rows[0].vues_totales) || 0,
+        vues_aujourd_hui: Number(rows[0].vues_aujourd_hui) || 0,
+        vues_7_jours: Number(rows[0].vues_7_jours) || 0,
+        vues_30_jours: Number(rows[0].vues_30_jours) || 0
       };
     } catch (error) {
-      logger.error(`[VueModel] Exception dans getStatsVuesDirectes:`, error);
-      return { vues_totales: 0, vues_aujourd_hui: 0, vues_7_jours: 0, vues_30_jours: 0 };
+      logger.error('[VueModel] Exception dans getStatsVuesDirectes:', error);
+
+      return { ...STATS_VIDES };
     }
   }
 
@@ -269,22 +206,18 @@ export class VueModel {
     limite: number = 100
   ): Promise<VueTracking[]> {
     try {
-      const { data, error } = await supabaseAdmin
-        .from(this.TABLE_NAME)
-        .select('*')
-        .eq('type_entite', typeEntite)
-        .eq('entite_id', entiteId)
-        .order('date_vue', { ascending: false })
-        .limit(limite);
+      const { rows } = await query<VueTracking>(
+        `SELECT * FROM ${this.TABLE_NAME}
+         WHERE type_entite = $1::type_entite_vue AND entite_id = $2
+         ORDER BY date_vue DESC
+         LIMIT $3`,
+        [typeEntite, entiteId, limite]
+      );
 
-      if (error) {
-        logger.error(`[VueModel] Erreur lors de la récupération des vues récentes:`, error);
-        return [];
-      }
-
-      return data as VueTracking[];
+      return rows;
     } catch (error) {
-      logger.error(`[VueModel] Exception dans getVuesRecentes:`, error);
+      logger.error('[VueModel] Exception dans getVuesRecentes:', error);
+
       return [];
     }
   }
@@ -294,19 +227,18 @@ export class VueModel {
    */
   static async nettoyerAnciennesVues(joursRetention: number = 90): Promise<number> {
     try {
-      const { data, error } = await supabaseAdmin.rpc('nettoyer_anciennes_vues', {
-        p_jours_retention: joursRetention
-      });
+      const { rows } = await query<{ nettoyer_anciennes_vues: number }>(
+        `SELECT nettoyer_anciennes_vues($1) AS nettoyer_anciennes_vues`,
+        [joursRetention]
+      );
 
-      if (error) {
-        logger.error(`[VueModel] Erreur lors du nettoyage:`, error);
-        return 0;
-      }
+      const supprimees = Number(rows[0]?.nettoyer_anciennes_vues) || 0;
+      logger.debug(`[VueModel] ${supprimees} anciennes vues supprimées`);
 
-      logger.debug(`[VueModel] ${data} anciennes vues supprimées`);
-      return data || 0;
+      return supprimees;
     } catch (error) {
-      logger.error(`[VueModel] Exception dans nettoyerAnciennesVues:`, error);
+      logger.error('[VueModel] Erreur lors du nettoyage:', error);
+
       return 0;
     }
   }
