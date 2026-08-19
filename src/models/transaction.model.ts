@@ -1,10 +1,118 @@
-import { supabaseAdmin } from '../config/supabase';
+import { query, withTransaction } from '../config/database';
 import { Transaction, StatutPaiement } from '../lib/database-types';
-import { logger } from '../utils/logger';
+
+/**
+ * Colonnes modifiables via les méthodes de création et de mise à jour.
+ * Les noms de colonnes étant interpolés dans le SQL, ils sont valides
+ * uniquement s'ils proviennent de cette liste.
+ */
+const COLONNES_AUTORISEES = [
+  'commande_id',
+  'reference_transaction',
+  'montant',
+  'methode_paiement',
+  'statut',
+  'numero_telephone',
+  'reference_operateur',
+  'date_confirmation',
+  'notes',
+  'type_paiement',
+  'description'
+] as const;
+
+/** Colonnes dont le type est un enum et qui nécessitent un cast explicite */
+const COLONNES_ENUM: Record<string, string> = {
+  statut: 'statut_paiement',
+  methode_paiement: 'methode_paiement'
+};
+
+/**
+ * Ne conserve que les champs correspondant à une colonne autorisée.
+ * @param donnees Données fournies par l'appelant
+ */
+const filtrerColonnes = (donnees: Record<string, unknown>): Array<[string, unknown]> =>
+  Object.entries(donnees).filter(([colonne]) =>
+    (COLONNES_AUTORISEES as readonly string[]).includes(colonne)
+  );
+
+/**
+ * Construit le placeholder d'une colonne, en ajoutant le cast d'enum requis.
+ * @param colonne Nom de la colonne
+ * @param position Position du paramètre dans la requête
+ */
+const placeholder = (colonne: string, position: number): string =>
+  COLONNES_ENUM[colonne] ? `$${position}::${COLONNES_ENUM[colonne]}` : `$${position}`;
+
+/**
+ * Jointure de la commande associée, sous forme d'objet JSON.
+ * Reproduit la relation `commande:commande_id(*)` de l'ancien client.
+ */
+const JOINTURE_COMMANDE = `(SELECT row_to_json(c) FROM commandes c WHERE c.id = t.commande_id) AS commande`;
+
+/**
+ * Filtres applicables aux transactions d'une boutique.
+ */
+interface FiltresTransaction {
+  statut?: string;
+  type_paiement?: string;
+  recherche?: string;
+  mois?: string;
+}
+
+/**
+ * Construit les conditions SQL correspondant aux filtres fournis.
+ * @param filters Filtres éventuels
+ * @param params Tableau de paramètres, complété au fil de la construction
+ */
+const construireFiltres = (
+  filters: FiltresTransaction | undefined,
+  params: unknown[]
+): string => {
+  if (!filters) {
+    return '';
+  }
+
+  const conditions: string[] = [];
+  const { statut, type_paiement, recherche, mois } = filters;
+
+  if (statut && statut !== 'all') {
+    params.push(statut);
+    conditions.push(`t.statut = $${params.length}::statut_paiement`);
+  }
+
+  if (type_paiement && type_paiement !== 'all') {
+    params.push(type_paiement);
+    conditions.push(`t.type_paiement = $${params.length}`);
+  }
+
+  if (recherche) {
+    // Le terme est passé en paramètre : les caractères spéciaux de LIKE
+    // sont échappés pour rester littéraux
+    params.push(`%${recherche.replace(/[\\%_]/g, '\\$&')}%`);
+    const motif = `$${params.length}`;
+    conditions.push(
+      `(t.reference_transaction ILIKE ${motif} OR t.numero_telephone ILIKE ${motif} OR t.reference_operateur ILIKE ${motif})`
+    );
+  }
+
+  if (mois) {
+    const [yearStr, monthStr] = mois.split('-');
+    const year = parseInt(yearStr);
+    const month = parseInt(monthStr);
+
+    const startOfMonth = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0, 0));
+    const endOfMonth = new Date(Date.UTC(year, month, 1, 0, 0, 0, 0));
+
+    params.push(startOfMonth, endOfMonth);
+    conditions.push(`t.date_creation >= $${params.length - 1} AND t.date_creation < $${params.length}`);
+  }
+
+  return conditions.length > 0 ? `AND ${conditions.join(' AND ')}` : '';
+};
 
 export class TransactionModel {
   /**
-   * Récupère toutes les transactions
+   * Récupère toutes les transactions avec pagination
    * @param page Numéro de la page
    * @param limite Nombre d'éléments par page
    */
@@ -12,32 +120,19 @@ export class TransactionModel {
     // Calculer l'offset pour la pagination
     const offset = (page - 1) * limite;
 
-    // Récupérer le nombre total de transactions
-    const { count, error: countError } = await supabaseAdmin
-      .from('transactions')
-      .select('*', { count: 'exact', head: true });
+    const { rows: total } = await query<{ count: string }>(`SELECT COUNT(*) AS count FROM transactions`);
 
-    if (countError) {
-      throw new Error(`Erreur lors du comptage des transactions: ${countError.message}`);
-    }
-
-    // Récupérer les transactions avec pagination
-    const { data, error } = await supabaseAdmin
-      .from('transactions')
-      .select(`
-        *,
-        commande:commande_id(*)
-      `)
-      .order('date_creation', { ascending: false })
-      .range(offset, offset + limite - 1);
-
-    if (error) {
-      throw new Error(`Erreur lors de la récupération des transactions: ${error.message}`);
-    }
+    const { rows } = await query<Transaction>(
+      `SELECT t.*, ${JOINTURE_COMMANDE}
+       FROM transactions t
+       ORDER BY t.date_creation DESC
+       LIMIT $1 OFFSET $2`,
+      [limite, offset]
+    );
 
     return {
-      transactions: data || [],
-      total: count || 0
+      transactions: rows,
+      total: Number(total[0].count)
     };
   }
 
@@ -46,20 +141,15 @@ export class TransactionModel {
    * @param commandeId ID de la commande
    */
   static async getTransactionsByCommandeId(commandeId: number): Promise<Transaction[]> {
-    const { data, error } = await supabaseAdmin
-      .from('transactions')
-      .select(`
-        *,
-        commande:commande_id(*)
-      `)
-      .eq('commande_id', commandeId)
-      .order('date_creation', { ascending: false });
+    const { rows } = await query<Transaction>(
+      `SELECT t.*, ${JOINTURE_COMMANDE}
+       FROM transactions t
+       WHERE t.commande_id = $1
+       ORDER BY t.date_creation DESC`,
+      [commandeId]
+    );
 
-    if (error) {
-      throw new Error(`Erreur lors de la récupération des transactions de la commande: ${error.message}`);
-    }
-
-    return data || [];
+    return rows;
   }
 
   /**
@@ -67,86 +157,44 @@ export class TransactionModel {
    * @param boutiqueId ID de la boutique
    * @param page Numéro de la page
    * @param limite Nombre d'éléments par page
+   * @param filters Filtres appliqués
    */
   static async getTransactionsByBoutiqueId(
     boutiqueId: number,
     page: number = 1,
     limite: number = 10,
-    filters?: {
-      statut?: string;
-      type_paiement?: string;
-      recherche?: string;
-      mois?: string;
-    }
+    filters?: FiltresTransaction
   ): Promise<{ transactions: Transaction[], total: number }> {
     const offset = (page - 1) * limite;
 
-    // 1. Construire la requête de comptage
-    let countQuery = supabaseAdmin
-      .from('transactions')
-      .select('*, commande:commande_id!inner(boutique_id)', { count: 'exact', head: true })
-      .eq('commande.boutique_id', boutiqueId);
+    const paramsCount: unknown[] = [boutiqueId];
+    const conditions = construireFiltres(filters, paramsCount);
 
-    // 2. Construire la requête de données
-    let dataQuery = supabaseAdmin
-      .from('transactions')
-      .select(`
-        *,
-        commande:commande_id!inner(*)
-      `)
-      .eq('commande.boutique_id', boutiqueId)
-      .order('date_creation', { ascending: false });
+    const { rows: total } = await query<{ count: string }>(
+      `SELECT COUNT(*) AS count
+       FROM transactions t
+       JOIN commandes c ON c.id = t.commande_id
+       WHERE c.boutique_id = $1 ${conditions}`,
+      paramsCount
+    );
 
-    // Appliquer les filtres communs
-    if (filters) {
-      const { statut, type_paiement, recherche, mois } = filters;
+    const paramsData: unknown[] = [boutiqueId];
+    const conditionsData = construireFiltres(filters, paramsData);
+    paramsData.push(limite, offset);
 
-      if (statut && statut !== 'all') {
-        countQuery = countQuery.eq('statut', statut);
-        dataQuery = dataQuery.eq('statut', statut);
-      }
-
-      if (type_paiement && type_paiement !== 'all') {
-        countQuery = countQuery.eq('type_paiement', type_paiement);
-        dataQuery = dataQuery.eq('type_paiement', type_paiement);
-      }
-
-      if (recherche) {
-        const searchFilter = `reference_transaction.ilike.%${recherche}%,numero_telephone.ilike.%${recherche}%,reference_operateur.ilike.%${recherche}%`;
-        countQuery = countQuery.or(searchFilter);
-        dataQuery = dataQuery.or(searchFilter);
-      }
-
-      if (mois) {
-        const [yearStr, monthStr] = mois.split('-');
-        const year = parseInt(yearStr);
-        const month = parseInt(monthStr);
-
-        const startOfMonth = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0, 0));
-        const endOfMonth = new Date(Date.UTC(year, month, 1, 0, 0, 0, 0));
-
-        countQuery = countQuery.gte('date_creation', startOfMonth.toISOString()).lt('date_creation', endOfMonth.toISOString());
-        dataQuery = dataQuery.gte('date_creation', startOfMonth.toISOString()).lt('date_creation', endOfMonth.toISOString());
-      }
-    }
-
-    // Exécuter le comptage
-    const { count, error: countError } = await countQuery;
-
-    if (countError) {
-      throw new Error(`Erreur lors du comptage des transactions: ${countError.message}`);
-    }
-
-    // Exécuter la récupération avec pagination
-    const { data, error } = await dataQuery.range(offset, offset + limite - 1);
-
-    if (error) {
-      throw new Error(`Erreur lors de la récupération des transactions: ${error.message}`);
-    }
+    const { rows } = await query<Transaction>(
+      `SELECT t.*, row_to_json(c) AS commande
+       FROM transactions t
+       JOIN commandes c ON c.id = t.commande_id
+       WHERE c.boutique_id = $1 ${conditionsData}
+       ORDER BY t.date_creation DESC
+       LIMIT $${paramsData.length - 1} OFFSET $${paramsData.length}`,
+      paramsData
+    );
 
     return {
-      transactions: data || [],
-      total: count || 0
+      transactions: rows,
+      total: Number(total[0].count)
     };
   }
 
@@ -157,59 +205,21 @@ export class TransactionModel {
    */
   static async getTransactionsForExport(
     boutiqueId: number,
-    filters?: {
-      statut?: string;
-      type_paiement?: string;
-      recherche?: string;
-      mois?: string;
-    }
+    filters?: FiltresTransaction
   ): Promise<Transaction[]> {
-    let dataQuery = supabaseAdmin
-      .from('transactions')
-      .select(`
-        *,
-        commande:commande_id!inner(*)
-      `)
-      .eq('commande.boutique_id', boutiqueId)
-      .order('date_creation', { ascending: false });
+    const params: unknown[] = [boutiqueId];
+    const conditions = construireFiltres(filters, params);
 
-    // Appliquer les filtres communs
-    if (filters) {
-      const { statut, type_paiement, recherche, mois } = filters;
+    const { rows } = await query<Transaction>(
+      `SELECT t.*, row_to_json(c) AS commande
+       FROM transactions t
+       JOIN commandes c ON c.id = t.commande_id
+       WHERE c.boutique_id = $1 ${conditions}
+       ORDER BY t.date_creation DESC`,
+      params
+    );
 
-      if (statut && statut !== 'all') {
-        dataQuery = dataQuery.eq('statut', statut);
-      }
-
-      if (type_paiement && type_paiement !== 'all') {
-        dataQuery = dataQuery.eq('type_paiement', type_paiement);
-      }
-
-      if (recherche) {
-        const searchFilter = `reference_transaction.ilike.%${recherche}%,numero_telephone.ilike.%${recherche}%,reference_operateur.ilike.%${recherche}%`;
-        dataQuery = dataQuery.or(searchFilter);
-      }
-
-      if (mois) {
-        const [yearStr, monthStr] = mois.split('-');
-        const year = parseInt(yearStr);
-        const month = parseInt(monthStr);
-
-        const startOfMonth = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0, 0));
-        const endOfMonth = new Date(Date.UTC(year, month, 1, 0, 0, 0, 0));
-
-        dataQuery = dataQuery.gte('date_creation', startOfMonth.toISOString()).lt('date_creation', endOfMonth.toISOString());
-      }
-    }
-
-    // Exécuter la récupération
-    const { data, error } = await dataQuery;
-
-    if (error) {
-      throw new Error(`Erreur lors de la récupération des transactions pour export: ${error.message}`);
-    }
-
-    return data || [];
+    return rows;
   }
 
   /**
@@ -217,89 +227,62 @@ export class TransactionModel {
    * @param id ID de la transaction
    */
   static async getTransactionById(id: number): Promise<Transaction | null> {
-    const { data, error } = await supabaseAdmin
-      .from('transactions')
-      .select(`
-        *,
-        commande:commande_id(*)
-      `)
-      .eq('id', id)
-      .single();
+    const { rows } = await query<Transaction>(
+      `SELECT t.*, ${JOINTURE_COMMANDE} FROM transactions t WHERE t.id = $1`,
+      [id]
+    );
 
-    if (error && error.code !== 'PGRST116') {
-      throw new Error(`Erreur lors de la récupération de la transaction: ${error.message}`);
-    }
-
-    return data;
+    return rows[0] ?? null;
   }
 
   /**
    * Récupère une transaction par sa référence
-   * @param reference Référence unique de la transaction
+   * @param reference Référence de la transaction
    */
   static async getTransactionByReference(reference: string): Promise<Transaction | null> {
-    const { data, error } = await supabaseAdmin
-      .from('transactions')
-      .select(`
-        *,
-        commande:commande_id(*)
-      `)
-      .eq('reference_transaction', reference)
-      .single();
+    const { rows } = await query<Transaction>(
+      `SELECT t.*, ${JOINTURE_COMMANDE} FROM transactions t WHERE t.reference_transaction = $1`,
+      [reference]
+    );
 
-    if (error && error.code !== 'PGRST116') {
-      throw new Error(`Erreur lors de la récupération de la transaction: ${error.message}`);
-    }
-
-    return data;
+    return rows[0] ?? null;
   }
 
   /**
-   * Récupère une transaction par sa référence opérateur (bill_id)
-   * @param referenceOperateur Référence fournie par l'opérateur
+   * Récupère une transaction par la référence fournie par l'opérateur
+   * @param referenceOperateur Référence de l'opérateur
    */
   static async findByReferenceOperateur(referenceOperateur: string): Promise<Transaction | null> {
-    try {
-      const { data, error } = await supabaseAdmin
-        .from('transactions')
-        .select(`
-          *,
-          commande:commande_id(*)
-        `)
-        .eq('reference_operateur', referenceOperateur)
-        .single();
+    const { rows } = await query<Transaction>(
+      `SELECT t.*, ${JOINTURE_COMMANDE} FROM transactions t WHERE t.reference_operateur = $1`,
+      [referenceOperateur]
+    );
 
-      if (error) {
-        if (error.code === 'PGRST116') {
-          return null;
-        }
-        logger.error(`[TransactionModel] Erreur recherche reference_operateur:`, error.message);
-        throw new Error(`Erreur lors de la récupération de la transaction: ${error.message}`);
-      }
-
-      return data;
-    } catch (error) {
-      logger.error(`[TransactionModel] Exception dans findByReferenceOperateur:`, error);
-      throw error;
-    }
+    return rows[0] ?? null;
   }
 
   /**
    * Crée une nouvelle transaction
-   * @param transaction Données de la transaction à créer
+   * @param transaction Données de la transaction
    */
   static async createTransaction(transaction: Omit<Transaction, 'id' | 'date_creation' | 'date_modification'>): Promise<Transaction> {
-    const { data, error } = await supabaseAdmin
-      .from('transactions')
-      .insert([transaction])
-      .select()
-      .single();
+    const champs = filtrerColonnes(transaction as Record<string, unknown>);
 
-    if (error) {
-      throw new Error(`Erreur lors de la création de la transaction: ${error.message}`);
+    if (champs.length === 0) {
+      throw new Error('Erreur lors de la création de la transaction: aucune donnée fournie');
     }
 
-    return data;
+    const colonnes = champs.map(([colonne]) => colonne);
+    const placeholders = champs.map(([colonne], i) => placeholder(colonne, i + 1));
+
+    const { rows } = await query<Transaction>(
+      `INSERT INTO transactions (${colonnes.join(', ')}, date_creation, date_modification)
+       VALUES (${placeholders.join(', ')}, NOW(), NOW())
+       RETURNING *`,
+      champs.map(([, valeur]) => valeur)
+    );
+
+    return rows[0];
   }
 
   /**
@@ -315,38 +298,38 @@ export class TransactionModel {
     referenceOperateur?: string,
     notes?: string
   ): Promise<Transaction> {
-    const updateData: any = {
-      statut,
-      date_modification: new Date()
-    };
+    const affectations = ['statut = $1::statut_paiement', 'date_modification = NOW()'];
+    const params: unknown[] = [statut];
 
     // Ajouter la date de confirmation si le statut est "payé"
     if (statut === 'paye') {
-      updateData.date_confirmation = new Date();
+      affectations.push('date_confirmation = NOW()');
     }
 
     // Ajouter la référence opérateur si fournie
     if (referenceOperateur) {
-      updateData.reference_operateur = referenceOperateur;
+      params.push(referenceOperateur);
+      affectations.push(`reference_operateur = $${params.length}`);
     }
 
     // Ajouter les notes si fournies
     if (notes) {
-      updateData.notes = notes;
+      params.push(notes);
+      affectations.push(`notes = $${params.length}`);
     }
 
-    const { data, error } = await supabaseAdmin
-      .from('transactions')
-      .update(updateData)
-      .eq('id', id)
-      .select()
-      .single();
+    params.push(id);
 
-    if (error) {
-      throw new Error(`Erreur lors de la mise à jour du statut de la transaction: ${error.message}`);
+    const { rows } = await query<Transaction>(
+      `UPDATE transactions SET ${affectations.join(', ')} WHERE id = $${params.length} RETURNING *`,
+      params
+    );
+
+    if (!rows[0]) {
+      throw new Error('Erreur lors de la mise à jour du statut de la transaction: transaction introuvable');
     }
 
-    return data;
+    return rows[0];
   }
 
   /**
@@ -359,30 +342,36 @@ export class TransactionModel {
     transaction: Partial<Omit<Transaction, 'id' | 'date_creation' | 'date_modification'>>
   ): Promise<Transaction> {
     // Filtrer les valeurs vides et undefined pour éviter les erreurs d'enum
-    const cleanedTransaction: any = {};
+    const champs = filtrerColonnes(transaction as Record<string, unknown>)
+      .filter(([, valeur]) => valeur !== '' && valeur !== null && valeur !== undefined);
 
-    for (const [key, value] of Object.entries(transaction)) {
-      // Ne garder que les valeurs non vides
-      if (value !== '' && value !== null && value !== undefined) {
-        cleanedTransaction[key] = value;
+    if (champs.length === 0) {
+      const { rows } = await query<Transaction>(
+        `UPDATE transactions SET date_modification = NOW() WHERE id = $1 RETURNING *`,
+        [id]
+      );
+
+      if (!rows[0]) {
+        throw new Error('Erreur lors de la mise à jour de la transaction: transaction introuvable');
       }
+
+      return rows[0];
     }
 
-    const { data, error } = await supabaseAdmin
-      .from('transactions')
-      .update({
-        ...cleanedTransaction,
-        date_modification: new Date()
-      })
-      .eq('id', id)
-      .select()
-      .single();
+    const affectations = champs.map(([colonne], i) => `${colonne} = ${placeholder(colonne, i + 1)}`);
 
-    if (error) {
-      throw new Error(`Erreur lors de la mise à jour de la transaction: ${error.message}`);
+    const { rows } = await query<Transaction>(
+      `UPDATE transactions SET ${affectations.join(', ')}, date_modification = NOW()
+       WHERE id = $${champs.length + 1}
+       RETURNING *`,
+      [...champs.map(([, valeur]) => valeur), id]
+    );
+
+    if (!rows[0]) {
+      throw new Error('Erreur lors de la mise à jour de la transaction: transaction introuvable');
     }
 
-    return data;
+    return rows[0];
   }
 
   /**
@@ -390,54 +379,58 @@ export class TransactionModel {
    * @param startDate Date de début (optionnel)
    * @param endDate Date de fin (optionnel)
    */
-  static async getTransactionStats(startDate?: Date, endDate?: Date): Promise<any> {
-    // Construire la requête de base
-    let query = supabaseAdmin
-      .from('transactions')
-      .select('statut, methode_paiement, montant');
+  static async getTransactionStats(startDate?: Date, endDate?: Date): Promise<{
+    total: number;
+    totalAmount: number;
+    byStatus: Record<string, number>;
+    byMethod: Record<string, number>;
+    successRate: number;
+  }> {
+    const conditions: string[] = [];
+    const params: unknown[] = [];
 
     // Ajouter les filtres de date si spécifiés
     if (startDate) {
-      query = query.gte('date_creation', startDate.toISOString());
+      params.push(startDate);
+      conditions.push(`date_creation >= $${params.length}`);
     }
 
     if (endDate) {
-      query = query.lte('date_creation', endDate.toISOString());
+      params.push(endDate);
+      conditions.push(`date_creation <= $${params.length}`);
     }
 
-    // Exécuter la requête
-    const { data, error } = await query;
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
-    if (error) {
-      throw new Error(`Erreur lors de la récupération des statistiques de transactions: ${error.message}`);
-    }
+    // Les agrégats sont calculés par la base plutôt que ligne à ligne
+    const { rows } = await query<{ statut: string; methode_paiement: string; n: string; montant: string }>(
+      `SELECT statut::text AS statut, methode_paiement::text AS methode_paiement,
+              COUNT(*) AS n, COALESCE(SUM(montant), 0) AS montant
+       FROM transactions ${where}
+       GROUP BY statut, methode_paiement`,
+      params
+    );
 
-    // Calculer les statistiques
     const stats = {
-      total: data.length,
-      totalAmount: data.reduce((sum, t) => sum + t.montant, 0),
+      total: 0,
+      totalAmount: 0,
       byStatus: {} as Record<string, number>,
       byMethod: {} as Record<string, number>,
       successRate: 0
     };
 
-    // Compter par statut
-    data.forEach(t => {
-      const statut = t.statut as string;
-      const methode = t.methode_paiement as string;
-
-      if (!stats.byStatus[statut]) {
-        stats.byStatus[statut] = 0;
-      }
-      stats.byStatus[statut]++;
-
-      if (!stats.byMethod[methode]) {
-        stats.byMethod[methode] = 0;
-      }
-      stats.byMethod[methode]++;
-    });
+    for (const ligne of rows) {
+      const n = Number(ligne.n);
+      stats.total += n;
+      stats.totalAmount += Number(ligne.montant);
+      stats.byStatus[ligne.statut] = (stats.byStatus[ligne.statut] || 0) + n;
+      stats.byMethod[ligne.methode_paiement] = (stats.byMethod[ligne.methode_paiement] || 0) + n;
+    }
 
     // Calculer le taux de réussite
+    // NOTE : ce statut ne fait pas partie de l'enum `statut_paiement`
+    // (en_attente, paye, echec, rembourse, partiellement_paye). Le taux vaut
+    // donc toujours 0. Comportement conservé tel quel lors de la migration.
     const payeStatus = 'processed';
     const successCount = stats.byStatus[payeStatus] || 0;
     stats.successRate = stats.total > 0 ? (successCount / stats.total) * 100 : 0;
@@ -449,32 +442,21 @@ export class TransactionModel {
    * Récupère les transactions encore en_attente au-delà du délai de réconciliation.
    */
   static async getStalePendingTransactions(timeoutMinutes: number): Promise<Transaction[]> {
-    const threshold = new Date(Date.now() - timeoutMinutes * 60 * 1000).toISOString();
+    const { rows } = await query<Transaction>(
+      `SELECT t.*,
+              (SELECT row_to_json(x) FROM (
+                 SELECT c.id, c.numero_commande, c.statut, c.client_nom, c.client_telephone,
+                        c.client_adresse, c.client_ville, c.client_commune
+                 FROM commandes c WHERE c.id = t.commande_id
+               ) x) AS commande
+       FROM transactions t
+       WHERE t.statut = 'en_attente'
+         AND t.date_creation < NOW() - ($1 || ' minutes')::interval
+         AND t.reference_operateur IS NOT NULL`,
+      [String(timeoutMinutes)]
+    );
 
-    const { data, error } = await supabaseAdmin
-      .from('transactions')
-      .select(`
-        *,
-        commande:commande_id(
-          id,
-          numero_commande,
-          statut,
-          client_nom,
-          client_telephone,
-          client_adresse,
-          client_ville,
-          client_commune
-        )
-      `)
-      .eq('statut', 'en_attente')
-      .lt('date_creation', threshold)
-      .not('reference_operateur', 'is', null);
-
-    if (error) {
-      throw new Error(`Erreur lors de la récupération des transactions à réconcilier: ${error.message}`);
-    }
-
-    return (data || []) as Transaction[];
+    return rows;
   }
 
   /**
@@ -486,40 +468,31 @@ export class TransactionModel {
     commandeId: number | null | undefined,
     note: string
   ): Promise<Transaction | null> {
-    const { data: transactionUpdated, error: updateError } = await supabaseAdmin
-      .from('transactions')
-      .update({
-        statut: 'echec' as StatutPaiement,
-        notes: note,
-        date_modification: new Date()
-      })
-      .eq('id', transactionId)
-      .select()
-      .single();
+    // Les deux mises à jour sont liées : elles doivent aboutir ensemble
+    return withTransaction(async (client) => {
+      const { rows } = await client.query<Transaction>(
+        `UPDATE transactions
+         SET statut = 'echec'::statut_paiement, notes = $1, date_modification = NOW()
+         WHERE id = $2
+         RETURNING *`,
+        [note, transactionId]
+      );
 
-    if (updateError) {
-      throw new Error(`Erreur mise à jour transaction ${transactionId}: ${updateError.message}`);
-    }
+      if (!rows[0]) {
+        throw new Error(`Erreur mise à jour transaction ${transactionId}: transaction introuvable`);
+      }
 
-    if (commandeId) {
-      const { error: commandeError } = await supabaseAdmin
-        .from('commandes')
-        .update({
-          statut: 'annulee',
-          date_modification: new Date()
-        })
-        .eq('id', commandeId)
-        .eq('statut', 'en_attente');
-
-      if (commandeError) {
-        console.error(
-          `[TransactionModel] Erreur annulation commande ${commandeId} après échec paiement:`,
-          commandeError
+      if (commandeId) {
+        await client.query(
+          `UPDATE commandes
+           SET statut = 'annulee'::statut_commande, date_modification = NOW()
+           WHERE id = $1 AND statut = 'en_attente'::statut_commande`,
+          [commandeId]
         );
       }
-    }
 
-    return transactionUpdated as Transaction;
+      return rows[0];
+    });
   }
 
   /**
@@ -530,6 +503,7 @@ export class TransactionModel {
     console.warn(
       '[TransactionModel] expirerTransactionsEnAttente est déprécié — utiliser la réconciliation Ebilling'
     );
+
     return { count: 0, transactions: [] };
   }
 }

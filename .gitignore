@@ -163,3 +163,9 @@ chk2.ts
 tg.ts
 rpcsig.ts
 fix-cnt.ts
+audit-compteur.ts
+sync-compteur.ts
+audit2.ts
+compteur-backup.json
+verif-sync.ts
+chk3.ts
