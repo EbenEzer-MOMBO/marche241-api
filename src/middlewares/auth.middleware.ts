@@ -288,14 +288,10 @@ export const isCommuneOwner = async (req: Request, res: Response, next: NextFunc
       });
     }
 
-    const { supabaseAdmin } = require('../config/supabase');
-    const { data: commune, error } = await supabaseAdmin
-      .from('communes_livraison')
-      .select('boutique_id')
-      .eq('id', communeId)
-      .single();
+    const { CommuneModel } = require('../models/commune.model');
+    const boutiqueId = await CommuneModel.getBoutiqueIdByCommuneId(communeId);
 
-    if (error || !commune) {
+    if (!boutiqueId) {
       return res.status(404).json({
         success: false,
         message: 'Commune non trouvée'
@@ -303,7 +299,7 @@ export const isCommuneOwner = async (req: Request, res: Response, next: NextFunc
     }
 
     const { BoutiqueModel } = require('../models/boutique.model');
-    const boutique = await BoutiqueModel.getBoutiqueById(commune.boutique_id);
+    const boutique = await BoutiqueModel.getBoutiqueById(boutiqueId);
     if (!boutique) {
       return res.status(404).json({
         success: false,

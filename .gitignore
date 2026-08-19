@@ -142,3 +142,16 @@ url-backup.json
 final-check.ts
 dump-urls.ts
 urls-check.txt
+scan-rest.ts
+scan2.ts
+variant-urls.txt
+scan3.ts
+variant-targets.txt
+rewrite-variants.ts
+variant-backup.json
+audit-final.ts
+cdn-urls.txt
+schema.ts
+trig.ts
+dm.ts
+test-*.ts
