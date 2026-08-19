@@ -1,6 +1,105 @@
-import { supabaseAdmin } from '../config/supabase';
+import { query } from '../config/database';
 import { Produit } from '../lib/database-types';
 import { logger } from '../utils/logger';
+
+/**
+ * Jointures de la boutique et de la catégorie, sous forme d'objets JSON.
+ * Reproduit les relations `boutique:boutique_id(*)` et `categorie:categorie_id(*)`
+ * de l'ancien client.
+ */
+const JOINTURES = `
+  (SELECT row_to_json(b) FROM boutiques b WHERE b.id = p.boutique_id) AS boutique,
+  (SELECT row_to_json(c) FROM categories c WHERE c.id = p.categorie_id) AS categorie`;
+
+/**
+ * Colonnes autorisées pour le tri des listes paginées.
+ * Le nom de colonne étant interpolé dans le SQL, toute valeur hors de
+ * cette liste est rejetée au profit du tri par défaut.
+ */
+const COLONNES_TRI = [
+  'id',
+  'nom',
+  'slug',
+  'prix',
+  'quantite_stock',
+  'note_moyenne',
+  'nombre_avis',
+  'nombre_vues',
+  'nombre_ventes',
+  'statut',
+  'date_creation',
+  'date_modification'
+] as const;
+
+/**
+ * Colonnes modifiables via les méthodes de création et de mise à jour.
+ */
+const COLONNES_AUTORISEES = [
+  'nom',
+  'slug',
+  'description',
+  'description_courte',
+  'prix',
+  'prix_original',
+  'sku',
+  'boutique_id',
+  'categorie_id',
+  'images',
+  'image_principale',
+  'variants',
+  'en_stock',
+  'quantite_stock',
+  'poids',
+  'dimensions',
+  'tags',
+  'note_moyenne',
+  'nombre_avis',
+  'nombre_vues',
+  'nombre_ventes',
+  'est_nouveau',
+  'est_en_promotion',
+  'est_featured',
+  'statut'
+] as const;
+
+/** Colonnes de type JSON, à sérialiser avant envoi */
+const COLONNES_JSON = ['images', 'variants', 'dimensions', 'tags'];
+
+/**
+ * Ne conserve que les champs correspondant à une colonne autorisée.
+ * @param donnees Données fournies par l'appelant
+ */
+const filtrerColonnes = (donnees: Record<string, unknown>): Array<[string, unknown]> =>
+  Object.entries(donnees).filter(([colonne]) =>
+    (COLONNES_AUTORISEES as readonly string[]).includes(colonne)
+  );
+
+/**
+ * Prépare la valeur d'une colonne pour l'envoi en base : les colonnes JSON
+ * sont sérialisées, les autres passent telles quelles.
+ * @param colonne Nom de la colonne
+ * @param valeur Valeur fournie
+ */
+const preparerValeur = (colonne: string, valeur: unknown): unknown => {
+  if (!COLONNES_JSON.includes(colonne)) {
+    return valeur;
+  }
+
+  return valeur === null || valeur === undefined ? null : JSON.stringify(valeur);
+};
+
+/**
+ * Construit le placeholder d'une colonne, avec le cast requis par son type.
+ * @param colonne Nom de la colonne
+ * @param position Position du paramètre dans la requête
+ */
+const placeholder = (colonne: string, position: number): string => {
+  if (COLONNES_JSON.includes(colonne)) {
+    return `$${position}::json`;
+  }
+
+  return colonne === 'statut' ? `$${position}::statut_produit` : `$${position}`;
+};
 
 export class ProduitModel {
   /**
@@ -44,56 +143,54 @@ export class ProduitModel {
     
     try {
       // Récupérer le produit actuel pour vérifier le stock disponible
-      const { data: produit, error: produitError } = await supabaseAdmin
-        .from('produits')
-        .select('stock, nombre_ventes')
-        .eq('id', produitId)
-        .single();
-      
-      if (produitError) {
-        logger.error(`[ProduitModel] Erreur lors de la récupération du produit: ${produitError.message}`);
-        throw new Error(`Erreur lors de la récupération du produit: ${produitError.message}`);
-      }
-      
-      if (!produit) {
+      const { rows: produits } = await query<{ quantite_stock: number; nombre_ventes: number }>(
+        `SELECT quantite_stock, nombre_ventes FROM produits WHERE id = $1`,
+        [produitId]
+      );
+
+      if (!produits[0]) {
         logger.error(`[ProduitModel] Produit non trouvé: ${produitId}`);
         throw new Error(`Produit non trouvé: ${produitId}`);
       }
-      
+
+      const stockActuel = produits[0].quantite_stock ?? 0;
+
       // Vérifier si le stock est suffisant
-      const nouveauStock = produit.stock - quantite;
+      const nouveauStock = stockActuel - quantite;
       if (nouveauStock < 0) {
-        logger.error(`[ProduitModel] Stock insuffisant pour le produit ${produitId}: ${produit.stock} < ${quantite}`);
+        logger.error(`[ProduitModel] Stock insuffisant pour le produit ${produitId}: ${stockActuel} < ${quantite}`);
         throw new Error(`Stock insuffisant pour le produit ${produitId}`);
       }
-      
-      // Préparer les données de mise à jour
-      const updateData: any = {
-        stock: nouveauStock,
-        date_modification: new Date()
-      };
-      
+
+      // Le décrément est appliqué par la base, et la condition sur le stock
+      // rejouée dans la requête : deux ventes concurrentes ne peuvent pas
+      // faire passer le stock sous zéro
+      const affectations = [
+        'quantite_stock = quantite_stock - $1',
+        'en_stock = (quantite_stock - $1) > 0',
+        'date_modification = NOW()'
+      ];
+
       // Incrémenter nombre_ventes seulement lors d'une vente (quantite > 0)
       if (quantite > 0) {
-        updateData.nombre_ventes = (produit.nombre_ventes || 0) + quantite;
-        logger.debug(`[ProduitModel] Incrémentation nombre_ventes: ${produit.nombre_ventes || 0} -> ${updateData.nombre_ventes}`);
+        affectations.push('nombre_ventes = COALESCE(nombre_ventes, 0) + $1');
       }
-      
-      // Mettre à jour le stock
-      const { data: produitMisAJour, error: updateError } = await supabaseAdmin
-        .from('produits')
-        .update(updateData)
-        .eq('id', produitId)
-        .select()
-        .single();
-      
-      if (updateError) {
-        logger.error(`[ProduitModel] Erreur lors de la mise à jour du stock: ${updateError.message}`);
-        throw new Error(`Erreur lors de la mise à jour du stock: ${updateError.message}`);
+
+      const { rows } = await query<Produit>(
+        `UPDATE produits SET ${affectations.join(', ')}
+         WHERE id = $2 AND quantite_stock - $1 >= 0
+         RETURNING *`,
+        [quantite, produitId]
+      );
+
+      if (!rows[0]) {
+        logger.error(`[ProduitModel] Stock insuffisant pour le produit ${produitId} (mise à jour concurrente)`);
+        throw new Error(`Stock insuffisant pour le produit ${produitId}`);
       }
-      
-      logger.debug(`[ProduitModel] Stock mis à jour pour le produit ${produitId}: ${produit.stock} -> ${nouveauStock}`);
-      return produitMisAJour;
+
+      logger.debug(`[ProduitModel] Stock mis à jour pour le produit ${produitId}: ${stockActuel} -> ${nouveauStock}`);
+
+      return rows[0];
     } catch (error) {
       logger.error(`[ProduitModel] Exception dans updateStock:`, error);
       throw error;
@@ -168,6 +265,48 @@ export class ProduitModel {
     return total;
   }
 
+  /**
+   * Enregistre les variants recalculés et la quantité totale correspondante.
+   * @param produitId ID du produit
+   * @param variants Variants mis à jour, tels qu'ils seront stockés
+   * @param quantiteTotale Stock total recalculé à partir des variants
+   * @param quantite Quantité vendue (positive) ou restituée (négative)
+   */
+  private static async enregistrerVariants(
+    produitId: number,
+    variants: unknown,
+    quantiteTotale: number,
+    quantite: number
+  ): Promise<Produit> {
+    const affectations = [
+      'variants = $1::json',
+      'quantite_stock = $2',
+      'en_stock = $2 > 0',
+      'date_modification = NOW()'
+    ];
+
+    // Incrémenter nombre_ventes seulement lors d'une vente (quantite > 0)
+    if (quantite > 0) {
+      affectations.push('nombre_ventes = COALESCE(nombre_ventes, 0) + $4');
+    }
+
+    const params: unknown[] = [JSON.stringify(variants), quantiteTotale, produitId];
+    if (quantite > 0) {
+      params.push(quantite);
+    }
+
+    const { rows } = await query<Produit>(
+      `UPDATE produits SET ${affectations.join(', ')} WHERE id = $3 RETURNING *`,
+      params
+    );
+
+    if (!rows[0]) {
+      throw new Error(`Erreur lors de la mise à jour du stock: produit ${produitId} introuvable`);
+    }
+
+    return rows[0];
+  }
+
   static async updateStockWithVariants(produitId: number, quantite: number, variantsSelectionnes: any): Promise<Produit> {
     logger.debug(`[ProduitModel] Mise à jour du stock avec variants pour le produit ${produitId}`, {
       quantite,
@@ -176,14 +315,17 @@ export class ProduitModel {
     
     try {
       // Récupérer le produit avec ses variants
-      const { data: produit, error: produitError } = await supabaseAdmin
-        .from('produits')
-        .select('id, variants, quantite_stock, nombre_ventes')
-        .eq('id', produitId)
-        .single();
-      
-      if (produitError || !produit) {
-        logger.error(`[ProduitModel] Erreur lors de la récupération du produit: ${produitError?.message}`);
+      const { rows: produits } = await query<{
+        id: number; variants: unknown; quantite_stock: number; nombre_ventes: number;
+      }>(
+        `SELECT id, variants, quantite_stock, nombre_ventes FROM produits WHERE id = $1`,
+        [produitId]
+      );
+
+      const produit = produits[0];
+
+      if (!produit) {
+        logger.error(`[ProduitModel] Produit non trouvé: ${produitId}`);
         throw new Error(`Produit non trouvé: ${produitId}`);
       }
 
@@ -297,34 +439,12 @@ export class ProduitModel {
           const quantiteTotale = this.recalculerStockTotal(nouveauxVariantsData);
           logger.debug(`[ProduitModel] Nouvelle quantité totale calculée: ${quantiteTotale}`);
           
-          // Préparer les données de mise à jour
-          const updateData: any = {
-            variants: nouveauxVariantsData,
-            quantite_stock: quantiteTotale,
-            en_stock: quantiteTotale > 0,
-            date_modification: new Date()
-          };
-          
-          // Incrémenter nombre_ventes seulement lors d'une vente (quantite > 0)
-          if (quantite > 0) {
-            updateData.nombre_ventes = (produit.nombre_ventes || 0) + quantite;
-            logger.debug(`[ProduitModel] Incrémentation nombre_ventes: ${produit.nombre_ventes || 0} -> ${updateData.nombre_ventes}`);
-          }
-          
-          // Mettre à jour le produit
-          const { data: produitMisAJour, error: updateError } = await supabaseAdmin
-            .from('produits')
-            .update(updateData)
-            .eq('id', produitId)
-            .select()
-            .single();
-          
-          if (updateError) {
-            logger.error(`[ProduitModel] Erreur lors de la mise à jour: ${updateError.message}`);
-            throw new Error(`Erreur lors de la mise à jour du stock: ${updateError.message}`);
-          }
+          const produitMisAJour = await this.enregistrerVariants(
+            produitId, nouveauxVariantsData, quantiteTotale, quantite
+          );
 
           logger.debug(`[ProduitModel] Stock avec variants mis à jour avec succès (format moderne)`);
+
           return produitMisAJour;
         }
       }
@@ -367,34 +487,12 @@ export class ProduitModel {
           const quantiteTotale = nouveauxVariants.reduce((sum: number, v: any) => sum + (v.quantite || 0), 0);
           logger.debug(`[ProduitModel] Nouvelle quantité totale calculée: ${quantiteTotale}`);
           
-          // Préparer les données de mise à jour
-          const updateData: any = {
-            variants: nouveauxVariantsData,
-            quantite_stock: quantiteTotale,
-            en_stock: quantiteTotale > 0,
-            date_modification: new Date()
-          };
-          
-          // Incrémenter nombre_ventes seulement lors d'une vente (quantite > 0)
-          if (quantite > 0) {
-            updateData.nombre_ventes = (produit.nombre_ventes || 0) + quantite;
-            logger.debug(`[ProduitModel] Incrémentation nombre_ventes: ${produit.nombre_ventes || 0} -> ${updateData.nombre_ventes}`);
-          }
-          
-          // Mettre à jour le produit
-          const { data: produitMisAJour, error: updateError } = await supabaseAdmin
-            .from('produits')
-            .update(updateData)
-            .eq('id', produitId)
-            .select()
-            .single();
-          
-          if (updateError) {
-            logger.error(`[ProduitModel] Erreur lors de la mise à jour: ${updateError.message}`);
-            throw new Error(`Erreur lors de la mise à jour du stock: ${updateError.message}`);
-          }
+          const produitMisAJour = await this.enregistrerVariants(
+            produitId, nouveauxVariantsData, quantiteTotale, quantite
+          );
 
           logger.debug(`[ProduitModel] Stock avec variants mis à jour avec succès (format intermédiaire)`);
+
           return produitMisAJour;
         }
       }
@@ -445,34 +543,13 @@ export class ProduitModel {
 
           logger.debug(`[ProduitModel] Nouvelle quantité totale calculée: ${quantiteTotale}`);
 
-          // Préparer les données de mise à jour
-          const updateData: any = {
-            variants: nouveauxVariants,
-            quantite_stock: quantiteTotale,
-            en_stock: quantiteTotale > 0,
-            date_modification: new Date()
-          };
-          
-          // Incrémenter nombre_ventes seulement lors d'une vente (quantite > 0)
-          if (quantite > 0) {
-            updateData.nombre_ventes = (produit.nombre_ventes || 0) + quantite;
-            logger.debug(`[ProduitModel] Incrémentation nombre_ventes: ${produit.nombre_ventes || 0} -> ${updateData.nombre_ventes}`);
-          }
-
-          // Mettre à jour le produit avec les nouveaux variants et la quantité totale
-          const { data: produitMisAJour, error: updateError } = await supabaseAdmin
-            .from('produits')
-            .update(updateData)
-            .eq('id', produitId)
-            .select()
-            .single();
-          
-          if (updateError) {
-            logger.error(`[ProduitModel] Erreur lors de la mise à jour: ${updateError.message}`);
-            throw new Error(`Erreur lors de la mise à jour du stock: ${updateError.message}`);
-          }
+          // L'ancien format stocke directement le tableau de variants
+          const produitMisAJour = await this.enregistrerVariants(
+            produitId, nouveauxVariants, quantiteTotale, quantite
+          );
 
           logger.debug(`[ProduitModel] Stock avec variants mis à jour avec succès (ancien format)`);
+
           return produitMisAJour;
         }
       }
@@ -497,32 +574,24 @@ export class ProduitModel {
     const offset = (page - 1) * limite;
     
     // Récupérer le nombre total de produits
-    const { count, error: countError } = await supabaseAdmin
-      .from('produits')
-      .select('*', { count: 'exact', head: true });
-    
-    if (countError) {
-      throw new Error(`Erreur lors du comptage des produits: ${countError.message}`);
-    }
-    
+    const { rows: total } = await query<{ count: string }>(`SELECT COUNT(*) AS count FROM produits`);
+
+    // N'accepter que des valeurs connues : elles sont interpolées dans le SQL
+    const colonneTri = (COLONNES_TRI as readonly string[]).includes(tri_par) ? tri_par : 'date_creation';
+    const sensTri = ordre === 'ASC' ? 'ASC' : 'DESC';
+
     // Récupérer les produits avec pagination
-    const { data, error } = await supabaseAdmin
-      .from('produits')
-      .select(`
-        *,
-        boutique:boutique_id(*),
-        categorie:categorie_id(*)
-      `)
-      .order(tri_par, { ascending: ordre === 'ASC' })
-      .range(offset, offset + limite - 1);
-    
-    if (error) {
-      throw new Error(`Erreur lors de la récupération des produits: ${error.message}`);
-    }
-    
+    const { rows } = await query<Produit>(
+      `SELECT p.*, ${JOINTURES}
+       FROM produits p
+       ORDER BY ${colonneTri} ${sensTri}
+       LIMIT $1 OFFSET $2`,
+      [limite, offset]
+    );
+
     return {
-      produits: data || [],
-      total: count || 0
+      produits: rows,
+      total: Number(total[0].count)
     };
   }
 
@@ -530,65 +599,40 @@ export class ProduitModel {
    * Récupère un produit par son ID
    */
   static async getProduitById(id: number): Promise<Produit | null> {
-    const { data, error } = await supabaseAdmin
-      .from('produits')
-      .select(`
-        *,
-        boutique:boutique_id(*),
-        categorie:categorie_id(*)
-      `)
-      .eq('id', id)
-      .single();
-    
-    if (error && error.code !== 'PGRST116') {
-      throw new Error(`Erreur lors de la récupération du produit: ${error.message}`);
-    }
-    
-    return data;
+    const { rows } = await query<Produit>(
+      `SELECT p.*, ${JOINTURES} FROM produits p WHERE p.id = $1`,
+      [id]
+    );
+
+    return rows[0] ?? null;
   }
 
   /**
    * Récupère un produit par son slug
    */
   static async getProduitBySlug(slug: string): Promise<Produit | null> {
-    const { data, error } = await supabaseAdmin
-      .from('produits')
-      .select(`
-        *,
-        boutique:boutique_id(*),
-        categorie:categorie_id(*)
-      `)
-      .eq('slug', slug)
-      .single();
-    
-    if (error && error.code !== 'PGRST116') {
-      throw new Error(`Erreur lors de la récupération du produit: ${error.message}`);
-    }
-    
-    return data;
+    const { rows } = await query<Produit>(
+      `SELECT p.*, ${JOINTURES} FROM produits p WHERE p.slug = $1`,
+      [slug]
+    );
+
+    return rows[0] ?? null;
   }
 
   /**
    * Récupère les produits par catégorie
    */
   static async getProduitsByCategorie(categorieId: number, limite: number = 10): Promise<Produit[]> {
-    const { data, error } = await supabaseAdmin
-      .from('produits')
-      .select(`
-        *,
-        boutique:boutique_id(*),
-        categorie:categorie_id(*)
-      `)
-      .eq('categorie_id', categorieId)
-      .eq('statut', 'actif')
-      .order('note_moyenne', { ascending: false })
-      .limit(limite);
-    
-    if (error) {
-      throw new Error(`Erreur lors de la récupération des produits par catégorie: ${error.message}`);
-    }
-    
-    return data || [];
+    const { rows } = await query<Produit>(
+      `SELECT p.*, ${JOINTURES}
+       FROM produits p
+       WHERE p.categorie_id = $1 AND p.statut = 'actif'
+       ORDER BY p.note_moyenne DESC
+       LIMIT $2`,
+      [categorieId, limite]
+    );
+
+    return rows;
   }
 
   /**
@@ -601,62 +645,51 @@ export class ProduitModel {
   static async getTopProduitsByCategories(limite: number = 4, boutiqueId?: number): Promise<{ [key: string]: any }> {
     let categoriesAvecProduits: Set<number> | undefined;
     if (boutiqueId) {
-      const { data: produitsBoutique, error: produitError } = await supabaseAdmin
-        .from('produits')
-        .select('categorie_id')
-        .eq('boutique_id', boutiqueId)
-        .eq('statut', 'actif');
+      const { rows: produitsBoutique } = await query<{ categorie_id: number }>(
+        `SELECT DISTINCT categorie_id FROM produits WHERE boutique_id = $1 AND statut = 'actif'`,
+        [boutiqueId]
+      );
 
-      if (produitError) {
-        logger.error('[ProduitModel] Erreur lors de la recherche des produits:', produitError.message);
-      } else {
-        categoriesAvecProduits = new Set(produitsBoutique?.map(p => p.categorie_id));
-      }
+      categoriesAvecProduits = new Set(produitsBoutique.map(p => p.categorie_id));
     }
 
-    let { data: categories, error: categoriesError } = await supabaseAdmin
-      .from('categories')
-      .select('*')
-      .eq('statut', 'active')
-      .order('ordre_affichage', { ascending: true });
+    const { rows: toutesCategories } = await query<{ id: number; slug: string }>(
+      `SELECT * FROM categories WHERE statut = 'active' ORDER BY ordre_affichage ASC`
+    );
 
-    if (boutiqueId && categoriesAvecProduits && categories) {
+    let categories = toutesCategories;
+    if (boutiqueId && categoriesAvecProduits) {
       categories = categories.filter(c => categoriesAvecProduits!.has(c.id));
     }
 
-    if (categoriesError) {
-      throw new Error(`Erreur lors de la récupération des catégories: ${categoriesError.message}`);
-    }
-
-    if (!categories || categories.length === 0) {
+    if (categories.length === 0) {
       return {};
     }
 
     const categorieIds = categories.map(c => c.id);
-    let produitsQuery = supabaseAdmin
-      .from('produits')
-      .select(`
-        *,
-        boutique:boutique_id(id, nom, slug, logo),
-        categorie:categorie_id(id, nom, slug)
-      `)
-      .in('categorie_id', categorieIds)
-      .eq('statut', 'actif')
-      .order('note_moyenne', { ascending: false })
-      .order('nombre_ventes', { ascending: false });
+    const params: unknown[] = [categorieIds];
+    const filtreBoutique = boutiqueId ? `AND p.boutique_id = $2` : '';
 
     if (boutiqueId) {
-      produitsQuery = produitsQuery.eq('boutique_id', boutiqueId);
+      params.push(boutiqueId);
     }
 
-    const { data: allProduits, error: produitsError } = await produitsQuery;
-
-    if (produitsError) {
-      throw new Error(`Erreur lors de la récupération des produits: ${produitsError.message}`);
-    }
+    const { rows: allProduits } = await query<Produit & { categorie_id: number }>(
+      `SELECT p.*,
+              (SELECT row_to_json(b) FROM (
+                 SELECT b.id, b.nom, b.slug, b.logo FROM boutiques b WHERE b.id = p.boutique_id
+               ) b) AS boutique,
+              (SELECT row_to_json(c) FROM (
+                 SELECT c.id, c.nom, c.slug FROM categories c WHERE c.id = p.categorie_id
+               ) c) AS categorie
+       FROM produits p
+       WHERE p.categorie_id = ANY($1) AND p.statut = 'actif' ${filtreBoutique}
+       ORDER BY p.note_moyenne DESC, p.nombre_ventes DESC`,
+      params
+    );
 
     const produitsParCategorie = new Map<number, any[]>();
-    for (const produit of allProduits || []) {
+    for (const produit of allProduits) {
       const list = produitsParCategorie.get(produit.categorie_id) || [];
       if (list.length < limite) {
         list.push(produit);
@@ -768,24 +801,25 @@ export class ProduitModel {
     });
     logger.debug('[ProduitModel] Tentative d\'insertion du produit dans la base de données');
     
-    const { data, error } = await supabaseAdmin
-      .from('produits')
-      .insert(produitWithDefaults)
-      .select(`
-        *,
-        boutique:boutique_id(*),
-        categorie:categorie_id(*)
-      `)
-      .single();
+    const champs = filtrerColonnes(produitWithDefaults);
 
-    if (error) {
-      logger.debug('[ProduitModel] Erreur lors de l\'insertion du produit:', error.message);
-      throw new Error(`Erreur lors de la création du produit: ${error.message}`);
+    if (champs.length === 0) {
+      throw new Error('Erreur lors de la création du produit: aucune donnée fournie');
     }
-    
-    logger.debug('[ProduitModel] Produit créé avec succès, ID:', data.id);
 
-    return data as Produit;
+    const colonnes = champs.map(([colonne]) => colonne);
+    const placeholders = champs.map(([colonne], i) => placeholder(colonne, i + 1));
+
+    const { rows } = await query<{ id: number }>(
+      `INSERT INTO produits (${colonnes.join(', ')}, date_creation, date_modification)
+       VALUES (${placeholders.join(', ')}, NOW(), NOW())
+       RETURNING id`,
+      champs.map(([colonne, valeur]) => preparerValeur(colonne, valeur))
+    );
+
+    logger.debug('[ProduitModel] Produit créé avec succès, ID:', rows[0].id);
+
+    return this.getProduitById(rows[0].id) as Promise<Produit>;
   }
 
   /**
@@ -857,24 +891,37 @@ export class ProduitModel {
     
     logger.debug('[ProduitModel] Données après transformation:', updatedData);
 
-    const { data, error } = await supabaseAdmin
-      .from('produits')
-      .update(updatedData)
-      .eq('id', id)
-      .select(`
-        *,
-        boutique:boutique_id(*),
-        categorie:categorie_id(*)
-      `)
-      .single();
+    const champs = filtrerColonnes(updatedData);
 
-    if (error) {
-      logger.debug('[ProduitModel] Erreur lors de la mise à jour:', error.message);
-      throw new Error(`Erreur lors de la mise à jour du produit: ${error.message}`);
+    if (champs.length === 0) {
+      const { rows } = await query<{ id: number }>(
+        `UPDATE produits SET date_modification = NOW() WHERE id = $1 RETURNING id`,
+        [id]
+      );
+
+      if (!rows[0]) {
+        throw new Error('Erreur lors de la mise à jour du produit: produit introuvable');
+      }
+
+      return this.getProduitById(id) as Promise<Produit>;
+    }
+
+    const affectations = champs.map(([colonne], i) => `${colonne} = ${placeholder(colonne, i + 1)}`);
+
+    const { rows } = await query<{ id: number }>(
+      `UPDATE produits SET ${affectations.join(', ')}, date_modification = NOW()
+       WHERE id = $${champs.length + 1}
+       RETURNING id`,
+      [...champs.map(([colonne, valeur]) => preparerValeur(colonne, valeur)), id]
+    );
+
+    if (!rows[0]) {
+      throw new Error('Erreur lors de la mise à jour du produit: produit introuvable');
     }
 
     logger.debug('[ProduitModel] Produit mis à jour avec succès');
-    return data as Produit;
+
+    return this.getProduitById(id) as Promise<Produit>;
   }
 
   /**
@@ -888,23 +935,16 @@ export class ProduitModel {
     }
 
     // Vérifier s'il y a des commandes associées
-    const { data: commandes } = await supabaseAdmin
-      .from('commande_produits')
-      .select('id')
-      .eq('produit_id', id);
+    const { rows: commandes } = await query<{ id: number }>(
+      `SELECT id FROM commande_articles WHERE produit_id = $1 LIMIT 1`,
+      [id]
+    );
 
-    if (commandes && commandes.length > 0) {
+    if (commandes.length > 0) {
       throw new Error('Impossible de supprimer un produit qui a des commandes associées');
     }
 
-    const { error } = await supabaseAdmin
-      .from('produits')
-      .delete()
-      .eq('id', id);
-
-    if (error) {
-      throw new Error(`Erreur lors de la suppression du produit: ${error.message}`);
-    }
+    await query(`DELETE FROM produits WHERE id = $1`, [id]);
   }
 
   /**
@@ -913,25 +953,24 @@ export class ProduitModel {
   static async getTopVuesProduitsByBoutique(boutiqueId: number, limite: number = 5): Promise<Produit[]> {
     logger.debug(`[ProduitModel] Récupération des ${limite} produits les plus vus pour la boutique ${boutiqueId}`);
     
-    const { data, error } = await supabaseAdmin
-      .from('produits')
-      .select(`
-        *,
-        boutique:boutique_id(id, nom, slug, logo),
-        categorie:categorie_id(id, nom, slug)
-      `)
-      .eq('boutique_id', boutiqueId)
-      .eq('statut', 'actif')
-      .order('nombre_vues', { ascending: false })
-      .limit(limite);
-    
-    if (error) {
-      logger.error(`[ProduitModel] Erreur lors de la récupération des produits les plus vus:`, error.message);
-      throw new Error(`Erreur lors de la récupération des produits les plus vus: ${error.message}`);
-    }
-    
-    logger.debug(`[ProduitModel] ${data?.length || 0} produits trouvés`);
-    return this.transformProduitsForResponse(data || []);
+    const { rows } = await query<Produit>(
+      `SELECT p.*,
+              (SELECT row_to_json(b) FROM (
+                 SELECT b.id, b.nom, b.slug, b.logo FROM boutiques b WHERE b.id = p.boutique_id
+               ) b) AS boutique,
+              (SELECT row_to_json(c) FROM (
+                 SELECT c.id, c.nom, c.slug FROM categories c WHERE c.id = p.categorie_id
+               ) c) AS categorie
+       FROM produits p
+       WHERE p.boutique_id = $1 AND p.statut = 'actif'
+       ORDER BY p.nombre_vues DESC
+       LIMIT $2`,
+      [boutiqueId, limite]
+    );
+
+    logger.debug(`[ProduitModel] ${rows.length} produits trouvés`);
+
+    return this.transformProduitsForResponse(rows);
   }
 
   /**
@@ -942,31 +981,27 @@ export class ProduitModel {
     const offset = (page - 1) * limite;
     
     // Récupérer le nombre total de produits pour cette boutique
-    const { count, error: countError } = await supabaseAdmin
-      .from('produits')
-      .select('*', { count: 'exact', head: true })
-      .eq('boutique_id', boutiqueId);
-    
-    if (countError) {
-      throw new Error(`Erreur lors du comptage des produits: ${countError.message}`);
-    }
-    
+    const { rows: total } = await query<{ count: string }>(
+      `SELECT COUNT(*) AS count FROM produits WHERE boutique_id = $1`,
+      [boutiqueId]
+    );
+
+    // N'accepter que des valeurs connues : elles sont interpolées dans le SQL
+    const colonneTri = (COLONNES_TRI as readonly string[]).includes(tri_par) ? tri_par : 'date_creation';
+    const sensTri = ordre === 'ASC' ? 'ASC' : 'DESC';
+
     // Récupérer les produits avec pagination
-    const { data, error } = await supabaseAdmin
-      .from('produits')
-      .select(`
-        *,
-        boutique:boutique_id(*),
-        categorie:categorie_id(*)
-      `)
-      .eq('boutique_id', boutiqueId)
-      .order(tri_par, { ascending: ordre === 'ASC' })
-      .range(offset, offset + limite - 1);
-    
-    if (error) {
-      throw new Error(`Erreur lors de la récupération des produits de la boutique: ${error.message}`);
-    }
-    
+    const { rows: data } = await query<Produit>(
+      `SELECT p.*, ${JOINTURES}
+       FROM produits p
+       WHERE p.boutique_id = $1
+       ORDER BY ${colonneTri} ${sensTri}
+       LIMIT $2 OFFSET $3`,
+      [boutiqueId, limite, offset]
+    );
+
+    const count = Number(total[0].count);
+
     return {
       produits: data || [],
       total: count || 0
