@@ -34,7 +34,7 @@ export const createTransactionSchema = Joi.object({
     'string.empty': 'La référence de transaction ne peut pas être vide',
     'any.required': 'La référence de transaction est obligatoire'
   }),
-  montant: Joi.number().integer().min(0).required().messages({
+  montant: Joi.number().min(0).required().custom((value) => Math.round(Number(value))).messages({
     'number.base': 'Le montant doit être un nombre',
     'number.min': 'Le montant doit être supérieur ou égal à {#limit}',
     'any.required': 'Le montant est obligatoire'
@@ -61,7 +61,7 @@ export const updateTransactionSchema = Joi.object({
   reference_transaction: Joi.string().messages({
     'string.empty': 'La référence de transaction ne peut pas être vide'
   }),
-  montant: Joi.number().integer().min(0).messages({
+  montant: Joi.number().min(0).custom((value) => Math.round(Number(value))).messages({
     'number.base': 'Le montant doit être un nombre',
     'number.min': 'Le montant doit être supérieur ou égal à {#limit}'
   }),
