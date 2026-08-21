@@ -5,9 +5,10 @@ API backend pour la plateforme Marche241 - marketplace gabonaise.
 ## 🚀 Configuration
 
 ### Prérequis
-- Node.js (version 16 ou supérieure)
+- Node.js (version 22 ou supérieure)
 - npm ou yarn
-- Compte Supabase
+- Base PostgreSQL Neon
+- Bucket Cloudflare R2 (uploads)
 
 ### Installation
 
@@ -29,38 +30,30 @@ cp .env.example .env
 
 4. Configurez vos variables d'environnement dans le fichier `.env`
 
-### Configuration Supabase
+### Configuration Neon et R2
 
-Pour configurer Supabase, vous devez :
-
-1. **Créer un projet Supabase** sur [supabase.com](https://supabase.com)
-
-2. **Récupérer vos clés API** :
-   - Allez dans `Settings > API`
-   - Copiez l'URL du projet
-   - Copiez la clé `anon public`
-   - Copiez la clé `service_role` (gardez-la secrète !)
-
-3. **Configurer la base de données** :
-   - Allez dans `Settings > Database`
-   - Copiez l'URL de connexion PostgreSQL
-
-4. **Mettre à jour le fichier .env** :
+1. **Base de données** : utilisez la chaîne de connexion poolée Neon (`-pooler` dans l'hôte).
+2. **Stockage** : renseignez les variables `STORAGE_*` du bucket Cloudflare R2.
+3. **Mettre à jour le fichier .env** (voir `.env.example`) :
 ```env
-SUPABASE_URL=https://votre-projet-ref.supabase.co
-SUPABASE_ANON_KEY=votre-cle-anon
-SUPABASE_SERVICE_ROLE_KEY=votre-cle-service-role
-DATABASE_URL=postgresql://postgres:[VOTRE-MOT-DE-PASSE]@db.votre-projet-ref.supabase.co:5432/postgres
+DATABASE_URL=postgresql://<user>:<password>@ep-xxxx-pooler.<region>.aws.neon.tech/<db>?sslmode=require
+STORAGE_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com
+STORAGE_ACCESS_KEY_ID=your-r2-access-key-id
+STORAGE_SECRET_ACCESS_KEY=your-r2-secret-access-key
+STORAGE_BUCKET=marche241-uploads
+STORAGE_PUBLIC_URL=https://cdn.example.com
 ```
 
 ### Variables d'environnement importantes
 
 | Variable | Description | Obligatoire |
 |----------|-------------|--------------|
-| `SUPABASE_URL` | URL de votre projet Supabase | ✅ |
-| `SUPABASE_ANON_KEY` | Clé publique Supabase | ✅ |
-| `SUPABASE_SERVICE_ROLE_KEY` | Clé de service Supabase | ✅ |
-| `DATABASE_URL` | URL de connexion PostgreSQL | ✅ |
+| `DATABASE_URL` | Chaîne de connexion PostgreSQL Neon (poolée) | ✅ |
+| `STORAGE_ENDPOINT` | Endpoint S3 du compte R2 | ✅ |
+| `STORAGE_ACCESS_KEY_ID` | Identifiant du token R2 | ✅ |
+| `STORAGE_SECRET_ACCESS_KEY` | Secret du token R2 | ✅ |
+| `STORAGE_BUCKET` | Nom du bucket R2 | ✅ |
+| `STORAGE_PUBLIC_URL` | URL publique du bucket | ✅ |
 | `JWT_SECRET` | Secret pour signer les tokens JWT | ✅ |
 | `PORT` | Port d'écoute du serveur | ❌ (défaut: 3000) |
 | `NODE_ENV` | Environnement d'exécution | ❌ (défaut: development) |
@@ -93,17 +86,17 @@ marche241-api/
 
 - ✅ Le fichier `.env` est dans `.gitignore`
 - ✅ Utilisez des mots de passe forts
-- ✅ Ne partagez jamais vos clés de service Supabase
+- ✅ Ne partagez jamais `DATABASE_URL`, `JWT_SECRET` ni les clés R2
 - ✅ Configurez CORS appropriément
 - ✅ Implémentez le rate limiting
 
 ## 🛠️ Technologies utilisées
 
 - **Runtime** : Node.js
-- **Base de données** : Supabase (PostgreSQL)
-- **Authentification** : JWT + Supabase Auth
-- **ORM** : Supabase Client
-- **Sécurité** : bcrypt, CORS, rate limiting
+- **Base de données** : Neon (PostgreSQL) via `pg`
+- **Stockage** : Cloudflare R2
+- **Authentification** : JWT
+- **Sécurité** : CORS, rate limiting
 
 ## 📝 API Documentation
 

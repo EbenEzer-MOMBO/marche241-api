@@ -1,4 +1,4 @@
-import { supabaseAdmin } from '../config/supabase';
+import { query } from '../config/database';
 
 export interface PolitiqueConfidentialite {
   id: number;
@@ -12,18 +12,13 @@ export class PolitiqueModel {
    * Récupère la politique de confidentialité publique (id = 1)
    */
   static async getPolitique(): Promise<PolitiqueConfidentialite | null> {
-    const { data, error } = await supabaseAdmin
-      .from('politique_confidentialite')
-      .select('id, contenu, date_creation, date_modification')
-      .eq('id', 1)
-      .maybeSingle();
+    const { rows } = await query<PolitiqueConfidentialite>(
+      `SELECT id, contenu, date_creation, date_modification
+       FROM politique_confidentialite
+       WHERE id = $1`,
+      [1]
+    );
 
-    if (error) {
-      throw new Error(
-        `Erreur lors de la récupération de la politique de confidentialité: ${error.message}`
-      );
-    }
-
-    return data;
+    return rows[0] ?? null;
   }
 }
