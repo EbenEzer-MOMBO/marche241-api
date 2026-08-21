@@ -11,6 +11,7 @@ import commandeRoutes from './commande.routes';
 import whatsappRoutes from './whatsapp.routes';
 import uploadRoutes from './upload.routes';
 import cronRoutes from './cron.routes';
+import politiqueRoutes from './politique.routes';
 import { CronController } from '../controllers/cron.controller';
 import { requireCronSecret } from '../middlewares/cron-auth.middleware';
 
@@ -51,6 +52,9 @@ router.use(`${apiPrefix}/whatsapp`, whatsappRoutes);
 
 // Routes pour l'upload d'images
 router.use(`${apiPrefix}/upload`, uploadRoutes);
+
+// Routes pour la politique de confidentialité
+router.use(`${apiPrefix}/politique-confidentialite`, politiqueRoutes);
 
 // Routes pour les tâches cron
 router.use(`${apiPrefix}/cron`, cronRoutes);
