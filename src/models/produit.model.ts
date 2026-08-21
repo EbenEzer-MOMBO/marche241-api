@@ -240,19 +240,30 @@ export class ProduitModel {
    */
   private static recalculerStockTotal(variantsData: any): number {
     let total = 0;
+
+    // Service : pas de stock par variant
+    if (variantsData?.type === 'service') {
+      return total;
+    }
     
     if (!variantsData?.variants || !Array.isArray(variantsData.variants)) {
       return total;
     }
 
     for (const variant of variantsData.variants) {
-      // Vêtements/Chaussures : additionner le stock de toutes les tailles
+      // Vêtements : tailles
       if (variant.tailles && Array.isArray(variant.tailles)) {
         for (const taille of variant.tailles) {
           total += taille.stock || 0;
         }
       }
-      // Générique : ajouter directement le stock du variant
+      // Chaussures : pointures
+      else if (variant.pointures && Array.isArray(variant.pointures)) {
+        for (const pointure of variant.pointures) {
+          total += pointure.stock || 0;
+        }
+      }
+      // Événement / générique : stock direct sur le variant (billets, attributs)
       else if (typeof variant.stock === 'number') {
         total += variant.stock;
       }
@@ -345,6 +356,12 @@ export class ProduitModel {
       // ========================================
       if (variantsData.type && variantsData.variants && Array.isArray(variantsData.variants)) {
         logger.debug(`[ProduitModel] Format moderne détecté, type: ${variantsData.type}`);
+
+        // Service : pas de variants billets/tailles — stock global produit
+        if (variantsData.type === 'service') {
+          logger.debug(`[ProduitModel] Type service: mise à jour du stock global`);
+          return await this.updateStock(produitId, quantite);
+        }
         
         nouveauxVariantsData = JSON.parse(JSON.stringify(variantsData)); // Deep clone
         
