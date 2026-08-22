@@ -153,7 +153,7 @@
  *           description: Statut du paiement
  *         methode_paiement:
  *           type: string
- *           enum: [mobile_money, airtel_money, moov_money, especes, virement]
+ *           enum: [mobile_money, airtel_money, moov_money, carte_bancaire, especes, virement]
  *           description: Méthode de paiement (optionnel)
  *         date_commande:
  *           type: string
@@ -210,7 +210,7 @@
  *           description: Nouveau statut de paiement
  *         methode_paiement:
  *           type: string
- *           enum: [mobile_money, airtel_money, moov_money, especes, virement]
+ *           enum: [mobile_money, airtel_money, moov_money, carte_bancaire, especes, virement]
  *           description: Méthode de paiement (optionnel)
  *     
  *     InitierPaiement:
@@ -220,7 +220,7 @@
  *       properties:
  *         methode_paiement:
  *           type: string
- *           enum: [mobile_money, airtel_money, moov_money, especes, virement]
+ *           enum: [mobile_money, airtel_money, moov_money, carte_bancaire, especes, virement]
  *           description: Méthode de paiement
  *         numero_telephone:
  *           type: string

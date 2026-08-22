@@ -12,6 +12,26 @@ import { logger } from '../utils/logger';
 export class PaiementController {
   private static ebillingTokenCache: { value: string; expiresAt: number } | null = null;
 
+  private static mapPaymentSystemToMethode(paymentSystemName: string | null | undefined): MethodePaiement | undefined {
+    if (!paymentSystemName) {
+      return undefined;
+    }
+
+    const name = paymentSystemName.toLowerCase();
+    if (name === 'airtelmoney' || name === 'airtel_money') {
+      return 'airtel_money';
+    }
+    if (name === 'moovmoney1' || name === 'moovmoney' || name === 'moov_money') {
+      return 'moov_money';
+    }
+    if (name.includes('orabank') || name === 'visa' || name === 'mastercard' || name.includes('card')) {
+      return 'carte_bancaire';
+    }
+
+    return 'mobile_money';
+  }
+
+
   /**
    * Vérifie que le montant d'une transaction correspond au montant attendu selon le type de paiement
    * @param transaction Transaction à vérifier
@@ -206,7 +226,6 @@ export class PaiementController {
       } = validatedData;
 
 
-      // Récupérer la transaction
       const transaction = await TransactionModel.getTransactionById(parseInt(transaction_id));
       if (!transaction) {
         res.status(404).json({
@@ -216,7 +235,14 @@ export class PaiementController {
         return;
       }
 
-      // Vérifier que le montant de la transaction correspond au total réel des articles
+      if (transaction.statut !== 'en_attente') {
+        res.status(400).json({
+          success: false,
+          message: 'Cette transaction n\'est plus en attente de paiement'
+        });
+        return;
+      }
+
       const montantVerification = await PaiementController.verifierMontantTransaction(transaction);
 
       if (!montantVerification.isValid) {
@@ -228,38 +254,43 @@ export class PaiementController {
         return;
       }
 
-
-      // Récupérer le jeton d'accès
       const accessToken = await PaiementController.getAccessToken();
 
-      // Créer la facture
       const factureResponse = await PaiementController.creerFacture({
-        email: req.body.email || 'client@example.com',
-        msisdn: req.body.msisdn || '00000000000',
+        email: email || 'client@example.com',
+        msisdn: msisdn || '00000000000',
         amount: transaction.montant,
         reference: transaction.reference_transaction,
         description: `Paiement commande ${transaction.commande_id}`,
-        lastname: req.body.lastname || 'Client',
-        firstname: req.body.firstname || ''
+        lastname: lastname || 'Client',
+        firstname: firstname || ''
       }, accessToken);
 
       if (factureResponse && factureResponse.response && factureResponse.response.e_bills && factureResponse.response.e_bills[0] && factureResponse.response.e_bills[0].bill_id) {
-        // Récupérer l'ID de la facture
         const billId = factureResponse.response.e_bills[0].bill_id;
 
-        // Mettre à jour la transaction avec l'ID de la facture
         await TransactionModel.updateTransaction(transaction.id, {
           statut: 'en_attente' as StatutPaiement,
+          methode_paiement: 'carte_bancaire',
           reference_operateur: billId
         });
 
-        // Construire l'URL de redirection vers la plateforme Visa Ebilling
-        const redirectUrl = `https://staging.billing-easy.net/?invoice=${billId}&operator=ORABANK_NG&redirect=1&redirect_url=${return_url}?bill_id=${billId}`;
+        const cardRedirectBase = process.env.EBILLING_CARD_REDIRECT_BASE || 'https://staging.billing-easy.net/';
+        const cardOperator = process.env.EBILLING_CARD_OPERATOR || 'ORABANK_NG';
+
+        const returnWithBill = new URL(return_url);
+        returnWithBill.searchParams.set('bill_id', billId);
+
+        const redirectUrl = new URL(cardRedirectBase);
+        redirectUrl.searchParams.set('invoice', billId);
+        redirectUrl.searchParams.set('operator', cardOperator);
+        redirectUrl.searchParams.set('redirect', '1');
+        redirectUrl.searchParams.set('redirect_url', returnWithBill.toString());
 
         res.status(200).json({
           success: true,
           redirect: true,
-          url: redirectUrl,
+          url: redirectUrl.toString(),
           bill_id: billId,
           message: 'Redirection vers la plateforme de paiement Visa...'
         });
@@ -539,16 +570,7 @@ export class PaiementController {
           commande = montantVerification.commande;
         }
 
-        let methode_paiement: MethodePaiement | undefined;
-        if (paymentSystemName) {
-          if (paymentSystemName === 'airtelmoney') {
-            methode_paiement = 'airtel_money';
-          } else if (paymentSystemName === 'moovmoney1' || paymentSystemName === 'moovmoney') {
-            methode_paiement = 'moov_money';
-          } else {
-            methode_paiement = 'mobile_money';
-          }
-        }
+        const methode_paiement = PaiementController.mapPaymentSystemToMethode(paymentSystemName);
 
         const statutTransaction: StatutPaiement = 'paye';
 
@@ -614,22 +636,13 @@ export class PaiementController {
       } else {
         // Mettre à jour la transaction avec les informations disponibles
         if (paymentSystemName) {
-
-          // Convertir le nom du système de paiement en méthode de paiement
-          let methode_paiement: MethodePaiement | undefined;
-          if (paymentSystemName === 'airtelmoney') {
-            methode_paiement = 'airtel_money';
-          } else if (paymentSystemName === 'moovmoney1' || paymentSystemName === 'moovmoney') {
-            methode_paiement = 'moov_money';
-          } else {
-            methode_paiement = 'mobile_money';
+          const methode_paiement = PaiementController.mapPaymentSystemToMethode(paymentSystemName);
+          if (methode_paiement) {
+            await TransactionModel.updateTransaction(transaction.id, {
+              methode_paiement: methode_paiement,
+              notes: `Paiement en attente. Système de paiement: ${paymentSystemName}`
+            });
           }
-
-
-          await TransactionModel.updateTransaction(transaction.id, {
-            methode_paiement: methode_paiement,
-            notes: `Paiement en attente. Système de paiement: ${paymentSystemName}`
-          });
         }
 
         return {

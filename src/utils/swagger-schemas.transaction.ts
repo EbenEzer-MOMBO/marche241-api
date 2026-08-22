@@ -29,7 +29,7 @@
  *           description: Montant en centimes
  *         methode_paiement:
  *           type: string
- *           enum: [mobile_money, airtel_money, moov_money, especes, virement]
+ *           enum: [mobile_money, airtel_money, moov_money, carte_bancaire, especes, virement]
  *           description: Méthode de paiement utilisée
  *         type_paiement:
  *           type: string
@@ -85,7 +85,7 @@
  *           description: Montant en centimes (ne doit pas dépasser le montant_restant de la commande)
  *         methode_paiement:
  *           type: string
- *           enum: [mobile_money, airtel_money, moov_money, especes, virement]
+ *           enum: [mobile_money, airtel_money, moov_money, carte_bancaire, especes, virement]
  *           description: Méthode de paiement utilisée
  *         type_paiement:
  *           type: string
@@ -124,7 +124,7 @@
  *           description: Montant en centimes
  *         methode_paiement:
  *           type: string
- *           enum: [mobile_money, airtel_money, moov_money, especes, virement]
+ *           enum: [mobile_money, airtel_money, moov_money, carte_bancaire, especes, virement]
  *           description: Méthode de paiement utilisée
  *         statut:
  *           type: string

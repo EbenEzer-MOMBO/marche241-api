@@ -39,9 +39,12 @@ export const createTransactionSchema = Joi.object({
     'number.min': 'Le montant doit être supérieur ou égal à {#limit}',
     'any.required': 'Le montant est obligatoire'
   }),
-  methode_paiement: Joi.string().valid('mobile_money', 'airtel_money', 'moov_money', 'especes', 'virement').required().messages({
-    'any.only': 'La méthode de paiement doit être l\'une des suivantes: mobile_money, airtel_money, moov_money, especes, virement',
+  methode_paiement: Joi.string().valid('mobile_money', 'airtel_money', 'moov_money', 'carte_bancaire', 'especes', 'virement').required().messages({
+    'any.only': 'La méthode de paiement doit être l\'une des suivantes: mobile_money, airtel_money, moov_money, carte_bancaire, especes, virement',
     'any.required': 'La méthode de paiement est obligatoire'
+  }),
+  type_paiement: Joi.string().valid('paiement_complet', 'acompte', 'frais_livraison', 'solde_apres_livraison', 'complement').messages({
+    'any.only': 'Le type de paiement doit être l\'un des suivants: paiement_complet, acompte, frais_livraison, solde_apres_livraison, complement'
   }),
   statut: Joi.string().valid('en_attente').default('en_attente').messages({
     'any.only': 'Le statut de création doit être en_attente'
@@ -65,8 +68,8 @@ export const updateTransactionSchema = Joi.object({
     'number.base': 'Le montant doit être un nombre',
     'number.min': 'Le montant doit être supérieur ou égal à {#limit}'
   }),
-  methode_paiement: Joi.string().valid('mobile_money', 'airtel_money', 'moov_money', 'especes', 'virement').messages({
-    'any.only': 'La méthode de paiement doit être l\'une des suivantes: mobile_money, airtel_money, moov_money, especes, virement'
+  methode_paiement: Joi.string().valid('mobile_money', 'airtel_money', 'moov_money', 'carte_bancaire', 'especes', 'virement').messages({
+    'any.only': 'La méthode de paiement doit être l\'une des suivantes: mobile_money, airtel_money, moov_money, carte_bancaire, especes, virement'
   }),
   statut: Joi.string().valid('en_attente', 'paye', 'echec', 'rembourse').messages({
     'any.only': 'Le statut doit être l\'un des suivants: en_attente, paye, echec, rembourse'

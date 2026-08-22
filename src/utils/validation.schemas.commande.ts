@@ -99,15 +99,15 @@ export const updatePaymentStatusSchema = Joi.object({
     'any.only': 'Le statut de paiement doit être l\'un des suivants: en_attente, paye, echec, rembourse',
     'any.required': 'Le statut de paiement est obligatoire'
   }),
-  methode_paiement: Joi.string().valid('mobile_money', 'airtel_money', 'moov_money', 'especes', 'virement').messages({
-    'any.only': 'La méthode de paiement doit être l\'une des suivantes: mobile_money, airtel_money, moov_money, especes, virement'
+  methode_paiement: Joi.string().valid('mobile_money', 'airtel_money', 'moov_money', 'carte_bancaire', 'especes', 'virement').messages({
+    'any.only': 'La méthode de paiement doit être l\'une des suivantes: mobile_money, airtel_money, moov_money, carte_bancaire, especes, virement'
   })
 });
 
 // Schéma pour l'initialisation du paiement d'une commande
 export const initierPaiementSchema = Joi.object({
-  methode_paiement: Joi.string().valid('mobile_money', 'airtel_money', 'moov_money', 'especes', 'virement').required().messages({
-    'any.only': 'La méthode de paiement doit être l\'une des suivantes: mobile_money, airtel_money, moov_money, especes, virement',
+  methode_paiement: Joi.string().valid('mobile_money', 'airtel_money', 'moov_money', 'carte_bancaire', 'especes', 'virement').required().messages({
+    'any.only': 'La méthode de paiement doit être l\'une des suivantes: mobile_money, airtel_money, moov_money, carte_bancaire, especes, virement',
     'any.required': 'La méthode de paiement est obligatoire'
   }),
   numero_telephone: Joi.string().pattern(/^\+?[0-9]{8,15}$/).messages({

@@ -25,6 +25,13 @@ const filtrerColonnes = (donnees: Record<string, unknown>): Array<[string, unkno
     (COLONNES_AUTORISEES as readonly string[]).includes(colonne)
   );
 
+const hydraterCommune = (commune: CommuneLivraison): CommuneLivraison => ({
+  ...commune,
+  tarif_livraison: Number(commune.tarif_livraison) || 0,
+  delai_livraison_min: Number(commune.delai_livraison_min) || 0,
+  delai_livraison_max: Number(commune.delai_livraison_max) || 0
+});
+
 export class CommuneModel {
   /**
    * Récupère toutes les communes de livraison
@@ -40,7 +47,7 @@ export class CommuneModel {
       params
     );
 
-    return rows;
+    return rows.map(hydraterCommune);
   }
 
   /**
@@ -53,7 +60,7 @@ export class CommuneModel {
       [boutiqueId]
     );
 
-    return rows;
+    return rows.map(hydraterCommune);
   }
 
   /**
@@ -68,7 +75,7 @@ export class CommuneModel {
       [boutiqueId]
     );
 
-    return rows;
+    return rows.map(hydraterCommune);
   }
 
   /**
@@ -87,7 +94,7 @@ export class CommuneModel {
       params
     );
 
-    return rows;
+    return rows.map(hydraterCommune);
   }
 
   /**
@@ -100,7 +107,7 @@ export class CommuneModel {
       [id]
     );
 
-    return rows[0] ?? null;
+    return rows[0] ? hydraterCommune(rows[0]) : null;
   }
 
   /**
@@ -137,7 +144,7 @@ export class CommuneModel {
       champs.map(([, valeur]) => valeur)
     );
 
-    return rows[0];
+    return hydraterCommune(rows[0]);
   }
 
   /**
@@ -172,7 +179,7 @@ export class CommuneModel {
       throw new Error('Erreur lors de la mise à jour de la commune: commune introuvable');
     }
 
-    return rows[0];
+    return hydraterCommune(rows[0]);
   }
 
   /**
@@ -190,7 +197,7 @@ export class CommuneModel {
       throw new Error('Erreur lors du changement de statut de la commune: commune introuvable');
     }
 
-    return rows[0];
+    return hydraterCommune(rows[0]);
   }
 
   /**

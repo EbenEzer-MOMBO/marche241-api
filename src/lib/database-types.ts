@@ -9,7 +9,7 @@ export type StatutCategorie = 'active' | 'inactive';
 export type StatutProduit = 'actif' | 'inactif' | 'brouillon' | 'archive';
 export type StatutCommande = 'en_attente' | 'confirmee' | 'en_preparation' | 'expedie' | 'livree' | 'annulee' | 'remboursee';
 export type StatutPaiement = 'en_attente' | 'partiellement_paye' | 'paye' | 'echec' | 'rembourse';
-export type MethodePaiement = 'mobile_money' | 'airtel_money' | 'moov_money' | 'especes' | 'virement';
+export type MethodePaiement = 'mobile_money' | 'airtel_money' | 'moov_money' | 'carte_bancaire' | 'especes' | 'virement';
 export type TypePaiement = 'paiement_complet' | 'acompte' | 'frais_livraison' | 'solde_apres_livraison' | 'complement';
 export type StatutAvis = 'en_attente' | 'approuve' | 'rejete';
 

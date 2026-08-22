@@ -651,7 +651,7 @@ export class CommandeController {
       const body = (req as any).validatedBody || req.body;
       
       // Vérifier si la méthode de paiement est valide
-      const methodesValides = ['mobile_money', 'airtel_money', 'moov_money', 'especes', 'virement'];
+      const methodesValides = ['mobile_money', 'airtel_money', 'moov_money', 'carte_bancaire', 'especes', 'virement'];
       
       if (!methodesValides.includes(body.methode_paiement)) {
         res.status(400).json({
