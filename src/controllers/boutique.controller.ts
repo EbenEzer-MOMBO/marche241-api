@@ -2,8 +2,10 @@ import { Request, Response } from 'express';
 import { BoutiqueModel } from '../models/boutique.model';
 import { ProduitModel } from '../models/produit.model';
 import { VueModel } from '../models/vue.model';
+import { VendeurModel } from '../models/vendeur.model';
 import { CreateBoutiqueData, Boutique, StatutBoutique } from '../lib/database-types';
 import { logger } from '../utils/logger';
+import { EmailService } from '../services/email.service';
 
 /**
  * Utilitaire pour extraire l'IP réelle du client
@@ -367,7 +369,24 @@ export class BoutiqueController {
         return;
       }
 
+      const ancienStatut = existingBoutique.statut;
       const boutiqueMiseAJour = await BoutiqueModel.updateBoutiqueStatus(id, statut);
+
+      // Notifier le vendeur par email du changement de statut de sa boutique
+      try {
+        const vendeur = await VendeurModel.getVendeurById(existingBoutique.vendeur_id);
+        if (vendeur?.email) {
+          if (statut === 'active' && ancienStatut !== 'active') {
+            await EmailService.envoyerBoutiqueActivee(vendeur.email, existingBoutique.nom, existingBoutique.slug);
+          } else if (statut === 'suspendue') {
+            await EmailService.envoyerBoutiqueSuspendue(vendeur.email, existingBoutique.nom, 'Produits ou informations non conformes signalés');
+          } else if (statut === 'en_attente' && ancienStatut === 'active') {
+            await EmailService.envoyerBoutiqueRemiseEnAttente(vendeur.email, existingBoutique.nom, 'Informations de la boutique modifiées');
+          }
+        }
+      } catch (emailError: any) {
+        logger.error('[BoutiqueController] Erreur lors de l\'envoi de l\'email de changement de statut:', emailError);
+      }
 
       res.status(200).json({
         success: true,

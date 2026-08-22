@@ -2,7 +2,7 @@
 
 ## Vue d'ensemble
 
-L'authentification des vendeurs a été modifiée pour utiliser l'email au lieu du numéro de téléphone. Les codes de vérification sont maintenant envoyés par email via Gmail SMTP.
+L'authentification des vendeurs a été modifiée pour utiliser l'email au lieu du numéro de téléphone. Les codes de vérification sont envoyés par email via l'API HTTP de Resend (pas de SMTP, incompatible avec les restrictions réseau de Render).
 
 ## Changements apportés
 
@@ -10,25 +10,21 @@ L'authentification des vendeurs a été modifiée pour utiliser l'email au lieu 
 
 Ajout des variables d'environnement dans `.env` :
 ```bash
-# Configuration Gmail SMTP pour l'envoi d'emails
-MAIL_MAILER=smtp
-MAIL_HOST=smtp.gmail.com
-MAIL_PORT=587
-MAIL_USERNAME=votre-email@gmail.com
-MAIL_PASSWORD=votre-mot-de-passe-application
-MAIL_ENCRYPTION=tls
-MAIL_FROM_ADDRESS=votre-email@gmail.com
-MAIL_FROM_NAME="Marché 241"
+# Configuration Resend pour l'envoi d'emails
+RESEND_API_KEY=re_votre_cle_api
+MAIL_FROM_ADDRESS="noreply@marche241.ga"
+MAIL_FROM_NAME="Marché241"
 ```
 
-**Note :** Voir le fichier `GMAIL_SMTP_SETUP.md` pour les instructions détaillées de configuration Gmail.
+**Note :** Voir le fichier `GMAIL_SMTP_SETUP.md` (renommé en configuration Resend) pour les instructions détaillées.
 
 ### 2. Service Email
 
-Nouveau service `EmailService` créé dans `src/services/email.service.ts` :
-- Envoi de codes de vérification par email
-- Templates HTML personnalisés
-- Email de bienvenue pour les nouveaux vendeurs
+Service `EmailService` dans `src/services/email.service.ts`, templates dans
+`src/services/email-templates/` :
+- `envoyerCodeInscription` / `envoyerCodeConnexion` : codes de vérification par email
+- `envoyerEmailBienvenue` : email de bienvenue pour les nouveaux vendeurs
+- `envoyerBoutiqueActivee` / `envoyerBoutiqueSuspendue` / `envoyerBoutiqueRemiseEnAttente` : changements de statut de boutique
 
 ### 3. Modèle VendeurModel
 
@@ -135,14 +131,9 @@ Schémas mis à jour dans `src/utils/validation.schemas.ts` :
 
 ## Installation
 
-1. Installer le package Nodemailer :
-```bash
-npm install nodemailer @types/nodemailer
-```
+1. Créer un compte et une clé API Resend (voir `GMAIL_SMTP_SETUP.md` pour les détails)
 
-2. Configurer Gmail SMTP (voir `GMAIL_SMTP_SETUP.md` pour les détails)
-
-3. Configurer les variables d'environnement dans `.env`
+2. Configurer les variables d'environnement dans `.env`
 
 ## Migration
 
