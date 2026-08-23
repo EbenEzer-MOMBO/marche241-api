@@ -75,6 +75,11 @@ export interface EmailLayoutOptions {
   unsubscribe?: boolean;
 }
 
+function mailLogoUrl(): string {
+  const base = (process.env.APP_URL || 'https://marche241-api.onrender.com').replace(/\/$/, '');
+  return `${base}/images/site-logo-mail.png`;
+}
+
 /**
  * Enveloppe commune (header logo, carte blanche, footer) reprise du design
  * "Emails transactionnels Marché241". `contentRows` fournit les <tr> entre le
@@ -107,11 +112,12 @@ export function renderEmailLayout({ preheader, kicker, contentRows, unsubscribe 
 <tr><td align="center" style="padding:32px 12px;">
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" class="wrap" style="width:600px;max-width:600px;">
 
-<tr><td style="padding:0 4px 16px;">
+<tr><td bgcolor="#000000" style="padding:14px 16px;background-color:#000000;border-radius:12px;">
   <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;"><tr>
-    <td width="30" style="width:30px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td width="30" height="30" bgcolor="${BRAND.green}" style="width:30px;height:30px;background-color:${BRAND.green};background-image:linear-gradient(135deg,${BRAND.green},${BRAND.teal});border-radius:9px;">&nbsp;</td></tr></table></td>
-    <td style="padding-left:10px;font-family:${FONT};font-size:16px;font-weight:bold;color:${BRAND.ink};">Marché241</td>
-    <td align="right" style="font-family:${MONO};font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:${BRAND.grayLight};">${kicker}</td>
+    <td style="vertical-align:middle;">
+      <img src="${mailLogoUrl()}" alt="Marché 241" width="200" style="display:block;border:0;outline:none;text-decoration:none;width:200px;max-width:200px;height:auto;" />
+    </td>
+    <td align="right" style="vertical-align:middle;padding-left:12px;font-family:${MONO};font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#9ca3af;">${kicker}</td>
   </tr></table>
 </td></tr>
 

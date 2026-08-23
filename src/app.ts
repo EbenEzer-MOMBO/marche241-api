@@ -65,9 +65,12 @@ if (fs.existsSync(publicPath)) {
   app.use(express.static(publicPath));
 }
 
-// En développement, servir également les images depuis src/public/images
-if (process.env.NODE_ENV !== 'production') {
-  const imagesPath = path.join(__dirname, '..', 'public', 'images');
+const imagesCandidates = [
+  path.join(__dirname, 'public', 'images'),
+  path.join(__dirname, '..', 'public', 'images'),
+  path.join(__dirname, '..', 'src', 'public', 'images'),
+];
+for (const imagesPath of imagesCandidates) {
   if (fs.existsSync(imagesPath)) {
     app.use('/images', express.static(imagesPath));
   }
