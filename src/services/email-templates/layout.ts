@@ -76,7 +76,11 @@ export interface EmailLayoutOptions {
 }
 
 function mailLogoUrl(): string {
-  const base = (process.env.APP_URL || 'https://marche241-api.onrender.com').replace(/\/$/, '');
+  const base = (
+    process.env.MAIL_ASSETS_URL ||
+    process.env.FRONTEND_URL ||
+    'https://marche241.ga'
+  ).replace(/\/$/, '');
   return `${base}/images/site-logo-mail.png`;
 }
 

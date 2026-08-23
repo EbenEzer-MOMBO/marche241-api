@@ -28,6 +28,11 @@ MAIL_FROM_NAME="Marché241"
 
 `MAIL_FROM_ADDRESS` doit appartenir au domaine vérifié dans Resend.
 
+Les images des emails (logo) doivent être hébergées sur ce même domaine ou un
+sous-domaine (`https://marche241.ga/images/site-logo-mail.png`). Resend signale
+comme suspectes les URLs hors domaine d'envoi (ex. Render). Surcharge possible
+via `MAIL_ASSETS_URL`.
+
 ### 3. Test de la configuration
 
 Redémarrez le serveur (`npm run dev`). Sans `RESEND_API_KEY`, le service passe en
