@@ -1,119 +1,48 @@
-# Configuration Gmail SMTP - Marché 241 API
+# Configuration Resend - Marché 241 API
 
 ## Vue d'ensemble
 
-Ce guide vous explique comment configurer Gmail SMTP pour l'envoi d'emails dans l'API Marché 241.
+Les emails transactionnels de l'API Marché 241 (codes de vérification, bienvenue,
+changements de statut de boutique) sont envoyés via l'API HTTP de
+[Resend](https://resend.com) (`POST https://api.resend.com/emails`), et non via SMTP.
+Render restreint les connexions SMTP sortantes, ce qui rendait l'ancienne
+configuration Gmail SMTP peu fiable en production.
 
 ## Étapes de configuration
 
-### 1. Activer l'authentification à 2 facteurs sur Gmail
+### 1. Obtenir une clé API Resend
 
-1. Allez sur [myaccount.google.com](https://myaccount.google.com)
-2. Cliquez sur "Sécurité" dans le menu de gauche
-3. Activez "Validation en 2 étapes"
+1. Créez un compte sur [resend.com](https://resend.com)
+2. Ajoutez et vérifiez votre domaine d'envoi (SPF/DKIM/DMARC générés par Resend)
+3. Générez une clé API dans **API Keys**
 
-### 2. Générer un mot de passe d'application
+### 2. Configurer les variables d'environnement
 
-1. Toujours dans "Sécurité", cherchez "Mots de passe des applications"
-2. Cliquez sur "Mots de passe des applications"
-3. Sélectionnez "Autre (nom personnalisé)"
-4. Tapez "Marché 241 API" comme nom
-5. Cliquez sur "Générer"
-6. **Copiez le mot de passe généré** (16 caractères sans espaces)
-
-### 3. Configurer les variables d'environnement
-
-Dans votre fichier `.env`, ajoutez :
+Dans votre fichier `.env` :
 
 ```bash
-# Configuration Gmail SMTP
-MAIL_MAILER=serveur
-MAIL_HOST=exemple.gmail.com
-MAIL_PORT=587
-MAIL_USERNAME=votre-email@gmail.com
-MAIL_PASSWORD=votre-mot-de-passe-application
-MAIL_ENCRYPTION=tls
-MAIL_FROM_ADDRESS=votre-email@gmail.com
-MAIL_FROM_NAME="Marché 241"
+RESEND_API_KEY=re_votre_cle_api
+MAIL_FROM_ADDRESS="noreply@marche241.ga"
+MAIL_FROM_NAME="Marché241"
 ```
 
-**Important :** 
-- `MAIL_USERNAME` = votre adresse Gmail complète
-- `MAIL_PASSWORD` = le mot de passe d'application généré (pas votre mot de passe Gmail)
-- `MAIL_FROM_ADDRESS` = généralement la même que `MAIL_USERNAME`
+`MAIL_FROM_ADDRESS` doit appartenir au domaine vérifié dans Resend.
 
-### 4. Exemple de configuration complète
+### 3. Test de la configuration
 
-```bash
-# Configuration Gmail SMTP
-MAIL_MAILER=smtp
-MAIL_HOST=smtp.gmail.com
-MAIL_PORT=587
-MAIL_USERNAME=exemple@gmail.com
-MAIL_PASSWORD=exemple
-MAIL_ENCRYPTION=tls
-MAIL_FROM_ADDRESS=exemple@gmail.com
-MAIL_FROM_NAME="AppName"
-```
-
-## Test de la configuration
-
-Une fois configuré, redémarrez votre serveur :
-
-```bash
-npm run dev
-```
-
-Vous devriez voir dans les logs :
-```
-✅ Service email Gmail SMTP configuré
-✅ Connexion Gmail SMTP vérifiée avec succès
-```
+Redémarrez le serveur (`npm run dev`). Sans `RESEND_API_KEY`, le service passe en
+mode simulation (les emails sont uniquement logués, aucun envoi réel) — pratique en
+développement local. Avec la clé renseignée, chaque envoi est logué avec l'id
+Resend retourné.
 
 ## Dépannage
 
-### Erreur "Invalid login"
-- Vérifiez que l'authentification à 2 facteurs est activée
-- Vérifiez que vous utilisez le mot de passe d'application (pas votre mot de passe Gmail)
-- Vérifiez que l'adresse email est correcte
-
-### Erreur "Connection timeout"
-- Vérifiez votre connexion internet
-- Vérifiez que le port 587 n'est pas bloqué par votre firewall
-
-### Erreur "Authentication failed"
-- Régénérez un nouveau mot de passe d'application
-- Vérifiez que l'authentification à 2 facteurs est bien activée
+- **401 Unauthorized** : clé API invalide ou révoquée.
+- **403 Forbidden / domaine non vérifié** : `MAIL_FROM_ADDRESS` n'appartient pas à un
+  domaine vérifié dans le dashboard Resend.
+- **422 Unprocessable Entity** : adresse destinataire invalide.
 
 ## Sécurité
 
-⚠️ **Important :**
-- Ne partagez jamais votre mot de passe d'application
-- Ajoutez `.env` à votre `.gitignore` pour éviter de commiter vos credentials
-- Utilisez des variables d'environnement différentes pour la production
-
-## Limites Gmail
-
-Gmail SMTP a des limites :
-- **500 emails par jour** pour les comptes gratuits
-- **100 destinataires par email**
-- **500 emails par heure**
-
-Pour une utilisation en production intensive, considérez :
-- Gmail Workspace (limites plus élevées)
-- Services dédiés comme SendGrid, Mailgun, ou Resend
-
-## Migration vers Resend (optionnel)
-
-Une fois que vous voulez passer à Resend :
-
-1. Obtenez une clé API sur [resend.com](https://resend.com)
-2. Modifiez le service email pour utiliser Resend
-3. Mettez à jour vos variables d'environnement
-
-## Support
-
-En cas de problème :
-1. Vérifiez les logs du serveur
-2. Testez avec un email simple d'abord
-3. Vérifiez la configuration Gmail dans les paramètres Google
+⚠️ Ne commitez jamais `RESEND_API_KEY`. Utilisez des clés distinctes pour le
+développement et la production.

@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { VendeurModel } from '../models/vendeur.model';
+import { BoutiqueModel } from '../models/boutique.model';
 import { WhatsappSubscriberModel } from '../models/whatsapp_subscriber.model';
 import { DemandeCodeVerification, VerificationCode, ConnexionVendeur, CreateVendeurData, Vendeur, StatutVendeur } from '../lib/database-types';
 import { EmailService } from '../services/email.service';
@@ -136,81 +137,31 @@ export class VendeurController {
         logger.error(`[VendeurController] Échec de l'abonnement automatique WhatsApp pour le vendeur ${telephone}:`, subError.message);
       }
 
-      // Envoyer les données vers le webhook
+      // Envoyer le code de vérification par email (Resend)
+      let emailWarning: string | undefined;
       try {
-        const webhookUrl = process.env.WEBHOOK_REGISTER_URL;
-        
-        if (!webhookUrl) {
-          throw new Error('URL du webhook d\'inscription non configurée');
-        }
-
-        let phone = telephone.replace(/^\+/, '').replace(/\s/g, '');
-
-        const webhookData = {
-          type: 'registration',
-          email: email,
-          code: code,
-          phone: phone,
-          vendeur: {
-            id: vendeur.id,
-            nom: vendeur.nom,
-            telephone: vendeur.telephone,
-            ville: vendeur.ville,
-            statut: vendeur.statut
-          },
-          timestamp: new Date().toISOString()
-        };
-
-        const response = await fetch(webhookUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${process.env.WEBHOOK_SECRET || ''}`
-          },
-          body: JSON.stringify(webhookData)
-        });
-
-        if (!response.ok) {
-          throw new Error(`Webhook responded with status ${response.status}`);
-        }
-        
-        res.status(201).json({
-          success: true,
-          message: 'Compte créé avec succès. Un code de vérification a été envoyé.',
-          vendeur: {
-            id: vendeur.id,
-            email: vendeur.email,
-            nom: vendeur.nom,
-            telephone: vendeur.telephone,
-            ville: vendeur.ville,
-            statut: vendeur.statut,
-            date_creation: vendeur.date_creation
-          },
-          // En développement, on peut renvoyer le code pour faciliter les tests
-          code: process.env.NODE_ENV === 'development' ? code : undefined
-        });
-      } catch (webhookError: any) {
-        logger.error('Erreur lors de l\'envoi au webhook d\'inscription:', webhookError);
-        
-        // Si l'envoi au webhook échoue, on renvoie quand même une réponse positive
-        // mais on log l'erreur pour investigation
-        res.status(201).json({
-          success: true,
-          message: 'Compte créé avec succès.',
-          vendeur: {
-            id: vendeur.id,
-            email: vendeur.email,
-            nom: vendeur.nom,
-            telephone: vendeur.telephone,
-            ville: vendeur.ville,
-            statut: vendeur.statut,
-            date_creation: vendeur.date_creation
-          },
-          // En développement, on peut renvoyer le code même si le webhook échoue
-          code: process.env.NODE_ENV === 'development' ? code : undefined,
-          warning: process.env.NODE_ENV === 'development' ? 'Webhook non appelé - erreur de service' : undefined
-        });
+        await EmailService.envoyerCodeInscription(email, code, nom);
+      } catch (emailError: any) {
+        logger.error('Erreur lors de l\'envoi de l\'email d\'inscription:', emailError);
+        emailWarning = process.env.NODE_ENV === 'development' ? 'Email non envoyé - erreur du service email' : undefined;
       }
+
+      res.status(201).json({
+        success: true,
+        message: 'Compte créé avec succès. Un code de vérification a été envoyé par email.',
+        vendeur: {
+          id: vendeur.id,
+          email: vendeur.email,
+          nom: vendeur.nom,
+          telephone: vendeur.telephone,
+          ville: vendeur.ville,
+          statut: vendeur.statut,
+          date_creation: vendeur.date_creation
+        },
+        // En développement, on peut renvoyer le code pour faciliter les tests
+        code: process.env.NODE_ENV === 'development' ? code : undefined,
+        warning: emailWarning
+      });
     } catch (error: any) {
       logger.error('Erreur dans inscrireVendeur:', error);
       
@@ -436,21 +387,41 @@ export class VendeurController {
       }
       
       // Générer un code de vérification
-      const code = email 
+      const code = email
         ? await VendeurModel.generateVerificationCodeByEmail(email)
         : await VendeurModel.generateVerificationCode('+' + phone!);
-      
-      // Envoyer les données vers le webhook
+
+      if (email) {
+        // Envoyer le code de connexion par email (Resend)
+        let emailWarning: string | undefined;
+        try {
+          await EmailService.envoyerCodeConnexion(email, code);
+        } catch (emailError: any) {
+          logger.error('Erreur lors de l\'envoi de l\'email de connexion:', emailError);
+          emailWarning = process.env.NODE_ENV === 'development' ? 'Email non envoyé - erreur du service email' : undefined;
+        }
+
+        res.status(200).json({
+          success: true,
+          message: 'Code de vérification envoyé par email avec succès',
+          // En développement, on peut renvoyer le code pour faciliter les tests
+          code: process.env.NODE_ENV === 'development' ? code : undefined,
+          warning: emailWarning
+        });
+        return;
+      }
+
+      // Envoyer les données vers le webhook (SMS)
       try {
         const webhookUrl = process.env.WEBHOOK_VERIFICATION_URL;
-        
+
         if (!webhookUrl) {
           throw new Error('URL du webhook non configurée');
         }
 
         const webhookData = {
-          type: email ? 'email' : 'phone',
-          destination: email || phone,
+          type: 'phone',
+          destination: phone,
           code: code,
           vendeurNom: vendeur.nom,
           vendeurId: vendeur.id,
@@ -469,16 +440,16 @@ export class VendeurController {
         if (!response.ok) {
           throw new Error(`Webhook responded with status ${response.status}`);
         }
-        
+
         res.status(200).json({
           success: true,
-          message: `Code de vérification envoyé ${email ? 'par email' : 'par SMS'} avec succès`,
+          message: 'Code de vérification envoyé par SMS avec succès',
           // En développement, on peut renvoyer le code pour faciliter les tests
           code: process.env.NODE_ENV === 'development' ? code : undefined
         });
       } catch (webhookError: any) {
         logger.error('Erreur lors de l\'envoi au webhook:', webhookError);
-        
+
         // Si l'envoi au webhook échoue, on renvoie quand même une réponse positive
         // mais on log l'erreur pour investigation
         res.status(200).json({
@@ -570,44 +541,17 @@ export class VendeurController {
         return;
       }
       
-      // Envoyer un webhook de bienvenue si c'est la première vérification
+      // Envoyer l'email de bienvenue si c'est la première vérification
       if (vendeur.statut === 'en_attente_verification') {
-        try {
-          const webhookUrl = process.env.WEBHOOK_REGISTER_URL;
-          
-          if (webhookUrl) {
-            let cleanPhone = vendeurMisAJour.telephone ? vendeurMisAJour.telephone.replace(/^\+/, '').replace(/\s/g, '') : null;
-
-            const webhookData = {
-              type: 'welcome',
-              email: email || vendeurMisAJour.email || null,
-              phone: cleanPhone,
-              vendeur: {
-                id: vendeurMisAJour.id, 
-                nom: vendeurMisAJour.nom,
-                telephone: vendeurMisAJour.telephone,
-                ville: vendeurMisAJour.ville,
-                statut: vendeurMisAJour.statut
-              },
-              timestamp: new Date().toISOString()
-            };
-
-            const response = await fetch(webhookUrl, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${process.env.WEBHOOK_SECRET || ''}`
-              },
-              body: JSON.stringify(webhookData)
-            });
-
-            if (!response.ok) {
-              logger.error(`[verifierCode] Webhook responded with status ${response.status}`);
-            }
+        const destinataire = email || vendeurMisAJour.email;
+        if (destinataire) {
+          try {
+            const [boutique] = await BoutiqueModel.getBoutiquesByVendeurId(vendeurMisAJour.id);
+            await EmailService.envoyerEmailBienvenue(destinataire, vendeurMisAJour.nom, boutique?.slug);
+          } catch (emailError: any) {
+            logger.error('[verifierCode] Erreur lors de l\'envoi de l\'email de bienvenue:', emailError);
+            // On continue même si l'email échoue
           }
-        } catch (webhookError: any) {
-          logger.error('[verifierCode] Erreur lors de l\'envoi du webhook de bienvenue:', webhookError);
-          // On continue même si le webhook échoue
         }
       }
       
