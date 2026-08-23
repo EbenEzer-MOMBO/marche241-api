@@ -116,7 +116,7 @@ export function renderEmailLayout({ preheader, kicker, contentRows, unsubscribe 
 <tr><td align="center" style="padding:32px 12px;">
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" class="wrap" style="width:600px;max-width:600px;">
 
-<tr><td bgcolor="#000000" style="padding:14px 16px;background-color:#000000;border-radius:12px;">
+<tr><td style="padding:14px 16px;">
   <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;"><tr>
     <td style="vertical-align:middle;">
       <img src="${mailLogoUrl()}" alt="Marché 241" width="200" style="display:block;border:0;outline:none;text-decoration:none;width:200px;max-width:200px;height:auto;" />
