@@ -92,7 +92,13 @@ export class PaiementController {
           typePaiementDescription = `solde après livraison (${totalArticles} + 10% = ${montantAttendu})`;
           break;
 
-        case 'acompte':
+        case 'acompte': {
+          const ACOMPTE_POURCENTAGE = 0.50;
+          montantAttendu = avecFraisService(Math.round(totalCommandeHT * ACOMPTE_POURCENTAGE));
+          typePaiementDescription = `acompte 50% (50% de (${totalArticles} + ${fraisLivraison}) + 10% = ${montantAttendu})`;
+          break;
+        }
+
         case 'complement':
           return { isValid: true, commande };
 
@@ -594,13 +600,16 @@ export class PaiementController {
           let nouveauStatutPaiement: StatutPaiement;
           let nouveauStatutCommande = commande.statut;
 
-          if (montantPaye > 0) {
-            nouveauStatutPaiement = 'paye';
-            if (commande.statut === 'en_attente') {
-              nouveauStatutCommande = 'confirmee';
-            }
-          } else {
+          if (montantPaye <= 0) {
             nouveauStatutPaiement = 'en_attente';
+          } else if (montantPaye < commande.total) {
+            nouveauStatutPaiement = 'partiellement_paye';
+          } else {
+            nouveauStatutPaiement = 'paye';
+          }
+
+          if (montantPaye > 0 && commande.statut === 'en_attente') {
+            nouveauStatutCommande = 'confirmee';
           }
 
           await CommandeModel.updatePaymentStatus(

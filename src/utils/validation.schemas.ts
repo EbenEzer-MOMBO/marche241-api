@@ -121,8 +121,8 @@ export const createBoutiqueSchema = Joi.object({
   telephone: Joi.string().allow(null, '').pattern(PHONE_PATTERN).messages({
     'string.pattern.base': PHONE_MESSAGE
   }),
-  payment_restriction_mode: Joi.string().valid('complet_uniquement', 'livraison_uniquement', 'les_deux').default('les_deux').messages({
-    'any.only': 'Le mode de restriction de paiement doit être complet_uniquement, livraison_uniquement ou les_deux'
+  payment_restriction_mode: Joi.string().valid('complet_uniquement', 'livraison_uniquement', 'les_deux', 'acompte_50').default('les_deux').messages({
+    'any.only': 'Le mode de restriction de paiement doit être complet_uniquement, livraison_uniquement, les_deux ou acompte_50'
   })
 });
 
@@ -157,8 +157,8 @@ export const updateBoutiqueSchema = Joi.object({
   telephone: Joi.string().allow(null, '').pattern(PHONE_PATTERN).messages({
     'string.pattern.base': PHONE_MESSAGE
   }),
-  payment_restriction_mode: Joi.string().valid('complet_uniquement', 'livraison_uniquement', 'les_deux').messages({
-    'any.only': 'Le mode de restriction de paiement doit être complet_uniquement, livraison_uniquement ou les_deux'
+  payment_restriction_mode: Joi.string().valid('complet_uniquement', 'livraison_uniquement', 'les_deux', 'acompte_50').messages({
+    'any.only': 'Le mode de restriction de paiement doit être complet_uniquement, livraison_uniquement, les_deux ou acompte_50'
   })
 }).unknown(true); // Permettre les champs supplémentaires qui ne sont pas dans le schéma
 
