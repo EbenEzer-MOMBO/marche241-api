@@ -12,8 +12,8 @@ import { logger } from '../utils/logger';
 export const validate = (schema: any) => {
   return (req: Request, res: Response, next: NextFunction) => {
     try {
-      if (req.body.code_postal && typeof req.body.code_postal === 'string' && req.body.code_postal.length > 10) {
-        req.body.code_postal = req.body.code_postal.substring(0, 10);
+      if (req.body.delimitation && typeof req.body.delimitation === 'string' && req.body.delimitation.length > 100) {
+        req.body.delimitation = req.body.delimitation.substring(0, 100);
       }
 
       const { error, value } = schema.validate(req.body, {

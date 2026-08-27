@@ -9,7 +9,7 @@ import { CommuneLivraison } from '../lib/database-types';
 const COLONNES_AUTORISEES = [
   'boutique_id',
   'nom_commune',
-  'code_postal',
+  'delimitation',
   'tarif_livraison',
   'delai_livraison_min',
   'delai_livraison_max',

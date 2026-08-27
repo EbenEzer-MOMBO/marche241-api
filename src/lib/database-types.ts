@@ -78,7 +78,7 @@ export interface Boutique {
   note_moyenne: number;
   nombre_avis: number;
   nombre_vues: number; // Nombre de vues uniques de la boutique
-  payment_restriction_mode: 'complet_uniquement' | 'livraison_uniquement' | 'les_deux'; // Restriction de paiement de la boutique
+  payment_restriction_mode: 'complet_uniquement' | 'livraison_uniquement' | 'les_deux' | 'acompte_50'; // Restriction de paiement de la boutique
   
   // Relations
   vendeur?: Vendeur;
@@ -296,7 +296,7 @@ export interface CommuneLivraison {
   id: number;
   boutique_id: number;
   nom_commune: string;
-  code_postal?: string;
+  delimitation?: string;
   tarif_livraison: number;
   delai_livraison_min: number;
   delai_livraison_max: number;
@@ -308,7 +308,7 @@ export interface CommuneLivraison {
 export interface CreateCommuneLivraison {
   boutique_id: number;
   nom_commune: string;
-  code_postal?: string;
+  delimitation?: string;
   tarif_livraison: number;
   delai_livraison_min?: number;
   delai_livraison_max?: number;
@@ -317,7 +317,7 @@ export interface CreateCommuneLivraison {
 
 export interface UpdateCommuneLivraison {
   nom_commune?: string;
-  code_postal?: string;
+  delimitation?: string;
   tarif_livraison?: number;
   delai_livraison_min?: number;
   delai_livraison_max?: number;

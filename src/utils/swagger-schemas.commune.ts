@@ -24,19 +24,19 @@
  *         nom_commune:
  *           type: string
  *           description: Nom de la commune
- *         code_postal:
+ *         delimitation:
  *           type: string
- *           description: Code postal de la commune (optionnel)
+ *           description: Description libre de la zone de livraison (quartiers, limites géographiques...)
  *         tarif_livraison:
  *           type: number
  *           format: float
  *           description: Tarif de livraison pour cette commune
  *         delai_livraison_min:
  *           type: integer
- *           description: Délai minimum de livraison en heures
+ *           description: Délai minimum de livraison en jours
  *         delai_livraison_max:
  *           type: integer
- *           description: Délai maximum de livraison en heures
+ *           description: Délai maximum de livraison en jours
  *         est_active:
  *           type: boolean
  *           description: Indique si la commune est active pour les livraisons
@@ -64,19 +64,19 @@
  *         nom_commune:
  *           type: string
  *           description: Nom de la commune
- *         code_postal:
+ *         delimitation:
  *           type: string
- *           description: Code postal de la commune (optionnel)
+ *           description: Description libre de la zone de livraison (quartiers, limites géographiques...)
  *         tarif_livraison:
  *           type: number
  *           format: float
  *           description: Tarif de livraison pour cette commune
  *         delai_livraison_min:
  *           type: integer
- *           description: Délai minimum de livraison en heures
+ *           description: Délai minimum de livraison en jours
  *         delai_livraison_max:
  *           type: integer
- *           description: Délai maximum de livraison en heures
+ *           description: Délai maximum de livraison en jours
  *         est_active:
  *           type: boolean
  *           default: true
@@ -91,19 +91,19 @@
  *         nom_commune:
  *           type: string
  *           description: Nom de la commune
- *         code_postal:
+ *         delimitation:
  *           type: string
- *           description: Code postal de la commune
+ *           description: Description libre de la zone de livraison
  *         tarif_livraison:
  *           type: number
  *           format: float
  *           description: Tarif de livraison pour cette commune
  *         delai_livraison_min:
  *           type: integer
- *           description: Délai minimum de livraison en heures
+ *           description: Délai minimum de livraison en jours
  *         delai_livraison_max:
  *           type: integer
- *           description: Délai maximum de livraison en heures
+ *           description: Délai maximum de livraison en jours
  *         est_active:
  *           type: boolean
  *           description: Indique si la commune est active pour les livraisons
