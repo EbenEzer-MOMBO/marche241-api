@@ -248,10 +248,11 @@ export class ProduitController {
       logger.debug('[ProduitController] Body:', req.body);
       
       const produitData = req.body;
-      
-      // Vérifier que l'utilisateur est authentifié
+
+      // Vérifier que l'utilisateur est authentifié (vendeur JWT ou requête de service admin)
       const user = (req as any).user;
-      if (!user) {
+      const isAdmin = (req as any).isAdmin;
+      if (!user && !isAdmin) {
         res.status(401).json({
           success: false,
           message: 'Authentification requise'
@@ -266,7 +267,7 @@ export class ProduitController {
         prix: !!produitData.prix,
         boutique_id: !!produitData.boutique_id
       });
-      
+
       if (!produitData.nom || !produitData.slug || !produitData.prix || !produitData.boutique_id) {
         res.status(400).json({
           success: false,
@@ -275,14 +276,16 @@ export class ProduitController {
         return;
       }
 
-      // Vérifier que l'utilisateur est propriétaire de la boutique
-      const isOwner = await BoutiqueModel.isOwnedByVendeur(produitData.boutique_id, user.id);
-      if (!isOwner && !(req as any).isAdmin) {
-        res.status(403).json({
-          success: false,
-          message: 'Vous n\'êtes pas autorisé à créer des produits pour cette boutique'
-        });
-        return;
+      // Vérifier que l'utilisateur est propriétaire de la boutique (sauf requête de service admin)
+      if (!isAdmin) {
+        const isOwner = await BoutiqueModel.isOwnedByVendeur(produitData.boutique_id, user.id);
+        if (!isOwner) {
+          res.status(403).json({
+            success: false,
+            message: 'Vous n\'êtes pas autorisé à créer des produits pour cette boutique'
+          });
+          return;
+        }
       }
 
       logger.debug('[ProduitController] Tentative de création du produit avec les données:', {
@@ -339,11 +342,12 @@ export class ProduitController {
       }
 
       const produitData = req.body;
-      
-      // Vérifier que l'utilisateur est authentifié
+
+      // Vérifier que l'utilisateur est authentifié (vendeur JWT ou requête de service admin)
       const user = (req as any).user;
+      const isAdmin = (req as any).isAdmin;
       logger.debug('[ProduitController] Utilisateur extrait:', user ? user.email || user.id : user);
-      if (!user) {
+      if (!user && !isAdmin) {
         logger.debug('[ProduitController] Authentification requise');
         res.status(401).json({
           success: false,
@@ -364,14 +368,16 @@ export class ProduitController {
         return;
       }
 
-      // Vérifier que l'utilisateur est propriétaire de la boutique du produit
-      const isOwner = await BoutiqueModel.isOwnedByVendeur(existingProduit.boutique_id, user.id);
-      if (!isOwner && !(req as any).isAdmin) {
-        res.status(403).json({
-          success: false,
-          message: 'Vous n\'êtes pas autorisé à modifier ce produit'
-        });
-        return;
+      // Vérifier que l'utilisateur est propriétaire de la boutique du produit (sauf requête de service admin)
+      if (!isAdmin) {
+        const isOwner = await BoutiqueModel.isOwnedByVendeur(existingProduit.boutique_id, user.id);
+        if (!isOwner) {
+          res.status(403).json({
+            success: false,
+            message: 'Vous n\'êtes pas autorisé à modifier ce produit'
+          });
+          return;
+        }
       }
 
       logger.debug('[ProduitController] Données envoyées à updateProduit:', produitData);

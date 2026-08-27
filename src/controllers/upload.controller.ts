@@ -190,14 +190,15 @@ export class UploadController {
       }
 
       const vendeur = (req as any).vendeur || (req as any).user;
-      if (!vendeur) {
+      const isAdmin = (req as any).isAdmin;
+      if (!vendeur && !isAdmin) {
         return res.status(401).json({
           success: false,
           message: 'Authentification requise'
         });
       }
 
-      if (!(req as any).isAdmin) {
+      if (!isAdmin) {
         const { BoutiqueModel } = require('../models/boutique.model');
         const boutiques = await BoutiqueModel.getBoutiquesByVendeurId(vendeur.id);
         const slugs = boutiques.map((b: { slug: string }) => b.slug).filter(Boolean);

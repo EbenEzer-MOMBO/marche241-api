@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { ProduitController } from '../controllers/produit.controller';
 import { auth } from '../middlewares/auth.middleware';
+import { authOrServiceKey } from '../middlewares/service-auth.middleware';
 import { validate, validateParams, validateQuery } from '../middlewares/validation.middleware';
 import { idParamSchema, slugParamSchema, paginationQuerySchema, boutiqueIdParamSchema } from '../utils/validation.schemas';
 import Joi from 'joi';
@@ -459,7 +460,7 @@ router.get('/:id', validateParams(idParamSchema), ProduitController.getProduitBy
  * @desc    Crée un nouveau produit
  * @access  Private (vendeur authentifié)
  */
-router.post('/', auth, validate(createProduitSchema), ProduitController.createProduit);
+router.post('/', authOrServiceKey, validate(createProduitSchema), ProduitController.createProduit);
 
 /**
  * @swagger
@@ -610,7 +611,7 @@ router.post('/', auth, validate(createProduitSchema), ProduitController.createPr
  * @desc    Supprime un produit
  * @access  Private (propriétaire)
  */
-router.put('/:id', auth, validateParams(idParamSchema), validate(updateProduitSchema), ProduitController.updateProduit);
+router.put('/:id', authOrServiceKey, validateParams(idParamSchema), validate(updateProduitSchema), ProduitController.updateProduit);
 router.delete('/:id', auth, validateParams(idParamSchema), ProduitController.deleteProduit);
 
 /**

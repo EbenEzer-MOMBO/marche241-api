@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { UploadController } from '../controllers/upload.controller';
 import { uploadImage, uploadMultipleImages } from '../middlewares/upload.middleware';
-import { auth } from '../middlewares/auth.middleware';
+import { authOrServiceKey } from '../middlewares/service-auth.middleware';
 import { validate } from '../middlewares/validation.middleware';
 import Joi from 'joi';
 
@@ -91,7 +91,7 @@ const deleteImageSchema = Joi.object({
  * @desc    Upload une image vers le stockage objet
  * @access  Private
  */
-router.post('/image', auth, uploadImage('image'), UploadController.uploadImage);
+router.post('/image', authOrServiceKey, uploadImage('image'), UploadController.uploadImage);
 
 /**
  * @swagger
@@ -167,7 +167,7 @@ router.post('/image', auth, uploadImage('image'), UploadController.uploadImage);
  * @access  Private
  */
 // Utiliser le champ 'images' pour l'upload multiple
-router.post('/images', auth, uploadMultipleImages('images', 5), UploadController.uploadMultipleImages);
+router.post('/images', authOrServiceKey, uploadMultipleImages('images', 5), UploadController.uploadMultipleImages);
 
 /**
  * @swagger
@@ -216,6 +216,6 @@ router.post('/images', auth, uploadMultipleImages('images', 5), UploadController
  * @desc    Supprime une image du stockage objet
  * @access  Private
  */
-router.delete('/delete', auth, validate(deleteImageSchema), UploadController.deleteImage);
+router.delete('/delete', authOrServiceKey, validate(deleteImageSchema), UploadController.deleteImage);
 
 export default router;
