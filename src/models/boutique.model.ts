@@ -41,7 +41,8 @@ const COLONNES_AUTORISEES = [
   'note_moyenne',
   'nombre_avis',
   'nombre_vues',
-  'payment_restriction_mode'
+  'payment_restriction_mode',
+  'est_verifiee'
 ] as const;
 
 /**
