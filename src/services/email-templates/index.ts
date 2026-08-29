@@ -15,3 +15,6 @@ export type { VendeurBoutiqueSuspendueData } from './vendeurBoutiqueSuspendue';
 
 export { vendeurBoutiqueRemiseEnAttenteTemplate } from './vendeurBoutiqueRemiseEnAttente';
 export type { VendeurBoutiqueRemiseEnAttenteData } from './vendeurBoutiqueRemiseEnAttente';
+
+export { vendeurBoutiqueBadgeVerifieTemplate } from './vendeurBoutiqueBadgeVerifie';
+export type { VendeurBoutiqueBadgeVerifieData } from './vendeurBoutiqueBadgeVerifie';

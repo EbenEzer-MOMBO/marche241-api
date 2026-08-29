@@ -2,6 +2,7 @@ import { logger } from '../utils/logger';
 import {
   vendeurBienvenueTemplate,
   vendeurBoutiqueActiveeTemplate,
+  vendeurBoutiqueBadgeVerifieTemplate,
   vendeurBoutiqueRemiseEnAttenteTemplate,
   vendeurBoutiqueSuspendueTemplate,
   vendeurCodeConnexionTemplate,
@@ -122,6 +123,17 @@ export class EmailService {
       elementAVerifier,
       depuisLe: new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }),
       dashboardBoutiqueUrl: `${frontendUrl}/dashboard/boutique`,
+    });
+    await this.send(email, subject, html, text);
+  }
+
+  /** Badge de vérification attribué manuellement par un admin. */
+  static async envoyerBoutiqueBadgeVerifie(email: string, boutiqueNom: string, boutiqueSlug: string): Promise<void> {
+    const frontendUrl = process.env.FRONTEND_URL || 'https://marche241.ga';
+    const { subject, html, text } = vendeurBoutiqueBadgeVerifieTemplate({
+      boutiqueNom,
+      boutiqueUrl: `${frontendUrl}/${boutiqueSlug}`,
+      dateAttribution: new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }),
     });
     await this.send(email, subject, html, text);
   }
