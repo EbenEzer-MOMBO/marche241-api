@@ -654,7 +654,7 @@ export class ProduitModel {
 
   /**
    * Récupère les produits les plus importants par catégorie
-   * Les produits sont triés par note moyenne et nombre de ventes
+   * Les produits sont triés par stock (en stock d'abord), note moyenne et nombre de ventes
    * Ne renvoie que les catégories avec des produits, limité à 3 catégories maximum
    * @param limite Nombre de produits à récupérer par catégorie
    * @param boutiqueId ID de la boutique (optionnel)
@@ -701,7 +701,10 @@ export class ProduitModel {
                ) c) AS categorie
        FROM produits p
        WHERE p.categorie_id = ANY($1) AND p.statut = 'actif' ${filtreBoutique}
-       ORDER BY p.note_moyenne DESC, p.nombre_ventes DESC`,
+       ORDER BY
+         CASE WHEN p.en_stock IS TRUE THEN 0 ELSE 1 END,
+         p.note_moyenne DESC,
+         p.nombre_ventes DESC`,
       params
     );
 
