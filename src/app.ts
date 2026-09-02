@@ -1,3 +1,5 @@
+import './instrument';
+import * as Sentry from '@sentry/node';
 import express, { Application } from 'express';
 import dotenv from 'dotenv';
 import cors from 'cors';
@@ -132,6 +134,10 @@ app.use(notFound);
 
 // Middleware de journalisation des erreurs
 app.use(errorLogger);
+
+// Le handler d'erreurs Sentry doit être enregistré après les contrôleurs
+// et avant tout autre middleware de gestion d'erreurs
+Sentry.setupExpressErrorHandler(app);
 
 // Middleware de gestion des erreurs
 app.use(errorHandler);
