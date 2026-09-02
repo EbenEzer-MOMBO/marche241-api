@@ -129,6 +129,14 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Route de test pour vérifier l'intégration Sentry (erreur volontaire)
+app.get('/debug-sentry', (req, res) => {
+  Sentry.logger.info('User triggered test error', {
+    action: 'test_error_endpoint',
+  });
+  throw new Error('My first Sentry error!');
+});
+
 // Middleware pour les routes non trouvées
 app.use(notFound);
 
