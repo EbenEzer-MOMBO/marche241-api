@@ -1,3 +1,5 @@
+import './instrument';
+import * as Sentry from '@sentry/node';
 import express, { Application } from 'express';
 import dotenv from 'dotenv';
 import cors from 'cors';
@@ -127,11 +129,27 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Route de test pour vérifier l'intégration Sentry (erreur volontaire)
+// Désactivée en production pour éviter qu'elle soit déclenchée publiquement
+// sans authentification et ne pollue le projet Sentry.
+if (process.env.NODE_ENV !== 'production') {
+  app.get('/debug-sentry', (req, res) => {
+    Sentry.logger.info('User triggered test error', {
+      action: 'test_error_endpoint',
+    });
+    throw new Error('My first Sentry error!');
+  });
+}
+
 // Middleware pour les routes non trouvées
 app.use(notFound);
 
 // Middleware de journalisation des erreurs
 app.use(errorLogger);
+
+// Le handler d'erreurs Sentry doit être enregistré après les contrôleurs
+// et avant tout autre middleware de gestion d'erreurs
+Sentry.setupExpressErrorHandler(app);
 
 // Middleware de gestion des erreurs
 app.use(errorHandler);

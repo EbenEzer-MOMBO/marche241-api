@@ -1,3 +1,5 @@
+import './instrument';
+import * as Sentry from '@sentry/node';
 import app from './app';
 import dotenv from 'dotenv';
 import os from 'os';
@@ -71,6 +73,7 @@ const shutdown = (signal: string): void => {
   CronService.stopAll();
   server.close(async () => {
     await closePool();
+    await Sentry.flush(2000);
     console.log('Serveur arrêté avec succès');
     process.exit(0);
   });
