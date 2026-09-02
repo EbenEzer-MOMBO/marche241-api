@@ -7,17 +7,22 @@ import { nodeProfilingIntegration } from '@sentry/profiling-node';
 // afin que SENTRY_DSN défini dans .env soit bien pris en compte.
 dotenv.config();
 
-// Sans SENTRY_DSN défini, le SDK reste désactivé (aucun envoi d'événement).
+const sentryDsn = process.env.SENTRY_DSN;
+
+if (!sentryDsn) {
+  console.warn('⚠️  SENTRY_DSN manquant : aucun événement ne sera envoyé à Sentry.');
+} else {
+  console.log('📡 Sentry initialisé');
+}
+
 Sentry.init({
-  dsn: process.env.SENTRY_DSN,
+  dsn: sentryDsn,
   integrations: [
     nodeProfilingIntegration(),
   ],
   environment: process.env.NODE_ENV || 'development',
-  // Tracing
+  enableLogs: true,
   tracesSampleRate: 1.0,
-  // Set sampling rate for profiling - this is evaluated only once per SDK.init call
   profileSessionSampleRate: 1.0,
-  // Trace lifecycle automatically enables profiling during active traces
   profileLifecycle: 'trace',
 });
