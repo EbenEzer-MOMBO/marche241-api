@@ -1,6 +1,11 @@
 // Doit être importé avant tout autre module de l'application.
+import dotenv from 'dotenv';
 import * as Sentry from '@sentry/node';
 import { nodeProfilingIntegration } from '@sentry/profiling-node';
+
+// Charger les variables d'environnement avant l'initialisation de Sentry,
+// afin que SENTRY_DSN défini dans .env soit bien pris en compte.
+dotenv.config();
 
 Sentry.init({
   dsn: process.env.SENTRY_DSN || 'https://a77be31c6f31600e0f0d78ab9fd7cc04@o4512016336814080.ingest.de.sentry.io/4512016359948368',
