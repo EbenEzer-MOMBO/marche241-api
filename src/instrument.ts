@@ -7,8 +7,9 @@ import { nodeProfilingIntegration } from '@sentry/profiling-node';
 // afin que SENTRY_DSN défini dans .env soit bien pris en compte.
 dotenv.config();
 
+// Sans SENTRY_DSN défini, le SDK reste désactivé (aucun envoi d'événement).
 Sentry.init({
-  dsn: process.env.SENTRY_DSN || 'https://a77be31c6f31600e0f0d78ab9fd7cc04@o4512016336814080.ingest.de.sentry.io/4512016359948368',
+  dsn: process.env.SENTRY_DSN,
   integrations: [
     nodeProfilingIntegration(),
   ],
