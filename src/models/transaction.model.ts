@@ -8,6 +8,7 @@ import { Transaction, StatutPaiement } from '../lib/database-types';
  */
 const COLONNES_AUTORISEES = [
   'commande_id',
+  'boost_id',
   'reference_transaction',
   'montant',
   'methode_paiement',

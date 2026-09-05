@@ -259,3 +259,19 @@ export const updateCartVariantsSchema = Joi.object({
     'any.required': 'Les variants sélectionnés sont obligatoires'
   })
 });
+
+// Schéma pour la création d'un boost publicitaire (Phase 1 : boost de boutique)
+export const creerBoostSchema = Joi.object({
+  boutique_id: Joi.number().integer().required().messages({
+    'number.base': 'L\'ID de la boutique doit être un nombre',
+    'any.required': 'L\'ID de la boutique est obligatoire'
+  }),
+  forfait_code: Joi.string().required().valid('decouverte', 'standard', 'pro', 'max').messages({
+    'any.required': 'Le forfait est obligatoire',
+    'any.only': 'Le forfait doit être l\'un des suivants: decouverte, standard, pro, max'
+  }),
+  zones: Joi.array().items(Joi.string().min(1).max(100)).min(1).required().messages({
+    'array.min': 'Au moins une zone de ciblage doit être sélectionnée',
+    'any.required': 'Le ciblage géographique est obligatoire'
+  })
+});

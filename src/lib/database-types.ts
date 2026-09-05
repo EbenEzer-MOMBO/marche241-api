@@ -10,8 +10,17 @@ export type StatutProduit = 'actif' | 'inactif' | 'brouillon' | 'archive';
 export type StatutCommande = 'en_attente' | 'confirmee' | 'en_preparation' | 'expedie' | 'livree' | 'annulee' | 'remboursee';
 export type StatutPaiement = 'en_attente' | 'partiellement_paye' | 'paye' | 'echec' | 'rembourse';
 export type MethodePaiement = 'mobile_money' | 'airtel_money' | 'moov_money' | 'carte_bancaire' | 'especes' | 'virement';
-export type TypePaiement = 'paiement_complet' | 'acompte' | 'frais_livraison' | 'solde_apres_livraison' | 'complement';
+export type TypePaiement = 'paiement_complet' | 'acompte' | 'frais_livraison' | 'solde_apres_livraison' | 'complement' | 'boost';
 export type StatutAvis = 'en_attente' | 'approuve' | 'rejete';
+export type TypeBoost = 'boutique' | 'produit';
+export type StatutBoost =
+  | 'en_attente_paiement'
+  | 'en_attente_revue'
+  | 'actif'
+  | 'rejete'
+  | 'en_pause'
+  | 'termine'
+  | 'erreur';
 
 // Interface pour les dimensions
 export interface Dimensions {
@@ -203,28 +212,76 @@ export interface CommandeArticle {
 // Table transactions
 export interface Transaction {
   id: number;
-  commande_id: number;
+  commande_id?: number; // Absent pour une transaction de boost (voir boost_id)
+  boost_id?: number; // Renseigné pour un paiement à l'acte de boost publicitaire, exclusif avec commande_id
   reference_transaction: string; // Référence unique de la transaction
   montant: number; // Montant en centimes
   methode_paiement: MethodePaiement;
   statut: StatutPaiement;
-  type_paiement: TypePaiement; // Type de paiement (complet, acompte, livraison, solde)
-  
+  type_paiement: TypePaiement; // Type de paiement (complet, acompte, livraison, solde, boost)
+
   // Informations de paiement mobile
   numero_telephone?: string; // Numéro utilisé pour le paiement mobile
   reference_operateur?: string; // Référence fournie par l'opérateur (Airtel/Moov)
-  
+
   // Dates
   date_creation: Date;
   date_confirmation?: Date; // Date de confirmation du paiement
   date_modification: Date;
-  
+
   // Informations supplémentaires
   notes?: string; // Notes internes
   description?: string; // Description du paiement
-  
+
   // Relations
   commande?: Commande;
+}
+
+// Table boosts
+export interface Boost {
+  id: number;
+  boutique_id: number;
+  vendeur_id: number;
+  type_boost: TypeBoost;
+  produit_id?: number; // Réservé Phase 2, toujours absent en Phase 1
+  forfait_code: string;
+  statut: StatutBoost;
+  prix_vendeur_fcfa: number;
+  budget_meta_reel_fcfa: number;
+  duree_jours: number;
+  zones: string[]; // Ciblage géographique libre choisi par le vendeur
+  date_debut?: Date;
+  date_fin?: Date;
+  meta_campaign_id?: string;
+  meta_adset_id?: string;
+  meta_ad_id?: string;
+  meta_creative_id?: string;
+  meta_statut_revue?: string;
+  raison_rejet?: string;
+  date_creation: Date;
+  date_modification: Date;
+
+  // Relations
+  boutique?: Boutique;
+}
+
+// Table boost_evenements
+export interface BoostEvenement {
+  id: number;
+  boost_id: number;
+  type_evenement: string;
+  donnees?: Record<string, unknown>;
+  date_creation: Date;
+}
+
+// Table boost_stats
+export interface BoostStat {
+  id: number;
+  boost_id: number;
+  impressions: number;
+  clics: number;
+  depense_fcfa: number;
+  date_snapshot: Date;
 }
 
 // Table avis_produits

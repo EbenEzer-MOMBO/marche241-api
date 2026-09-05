@@ -636,6 +636,15 @@ export class PaiementController {
           }
         }
 
+        if (transaction.boost_id) {
+          try {
+            const { BoostService } = await import('../services/boost.service');
+            await BoostService.publier(transaction.boost_id);
+          } catch (boostError: any) {
+            logger.error(`[PaiementController] Échec du déclenchement du boost ${transaction.boost_id} après paiement:`, boostError.message);
+          }
+        }
+
         return {
           success: true,
           message: "Le paiement a été confirmé avec succès.",
