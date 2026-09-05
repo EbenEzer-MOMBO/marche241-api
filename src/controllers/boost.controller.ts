@@ -3,7 +3,14 @@ import { BoostModel } from '../models/boost.model';
 import { BoostService } from '../services/boost.service';
 import { listerForfaits, listerForfaitsPourVendeur } from '../config/forfaits-boost.config';
 import { logger } from '../utils/logger';
-import { StatutBoost } from '../lib/database-types';
+import { Boost, StatutBoost } from '../lib/database-types';
+
+/** Masque `budget_meta_reel_fcfa` (marge interne) pour un appelant non-admin. */
+const masquerBudgetMeta = <T extends Boost>(boost: T, isAdmin: boolean): T | Omit<T, 'budget_meta_reel_fcfa'> => {
+  if (isAdmin) return boost;
+  const { budget_meta_reel_fcfa, ...reste } = boost;
+  return reste;
+};
 
 export class BoostController {
   /**
@@ -36,7 +43,7 @@ export class BoostController {
 
       const boost = await BoostService.creerBoost(boutique_id, req.vendeur.id, forfait_code, zones);
 
-      res.status(201).json({ success: true, message: 'Boost créé avec succès', boost });
+      res.status(201).json({ success: true, message: 'Boost créé avec succès', boost: masquerBudgetMeta(boost, !!req.isAdmin) });
     } catch (error: any) {
       logger.error('[BoostController] ERREUR creerBoost:', error);
       res.status(400).json({ success: false, message: error.message || 'Erreur lors de la création du boost' });
@@ -59,8 +66,13 @@ export class BoostController {
       const limite = parseInt(query.limite as string) || 10;
 
       const resultat = await BoostModel.getBoostsByBoutiqueId(boutiqueId, page, limite);
+      const isAdmin = !!req.isAdmin;
 
-      res.status(200).json({ success: true, ...resultat });
+      res.status(200).json({
+        success: true,
+        ...resultat,
+        donnees: resultat.donnees.map((boost) => masquerBudgetMeta(boost, isAdmin))
+      });
     } catch (error: any) {
       logger.error('[BoostController] ERREUR listerBoostsBoutique:', error);
       res.status(500).json({ success: false, message: 'Erreur lors de la récupération des boosts', error: error.message });
@@ -95,7 +107,7 @@ export class BoostController {
         BoostStatModel.getSerieParBoost(id)
       ]);
 
-      res.status(200).json({ success: true, boost, evenements, stats });
+      res.status(200).json({ success: true, boost: masquerBudgetMeta(boost, !!req.isAdmin), evenements, stats });
     } catch (error: any) {
       logger.error('[BoostController] ERREUR getBoostDetail:', error);
       res.status(500).json({ success: false, message: 'Erreur lors de la récupération du boost', error: error.message });

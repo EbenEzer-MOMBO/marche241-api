@@ -81,16 +81,11 @@ export class BoostService {
         return;
       }
 
-      const dateDebut = new Date();
-      const dateFin = new Date(dateDebut.getTime() + boost.duree_jours * 24 * 60 * 60 * 1000);
-
       await BoostModel.updateStatut(boostId, 'en_attente_revue', {
         meta_campaign_id: resultat.campaign_id,
         meta_adset_id: resultat.adset_id,
         meta_ad_id: resultat.ad_id,
-        meta_creative_id: resultat.creative_id,
-        date_debut: dateDebut,
-        date_fin: dateFin
+        meta_creative_id: resultat.creative_id
       });
 
       await BoostEvenementModel.creer(boostId, 'publie', resultat as unknown as Record<string, unknown>);
@@ -116,7 +111,13 @@ export class BoostService {
       if (!resultat) continue;
 
       if (resultat.statut_normalise === 'actif') {
-        await BoostModel.updateStatut(boost.id, 'actif', { meta_statut_revue: resultat.meta_statut_revue });
+        const dateDebut = new Date();
+        const dateFin = new Date(dateDebut.getTime() + boost.duree_jours * 24 * 60 * 60 * 1000);
+        await BoostModel.updateStatut(boost.id, 'actif', {
+          meta_statut_revue: resultat.meta_statut_revue,
+          date_debut: dateDebut,
+          date_fin: dateFin
+        });
         await BoostEvenementModel.creer(boost.id, 'revue_maj', { statut: 'actif' });
         actifs++;
       } else if (resultat.statut_normalise === 'rejete') {
@@ -175,6 +176,9 @@ export class BoostService {
     if (!boost) {
       throw new Error('Boost introuvable');
     }
+    if (boost.statut !== 'actif' && boost.statut !== 'en_attente_revue') {
+      throw new Error(`Boost #${boostId} dans l'état ${boost.statut}, mise en pause impossible`);
+    }
     if (boost.meta_ad_id) {
       await MetaAdsService.mettreEnPause(boost.meta_ad_id);
     }
@@ -186,6 +190,9 @@ export class BoostService {
     const boost = await BoostModel.getBoostById(boostId);
     if (!boost) {
       throw new Error('Boost introuvable');
+    }
+    if (boost.statut !== 'en_pause') {
+      throw new Error(`Boost #${boostId} dans l'état ${boost.statut}, relance impossible`);
     }
     if (boost.meta_ad_id) {
       await MetaAdsService.reprendre(boost.meta_ad_id);

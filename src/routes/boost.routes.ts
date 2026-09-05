@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { BoostController } from '../controllers/boost.controller';
-import { auth, isBoutiqueOwner } from '../middlewares/auth.middleware';
+import { auth, isBoutiqueOwner, isAdmin } from '../middlewares/auth.middleware';
 import { authOrServiceKey } from '../middlewares/service-auth.middleware';
 import { validate, validateParams, validateQuery } from '../middlewares/validation.middleware';
 import { creerBoostSchema, idParamSchema, boutiqueIdParamSchema, paginationQuerySchema } from '../utils/validation.schemas';
@@ -80,7 +80,7 @@ router.get('/:id', authOrServiceKey, validateParams(idParamSchema), BoostControl
  *       200:
  *         description: Liste paginée des boosts
  */
-router.get('/admin/tous', authOrServiceKey, BoostController.listerTousBoosts);
+router.get('/admin/tous', authOrServiceKey, isAdmin, BoostController.listerTousBoosts);
 
 /**
  * @swagger
@@ -94,7 +94,7 @@ router.get('/admin/tous', authOrServiceKey, BoostController.listerTousBoosts);
  *       200:
  *         description: Boost mis en pause
  */
-router.post('/admin/:id/pause', authOrServiceKey, validateParams(idParamSchema), BoostController.pauseBoost);
+router.post('/admin/:id/pause', authOrServiceKey, isAdmin, validateParams(idParamSchema), BoostController.pauseBoost);
 
 /**
  * @swagger
@@ -108,6 +108,6 @@ router.post('/admin/:id/pause', authOrServiceKey, validateParams(idParamSchema),
  *       200:
  *         description: Boost relancé
  */
-router.post('/admin/:id/reprendre', authOrServiceKey, validateParams(idParamSchema), BoostController.reprendreBoost);
+router.post('/admin/:id/reprendre', authOrServiceKey, isAdmin, validateParams(idParamSchema), BoostController.reprendreBoost);
 
 export default router;

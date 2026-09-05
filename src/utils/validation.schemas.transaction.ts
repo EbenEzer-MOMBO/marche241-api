@@ -25,10 +25,14 @@ export const referenceParamSchema = Joi.object({
 });
 
 // Schéma pour la création d'une transaction
+// Une transaction référence soit une commande (paiement classique), soit un boost
+// (paiement à l'acte, cf. migration 020) — jamais les deux ni aucun.
 export const createTransactionSchema = Joi.object({
-  commande_id: Joi.number().integer().required().messages({
-    'number.base': 'L\'ID de la commande doit être un nombre',
-    'any.required': 'L\'ID de la commande est obligatoire'
+  commande_id: Joi.number().integer().messages({
+    'number.base': 'L\'ID de la commande doit être un nombre'
+  }),
+  boost_id: Joi.number().integer().messages({
+    'number.base': 'L\'ID du boost doit être un nombre'
   }),
   reference_transaction: Joi.string().required().messages({
     'string.empty': 'La référence de transaction ne peut pas être vide',
@@ -43,8 +47,8 @@ export const createTransactionSchema = Joi.object({
     'any.only': 'La méthode de paiement doit être l\'une des suivantes: mobile_money, airtel_money, moov_money, carte_bancaire, especes, virement',
     'any.required': 'La méthode de paiement est obligatoire'
   }),
-  type_paiement: Joi.string().valid('paiement_complet', 'acompte', 'frais_livraison', 'solde_apres_livraison', 'complement').messages({
-    'any.only': 'Le type de paiement doit être l\'un des suivants: paiement_complet, acompte, frais_livraison, solde_apres_livraison, complement'
+  type_paiement: Joi.string().valid('paiement_complet', 'acompte', 'frais_livraison', 'solde_apres_livraison', 'complement', 'boost').messages({
+    'any.only': 'Le type de paiement doit être l\'un des suivants: paiement_complet, acompte, frais_livraison, solde_apres_livraison, complement, boost'
   }),
   statut: Joi.string().valid('en_attente').default('en_attente').messages({
     'any.only': 'Le statut de création doit être en_attente'
@@ -54,6 +58,8 @@ export const createTransactionSchema = Joi.object({
   }),
   reference_operateur: Joi.string().allow(null, ''),
   notes: Joi.string().allow(null, '')
+}).xor('commande_id', 'boost_id').messages({
+  'object.xor': 'La transaction doit référencer exactement une commande ou un boost'
 });
 
 // Schéma pour la mise à jour d'une transaction

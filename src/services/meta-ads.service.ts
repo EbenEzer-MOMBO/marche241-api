@@ -107,20 +107,21 @@ export class MetaAdsService {
     const campagne = await this.appelGraph<{ id: string }>(`act_${this.adAccountId}/campaigns`, 'POST', {
       name: nomCampagne,
       objective: 'OUTCOME_TRAFFIC',
-      status: 'PAUSED',
+      status: 'ACTIVE',
       special_ad_categories: []
     });
     if (!campagne?.id) return null;
 
-    const budgetCentimes = boost.budget_meta_reel_fcfa * 100;
+    // XAF (FCFA) n'a pas de sous-unité (0 décimale ISO 4217) : `daily_budget` s'exprime donc
+    // directement en FCFA, sans conversion en centimes.
     const adset = await this.appelGraph<{ id: string }>(`act_${this.adAccountId}/adsets`, 'POST', {
       name: `${nomCampagne}_adset`,
       campaign_id: campagne.id,
-      daily_budget: Math.max(1, Math.round(budgetCentimes / Math.max(1, boost.duree_jours))),
+      daily_budget: Math.max(1, Math.round(boost.budget_meta_reel_fcfa / Math.max(1, boost.duree_jours))),
       billing_event: 'IMPRESSIONS',
       optimization_goal: 'LINK_CLICKS',
       targeting: construireTargeting(boost.zones),
-      status: 'PAUSED'
+      status: 'ACTIVE'
     });
     if (!adset?.id) return null;
 
@@ -141,7 +142,7 @@ export class MetaAdsService {
       name: `${nomCampagne}_ad`,
       adset_id: adset.id,
       creative: { creative_id: creative.id },
-      status: 'PAUSED'
+      status: 'ACTIVE'
     });
     if (!ad?.id) return null;
 

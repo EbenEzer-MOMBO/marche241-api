@@ -45,6 +45,21 @@ export class PaiementController {
     try {
       const commandeId = transaction.commande_id;
       if (!commandeId) {
+        if (transaction.boost_id) {
+          const { BoostModel } = await import('../models/boost.model');
+          const boost = await BoostModel.getBoostById(transaction.boost_id);
+          if (!boost) {
+            logger.error(`[PaiementController] Boost ${transaction.boost_id} non trouvé`);
+            return { isValid: false, message: `Boost ${transaction.boost_id} non trouvé` };
+          }
+          if (transaction.montant !== boost.prix_vendeur_fcfa) {
+            logger.error(`[PaiementController] Montant incorrect pour le boost ${transaction.boost_id}: attendu ${boost.prix_vendeur_fcfa}, reçu ${transaction.montant}`);
+            return {
+              isValid: false,
+              message: `Montant de la transaction (${transaction.montant} FCFA) non conforme au prix du boost (${boost.prix_vendeur_fcfa} FCFA)`
+            };
+          }
+        }
         return { isValid: true };
       }
 
