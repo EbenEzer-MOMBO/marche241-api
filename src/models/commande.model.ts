@@ -39,7 +39,9 @@ const COLONNES_COMMANDE = [
   'statut',
   'statut_paiement',
   'methode_paiement',
-  'montant_paye'
+  'montant_paye',
+  'affilie_id',
+  'code_affilie'
 ] as const;
 
 /** Colonnes de type enum, nécessitant un cast explicite */

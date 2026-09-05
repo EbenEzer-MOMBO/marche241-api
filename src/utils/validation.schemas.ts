@@ -84,6 +84,50 @@ export const verificationCodeSchema = Joi.object({
   'object.missing': 'L\'adresse email ou le numéro de téléphone est obligatoire'
 });
 
+// Schémas de validation pour les affiliés
+export const inscriptionAffilieSchema = Joi.object({
+  nom: Joi.string().required().min(2).max(100).messages({
+    'string.min': 'Le nom doit contenir au moins {#limit} caractères',
+    'string.max': 'Le nom ne doit pas dépasser {#limit} caractères',
+    'any.required': 'Le nom est obligatoire'
+  }),
+  email: Joi.string().required().email().messages({
+    'string.email': 'L\'adresse email doit être valide',
+    'any.required': 'L\'adresse email est obligatoire'
+  }),
+  telephone: Joi.string().required().pattern(PHONE_PATTERN).messages({
+    'string.pattern.base': PHONE_MESSAGE,
+    'any.required': 'Le numéro de téléphone est obligatoire'
+  }),
+  pays: Joi.string().required().max(100).messages({
+    'any.required': 'Le pays est obligatoire'
+  })
+});
+
+export const codeAffilieParamSchema = Joi.object({
+  code: Joi.string().required().max(20).messages({
+    'any.required': 'Le code affilié est obligatoire'
+  })
+});
+
+export const demanderCodeAffilieSchema = Joi.object({
+  email: Joi.string().required().email().messages({
+    'string.email': 'L\'adresse email n\'est pas valide',
+    'any.required': 'L\'adresse email est obligatoire'
+  })
+});
+
+export const verifierCodeAffilieSchema = Joi.object({
+  email: Joi.string().required().email().messages({
+    'string.email': 'L\'adresse email n\'est pas valide',
+    'any.required': 'L\'adresse email est obligatoire'
+  }),
+  code: Joi.string().required().pattern(/^[0-9]{4}$/).messages({
+    'string.pattern.base': 'Le code doit être composé de 4 chiffres',
+    'any.required': 'Le code est obligatoire'
+  })
+});
+
 // Schémas de validation pour les boutiques
 export const createBoutiqueSchema = Joi.object({
   nom: Joi.string().required().min(2).max(100).messages({

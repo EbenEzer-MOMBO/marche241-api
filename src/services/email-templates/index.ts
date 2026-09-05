@@ -18,3 +18,12 @@ export type { VendeurBoutiqueRemiseEnAttenteData } from './vendeurBoutiqueRemise
 
 export { vendeurBoutiqueBadgeVerifieTemplate } from './vendeurBoutiqueBadgeVerifie';
 export type { VendeurBoutiqueBadgeVerifieData } from './vendeurBoutiqueBadgeVerifie';
+
+export { affilieBienvenueTemplate } from './affilieBienvenue';
+export type { AffilieBienvenueData } from './affilieBienvenue';
+
+export { affilieCommissionTemplate } from './affilieCommission';
+export type { AffilieCommissionData } from './affilieCommission';
+
+export { affilieCodeConnexionTemplate } from './affilieCodeConnexion';
+export type { AffilieCodeConnexionData } from './affilieCodeConnexion';

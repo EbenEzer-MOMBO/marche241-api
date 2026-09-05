@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { CommandeModel } from '../models/commande.model';
 import { TransactionModel } from '../models/transaction.model';
 import { ProduitModel } from '../models/produit.model';
+import { AffilieModel } from '../models/affilie.model';
 import { StatutCommande, StatutPaiement, MethodePaiement } from '../lib/database-types';
 import { WhatsAppService } from '../services/whatsapp.service';
 import { logger } from '../utils/logger';
@@ -146,10 +147,26 @@ export class CommandeController {
       
       // Créer la commande
       logger.debug('Préparation des données pour création de la commande');
-      
+
+      // Résoudre le code affilié éventuel : un code invalide ou un affilié
+      // inactif est ignoré silencieusement, la commande n'est jamais bloquée.
+      let affilieId: number | undefined;
+      let codeAffilieResolu: string | undefined;
+      if (commandeData.code_affilie) {
+        const affilie = await AffilieModel.getByCode(commandeData.code_affilie);
+        if (affilie && affilie.statut === 'actif') {
+          affilieId = affilie.id;
+          codeAffilieResolu = affilie.code;
+        } else {
+          logger.debug(`[createCommande] Code affilié ignoré (invalide ou inactif): ${commandeData.code_affilie}`);
+        }
+      }
+
       // Ajouter les statuts et initialiser les montants
       const commandeToCreate = {
         ...commandeData,
+        affilie_id: affilieId,
+        code_affilie: codeAffilieResolu,
         statut: 'en_attente' as StatutCommande,
         statut_paiement: 'en_attente' as StatutPaiement,
         sous_total: 0,  // Initialiser à 0, sera mis à jour plus tard

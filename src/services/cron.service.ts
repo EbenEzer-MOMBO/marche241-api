@@ -25,6 +25,9 @@ export class CronService {
     // Tâche pour annuler les commandes orphelines
     this.scheduleAnnulerCommandesOrphelines();
 
+    // Tâche pour notifier les affiliés de leurs commissions en attente
+    this.scheduleNotifierCommissionsAffiliees();
+
     console.log('[CronService] Tâches planifiées initialisées avec succès');
   }
 
@@ -366,6 +369,51 @@ export class CronService {
   ): Promise<{ nbAnnulees: number; notificationsEnvoyees: number }> {
     console.log(`[CronService] Exécution manuelle: annuler les commandes orphelines de plus de ${delaiHeures}h`);
     return await this.annulerCommandesOrphelines(delaiHeures);
+  }
+
+  /**
+   * Planifie la notification des affiliés pour leurs commissions en attente
+   * S'exécute toutes les 5 minutes
+   */
+  static scheduleNotifierCommissionsAffiliees(): void {
+    const jobName = 'notifier-commissions-affiliees';
+
+    const task = cron.schedule('*/5 * * * *', async () => {
+      console.log('[CronService] Début de la tâche: notifier les commissions affiliées en attente');
+
+      try {
+        const result = await this.notifierCommissionsAffiliees();
+        console.log(
+          `[CronService] Tâche terminée: ${result.notifiees} commission(s) notifiée(s), ${result.erreurs} erreur(s)`
+        );
+      } catch (error) {
+        console.error('[CronService] Erreur lors de la tâche:', error);
+      }
+    });
+
+    this.jobs.set(jobName, task);
+    console.log(`[CronService] Tâche planifiée: ${jobName} - Toutes les 5 minutes`);
+  }
+
+  /**
+   * Notifie (email + WhatsApp) les affiliés dont une commission vient d'être créée
+   */
+  static async notifierCommissionsAffiliees(): Promise<{ notifiees: number; erreurs: number }> {
+    try {
+      const { AffiliateNotificationService } = await import('../services/affiliate-notification.service');
+      return await AffiliateNotificationService.notifierCommissionsEnAttente();
+    } catch (error) {
+      console.error('[CronService] Exception dans notifierCommissionsAffiliees:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Exécute manuellement la notification des commissions affiliées
+   */
+  static async executeNotifierCommissionsAffilieesManually(): Promise<{ notifiees: number; erreurs: number }> {
+    console.log('[CronService] Exécution manuelle: notifier les commissions affiliées en attente');
+    return await this.notifierCommissionsAffiliees();
   }
 }
 
