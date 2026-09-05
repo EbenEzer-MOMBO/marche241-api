@@ -463,5 +463,77 @@ export class CronController {
       });
     }
   }
+
+  /**
+   * Exécute manuellement la synchro du statut de revue Meta des boosts
+   *
+   * GET /api/v1/cron/boosts/sync-revue
+   */
+  static async executeSyncRevueBoosts(req: Request, res: Response): Promise<void> {
+    try {
+      const result = await CronService.executeSyncRevueBoostsManually();
+      res.status(200).json({
+        success: true,
+        message: `${result.examines} boost(s) examiné(s), ${result.actifs} passé(s) actif, ${result.rejetes} rejeté(s)`,
+        ...result,
+        executed_at: new Date().toISOString()
+      });
+    } catch (error: any) {
+      console.error('[CronController] Erreur lors de la synchro revue des boosts:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erreur lors de la synchro revue des boosts',
+        error: error.message
+      });
+    }
+  }
+
+  /**
+   * Exécute manuellement la synchro des statistiques des boosts actifs
+   *
+   * GET /api/v1/cron/boosts/sync-stats
+   */
+  static async executeSyncStatsBoosts(req: Request, res: Response): Promise<void> {
+    try {
+      const result = await CronService.executeSyncStatsBoostsManually();
+      res.status(200).json({
+        success: true,
+        message: `${result.examines} boost(s) examiné(s), ${result.maj} mis à jour`,
+        ...result,
+        executed_at: new Date().toISOString()
+      });
+    } catch (error: any) {
+      console.error('[CronController] Erreur lors de la synchro stats des boosts:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erreur lors de la synchro stats des boosts',
+        error: error.message
+      });
+    }
+  }
+
+  /**
+   * Exécute manuellement l'expiration des boosts arrivés à échéance
+   *
+   * GET /api/v1/cron/boosts/expirer
+   */
+  static async executeExpirerBoosts(req: Request, res: Response): Promise<void> {
+    try {
+      const result = await CronService.executeExpirerBoostsManually();
+      res.status(200).json({
+        success: true,
+        message: `${result.termines} boost(s) terminé(s)`,
+        ...result,
+        executed_at: new Date().toISOString()
+      });
+    } catch (error: any) {
+      console.error('[CronController] Erreur lors de l\'expiration des boosts:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erreur lors de l\'expiration des boosts',
+        error: error.message
+      });
+    }
+  }
 }
 

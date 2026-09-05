@@ -20,5 +20,8 @@ router.get('/expirer-transactions/execute', requireCronSecret, CronController.ex
 router.get('/nettoyer-vues', requireCronSecret, CronController.executeNettoyerVues);
 router.get('/nettoyer-vues-mois', requireCronSecret, CronController.executeNettoyerVuesMoisEnCours);
 router.get('/annuler-commandes-orphelines', requireCronSecret, CronController.executeAnnulerCommandesOrphelines);
+router.get('/boosts/sync-revue', requireCronSecret, CronController.executeSyncRevueBoosts);
+router.get('/boosts/sync-stats', requireCronSecret, CronController.executeSyncStatsBoosts);
+router.get('/boosts/expirer', requireCronSecret, CronController.executeExpirerBoosts);
 
 export default router;

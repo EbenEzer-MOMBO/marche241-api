@@ -25,6 +25,15 @@ export class CronService {
     // Tâche pour annuler les commandes orphelines
     this.scheduleAnnulerCommandesOrphelines();
 
+    // Tâche pour synchroniser le statut de revue Meta des boosts
+    this.scheduleSyncRevueBoosts();
+
+    // Tâche pour synchroniser les statistiques des boosts actifs
+    this.scheduleSyncStatsBoosts();
+
+    // Tâche pour expirer les boosts arrivés à échéance
+    this.scheduleExpirerBoosts();
+
     console.log('[CronService] Tâches planifiées initialisées avec succès');
   }
 
@@ -366,6 +375,117 @@ export class CronService {
   ): Promise<{ nbAnnulees: number; notificationsEnvoyees: number }> {
     console.log(`[CronService] Exécution manuelle: annuler les commandes orphelines de plus de ${delaiHeures}h`);
     return await this.annulerCommandesOrphelines(delaiHeures);
+  }
+
+  /**
+   * Planifie la synchro du statut de revue Meta des boosts en attente
+   * S'exécute toutes les 10 minutes
+   */
+  static scheduleSyncRevueBoosts(): void {
+    const jobName = 'sync-revue-boosts';
+
+    const task = cron.schedule('*/10 * * * *', async () => {
+      console.log('[CronService] Début de la tâche: synchro revue Meta des boosts');
+
+      try {
+        const result = await this.syncRevueBoosts();
+        console.log(`[CronService] Tâche terminée: ${result.examines} boost(s) examiné(s), ${result.actifs} actif(s), ${result.rejetes} rejeté(s)`);
+      } catch (error) {
+        console.error('[CronService] Erreur lors de la tâche:', error);
+      }
+    });
+
+    this.jobs.set(jobName, task);
+    console.log(`[CronService] Tâche planifiée: ${jobName} - Toutes les 10 minutes`);
+  }
+
+  static async syncRevueBoosts(): Promise<{ examines: number; actifs: number; rejetes: number }> {
+    try {
+      const { BoostService } = await import('./boost.service');
+      return await BoostService.syncStatutsRevue();
+    } catch (error) {
+      console.error('[CronService] Exception dans syncRevueBoosts:', error);
+      throw error;
+    }
+  }
+
+  static async executeSyncRevueBoostsManually(): Promise<{ examines: number; actifs: number; rejetes: number }> {
+    console.log('[CronService] Exécution manuelle: synchro revue Meta des boosts');
+    return await this.syncRevueBoosts();
+  }
+
+  /**
+   * Planifie la synchro des statistiques (impressions/clics/dépense) des boosts actifs
+   * S'exécute toutes les 2 heures
+   */
+  static scheduleSyncStatsBoosts(): void {
+    const jobName = 'sync-stats-boosts';
+
+    const task = cron.schedule('0 */2 * * *', async () => {
+      console.log('[CronService] Début de la tâche: synchro stats des boosts');
+
+      try {
+        const result = await this.syncStatsBoosts();
+        console.log(`[CronService] Tâche terminée: ${result.examines} boost(s) examiné(s), ${result.maj} mis à jour`);
+      } catch (error) {
+        console.error('[CronService] Erreur lors de la tâche:', error);
+      }
+    });
+
+    this.jobs.set(jobName, task);
+    console.log(`[CronService] Tâche planifiée: ${jobName} - Toutes les 2 heures`);
+  }
+
+  static async syncStatsBoosts(): Promise<{ examines: number; maj: number }> {
+    try {
+      const { BoostService } = await import('./boost.service');
+      return await BoostService.syncStats();
+    } catch (error) {
+      console.error('[CronService] Exception dans syncStatsBoosts:', error);
+      throw error;
+    }
+  }
+
+  static async executeSyncStatsBoostsManually(): Promise<{ examines: number; maj: number }> {
+    console.log('[CronService] Exécution manuelle: synchro stats des boosts');
+    return await this.syncStatsBoosts();
+  }
+
+  /**
+   * Planifie l'expiration des boosts actifs arrivés à échéance
+   * S'exécute tous les jours à 4h du matin
+   */
+  static scheduleExpirerBoosts(): void {
+    const jobName = 'expirer-boosts';
+
+    const task = cron.schedule('0 4 * * *', async () => {
+      console.log('[CronService] Début de la tâche: expiration des boosts');
+
+      try {
+        const result = await this.expirerBoosts();
+        console.log(`[CronService] Tâche terminée: ${result.termines} boost(s) terminé(s)`);
+      } catch (error) {
+        console.error('[CronService] Erreur lors de la tâche:', error);
+      }
+    });
+
+    this.jobs.set(jobName, task);
+    console.log(`[CronService] Tâche planifiée: ${jobName} - Tous les jours à 4h00`);
+  }
+
+  static async expirerBoosts(): Promise<{ termines: number }> {
+    try {
+      const { BoostService } = await import('./boost.service');
+      return await BoostService.expirerBoostsTermines();
+    } catch (error) {
+      console.error('[CronService] Exception dans expirerBoosts:', error);
+      throw error;
+    }
+  }
+
+  static async executeExpirerBoostsManually(): Promise<{ termines: number }> {
+    console.log('[CronService] Exécution manuelle: expiration des boosts');
+    return await this.expirerBoosts();
   }
 }
 
