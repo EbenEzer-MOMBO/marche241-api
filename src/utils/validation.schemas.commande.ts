@@ -82,7 +82,8 @@ export const createCommandeSchema = Joi.object({
   articles: Joi.array().items(commandeArticleSchema).min(1).required().messages({
     'array.min': 'La commande doit contenir au moins un article',
     'any.required': 'Les articles sont obligatoires'
-  })
+  }),
+  code_affilie: Joi.string().allow(null, '').max(20)
 });
 
 // Schéma pour la mise à jour du statut d'une commande

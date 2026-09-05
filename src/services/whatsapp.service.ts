@@ -493,6 +493,45 @@ Merci pour votre confiance ! 🙏`;
     return this.sendMessage(phone, message);
   }
 
+  /**
+   * Notifie un nouvel affilié de son inscription, avec son code et son lien de tracking
+   * (GREEN-API texte — pas de template Meta dédié pour ce cas)
+   */
+  static async notifyAffiliateWelcome(
+    phone: string,
+    data: { nom: string; code: string; lienPrincipal: string }
+  ): Promise<string | null> {
+    const message = `🎉 *Bienvenue chez les affiliés Marché241, ${data.nom} !*
+
+Votre code affilié : *${data.code}*
+
+Partagez ce lien pour qu'il soit traçable automatiquement :
+${data.lienPrincipal}
+
+Vous touchez une commission sur chaque commande livrée passée avec votre code.`;
+
+    return this.sendMessage(phone, message);
+  }
+
+  /**
+   * Notifie un affilié qu'une commission vient de lui être créditée
+   * (commande livrée, passée avec son code)
+   */
+  static async notifyAffiliateCommission(
+    phone: string,
+    data: { nomAffilie: string; numeroCommande: string; montantCommission: number }
+  ): Promise<string | null> {
+    const message = `💰 *Nouvelle commission !*
+
+Bonjour ${data.nomAffilie}, la commande *#${data.numeroCommande}* passée avec votre code a été livrée.
+
+Commission créditée : *${data.montantCommission} FCFA*
+
+Elle sera versée lors du prochain règlement des affiliés.`;
+
+    return this.sendMessage(phone, message);
+  }
+
   private static checkNumberCache = new Map<string, { existsWhatsapp: boolean; expiresAt: number }>();
   private static readonly CHECK_NUMBER_TTL_MS = 24 * 60 * 60 * 1000;
 

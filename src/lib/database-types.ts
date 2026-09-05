@@ -170,14 +170,18 @@ export interface Commande {
   statut: StatutCommande;
   statut_paiement: StatutPaiement;
   methode_paiement?: MethodePaiement;
-  
+
+  // Affiliation
+  affilie_id?: number;
+  code_affilie?: string;
+
   // Dates
   date_commande: Date;
   date_confirmation?: Date;
   date_expedition?: Date;
   date_livraison?: Date;
   date_modification: Date;
-  
+
   // Relations
   boutique?: Boutique;
   articles?: CommandeArticle[];
@@ -287,6 +291,58 @@ export interface CreateVendeurData {
   nom: string;
   email?: string;
   ville?: string;
+}
+
+// Table affilies
+export interface Affilie {
+  id: number;
+  nom: string;
+  email: string;
+  telephone: string;
+  pays: string;
+  code: string; // Format: AFF-XXXXXX
+  statut: 'actif' | 'inactif';
+  taux_commission: number;
+  date_creation: Date;
+  date_modification: Date;
+}
+
+export interface CreateAffilieData {
+  nom: string;
+  email: string;
+  telephone: string;
+  pays: string;
+}
+
+// Table commissions_affiliees
+export interface CommissionAffiliee {
+  id: number;
+  affilie_id: number;
+  commande_id: number;
+  boutique_id: number;
+  montant_base: number;
+  taux: number;
+  montant_commission: number;
+  statut: 'due' | 'payee' | 'annulee';
+  reference_versement?: string;
+  notifie_le?: Date;
+  date_creation: Date;
+  date_versement?: Date;
+
+  // Relations
+  affilie?: Affilie;
+  commande?: Commande;
+}
+
+// Table affilie_codes_connexion
+export interface AffilieCodeConnexion {
+  id: number;
+  affilie_id: number;
+  code_hash: string;
+  tentatives: number;
+  expire_le: Date;
+  utilise_le?: Date;
+  date_creation: Date;
 }
 
 // ===================================

@@ -1,5 +1,8 @@
 import { logger } from '../utils/logger';
 import {
+  affilieBienvenueTemplate,
+  affilieCodeConnexionTemplate,
+  affilieCommissionTemplate,
   vendeurBienvenueTemplate,
   vendeurBoutiqueActiveeTemplate,
   vendeurBoutiqueBadgeVerifieTemplate,
@@ -135,6 +138,41 @@ export class EmailService {
       boutiqueUrl: `${frontendUrl}/${boutiqueSlug}`,
       dateAttribution: new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }),
     });
+    await this.send(email, subject, html, text);
+  }
+
+  /** Email de bienvenue envoyé à l'inscription d'un affilié, avec son code et son lien. */
+  static async envoyerAffilieBienvenue(email: string, nom: string, code: string): Promise<void> {
+    const frontendUrl = process.env.FRONTEND_URL || 'https://marche241.ga';
+    const { subject, html, text } = affilieBienvenueTemplate({
+      nom,
+      code,
+      lienPrincipal: `${frontendUrl}/?ref=${code}`,
+      dashboardUrl: `${frontendUrl}/affiliation/tableau-de-bord`,
+    });
+    await this.send(email, subject, html, text);
+  }
+
+  /** Notifie un affilié qu'une commission vient de lui être créditée. */
+  static async envoyerAffilieCommission(
+    email: string,
+    nom: string,
+    numeroCommande: string,
+    montantCommission: number
+  ): Promise<void> {
+    const frontendUrl = process.env.FRONTEND_URL || 'https://marche241.ga';
+    const { subject, html, text } = affilieCommissionTemplate({
+      nom,
+      numeroCommande,
+      montantCommission,
+      dashboardUrl: `${frontendUrl}/affiliation/tableau-de-bord`,
+    });
+    await this.send(email, subject, html, text);
+  }
+
+  /** Code de connexion OTP pour le mini dashboard affilié. */
+  static async envoyerAffilieCodeConnexion(email: string, code: string): Promise<void> {
+    const { subject, html, text } = affilieCodeConnexionTemplate({ code });
     await this.send(email, subject, html, text);
   }
 }

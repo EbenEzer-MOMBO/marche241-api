@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import boutiqueRoutes from './boutique.routes';
 import vendeurRoutes from './vendeur.routes';
+import affilieRoutes from './affilie.routes';
 import categorieRoutes from './categorie.routes';
 import produitRoutes from './produit.routes';
 import panierRoutes from './panier.routes';
@@ -26,6 +27,9 @@ router.use(`${apiPrefix}/boutiques`, boutiqueRoutes);
 
 // Routes pour les vendeurs
 router.use(`${apiPrefix}/vendeurs`, vendeurRoutes);
+
+// Routes pour les affiliés (programme d'affiliation)
+router.use(`${apiPrefix}/affilies`, affilieRoutes);
 
 // Routes pour les catégories
 router.use(`${apiPrefix}/categories`, categorieRoutes);

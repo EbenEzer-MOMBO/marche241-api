@@ -93,6 +93,22 @@ export const whatsappCheckLimiter = rateLimit({
 });
 
 /**
+ * Limiteur de débit pour la demande de code de connexion affilié (10 requêtes par heure par IP)
+ * Le délai anti-spam par affilié (45s entre deux demandes) est géré à part, en base.
+ */
+export const affilieCodeLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 heure
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Trop de demandes de code de connexion depuis cette adresse IP. Veuillez réessayer plus tard.',
+    code: 'TOO_MANY_AFFILIATE_CODE_REQUESTS'
+  }
+});
+
+/**
  * Limiteur dédié au polling de vérification de paiement (30 requêtes / 15 min par IP)
  */
 export const paymentVerificationLimiter = rateLimit({
