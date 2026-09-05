@@ -49,7 +49,14 @@ export const auth = async (req: Request, res: Response, next: NextFunction) => {
         });
       }
 
-      const decoded = jwt.verify(token, jwtSecret) as { id: number };
+      const decoded = jwt.verify(token, jwtSecret) as { id: number; type?: string };
+      if (decoded.type !== 'vendeur') {
+        return res.status(401).json({
+          success: false,
+          message: 'Token invalide ou expiré'
+        });
+      }
+
       const vendeur = await VendeurModel.getVendeurById(decoded.id);
 
       if (!vendeur) {

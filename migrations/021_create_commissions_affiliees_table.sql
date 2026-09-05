@@ -44,7 +44,7 @@ DECLARE
   v_taux NUMERIC(5,4);
   v_montant_base NUMERIC(12,2);
 BEGIN
-  v_montant_base := COALESCE(NEW.montant_paye, 0);
+  v_montant_base := COALESCE(NEW.total, 0);
   IF v_montant_base <= 0 THEN
     RETURN NEW;
   END IF;

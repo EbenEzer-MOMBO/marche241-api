@@ -78,7 +78,7 @@ export class CommissionModel {
        FROM ${this.TABLE_NAME} c
        JOIN affilies a ON a.id = c.affilie_id
        JOIN commandes cmd ON cmd.id = c.commande_id
-       WHERE c.notifie_le IS NULL
+       WHERE c.notifie_le IS NULL AND c.statut = 'due'
        ORDER BY c.date_creation ASC
        LIMIT $1`,
       [limite]

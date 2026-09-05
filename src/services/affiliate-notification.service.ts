@@ -27,6 +27,9 @@ export class AffiliateNotificationService {
       try {
         const numeroCommande = commission.numero_commande || String(commission.commande_id);
 
+        let emailOk = false;
+        let whatsappOk = false;
+
         try {
           await EmailService.envoyerAffilieCommission(
             commission.affilie_email,
@@ -34,6 +37,7 @@ export class AffiliateNotificationService {
             numeroCommande,
             commission.montant_commission
           );
+          emailOk = true;
         } catch (emailError) {
           logger.error('[AffiliateNotificationService] Échec email pour commission', commission.id, emailError);
         }
@@ -44,8 +48,14 @@ export class AffiliateNotificationService {
             numeroCommande,
             montantCommission: commission.montant_commission
           });
+          whatsappOk = true;
         } catch (whatsappError) {
           logger.error('[AffiliateNotificationService] Échec WhatsApp pour commission', commission.id, whatsappError);
+        }
+
+        if (!emailOk && !whatsappOk) {
+          erreurs++;
+          continue;
         }
 
         await CommissionModel.marquerNotifiee(commission.id);

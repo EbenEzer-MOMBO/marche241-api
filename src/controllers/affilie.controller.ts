@@ -114,8 +114,13 @@ export class AffilieController {
     try {
       const affilie = req.affilie!;
       const { nom, email, telephone, pays } = req.body;
+      const donnees: Partial<{ nom: string; email: string; telephone: string; pays: string }> = {};
+      if (nom !== undefined) donnees.nom = nom;
+      if (email !== undefined) donnees.email = email;
+      if (telephone !== undefined) donnees.telephone = telephone;
+      if (pays !== undefined) donnees.pays = pays;
 
-      const affilieMisAJour = await AffilieModel.updateProfil(affilie.id, { nom, email, telephone, pays });
+      const affilieMisAJour = await AffilieModel.updateProfil(affilie.id, donnees);
 
       res.status(200).json({
         success: true,
@@ -199,13 +204,8 @@ export class AffilieController {
       const { email, code } = req.body as { email: string; code: string };
       const affilie = await AffilieModel.getByEmail(email);
 
-      if (!affilie) {
-        res.status(404).json({ success: false, message: 'Aucun compte affilié trouvé avec cette adresse email' });
-        return;
-      }
-
-      if (affilie.statut !== 'actif') {
-        res.status(403).json({ success: false, message: 'Ce compte affilié a été désactivé' });
+      if (!affilie || affilie.statut !== 'actif') {
+        res.status(400).json({ success: false, message: 'Code invalide' });
         return;
       }
 

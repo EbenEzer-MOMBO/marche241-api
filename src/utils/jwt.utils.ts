@@ -17,6 +17,7 @@ export const generateToken = (vendeur: Vendeur): string => {
 
   return jwt.sign(
     {
+      type: 'vendeur',
       id: vendeur.id,
       telephone: vendeur.telephone,
       nom: vendeur.nom,
