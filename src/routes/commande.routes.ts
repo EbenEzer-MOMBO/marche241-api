@@ -107,6 +107,14 @@ router.get('/:id', auth, validateParams(idParamSchema), isCommandeOwner, Command
 router.patch('/:id/status', auth, validateParams(idParamSchema), validate(updateCommandeStatusSchema), isCommandeOwner, CommandeController.updateCommandeStatus);
 
 /**
+ * @route   PATCH /api/v1/commandes/:id/archive
+ * @desc    Archive ou désarchive une commande (action réversible, refusée si
+ *          la commande est expédiée, livrée ou payée)
+ * @access  Private (propriétaire de la boutique)
+ */
+router.patch('/:id/archive', auth, validateParams(idParamSchema), isCommandeOwner, CommandeController.archiverCommande);
+
+/**
  * @swagger
  * /api/v1/commandes/{id}/payment-status:
  *   patch:

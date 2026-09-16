@@ -324,8 +324,9 @@ export class CommandeController {
       
       const page = parseInt(query.page as string) || 1;
       const limite = parseInt(query.limite as string) || 10;
-      
-      const { commandes, total } = await CommandeModel.getCommandesByBoutique(boutiqueId, page, limite);
+      const inclureArchivees = query.include_archived === 'true';
+
+      const { commandes, total } = await CommandeModel.getCommandesByBoutique(boutiqueId, page, limite, inclureArchivees);
       
       res.status(200).json({
         success: true,
@@ -437,6 +438,40 @@ export class CommandeController {
         success: false,
         message: 'Erreur lors de la mise à jour du statut de la commande',
         error: error.message
+      });
+    }
+  }
+
+  /**
+   * Archive ou désarchive une commande (action réversible, ex: nettoyer une
+   * commande de test). Refusé si la commande est expédiée, livrée ou payée.
+   */
+  static async archiverCommande(req: Request, res: Response): Promise<void> {
+    try {
+      const id = parseInt(req.params.id);
+
+      if (isNaN(id)) {
+        res.status(400).json({
+          success: false,
+          message: 'ID de commande invalide'
+        });
+        return;
+      }
+
+      const body = (req as any).validatedBody || req.body;
+      const archivee = body.archivee !== false;
+
+      const commande = await CommandeModel.setCommandeArchivee(id, archivee);
+
+      res.status(200).json({
+        success: true,
+        message: archivee ? 'Commande archivée avec succès' : 'Commande désarchivée avec succès',
+        commande
+      });
+    } catch (error: any) {
+      res.status(400).json({
+        success: false,
+        message: error.message || 'Erreur lors de l\'archivage de la commande'
       });
     }
   }

@@ -170,6 +170,7 @@ export interface Commande {
   statut: StatutCommande;
   statut_paiement: StatutPaiement;
   methode_paiement?: MethodePaiement;
+  archivee: boolean;
   
   // Dates
   date_commande: Date;
