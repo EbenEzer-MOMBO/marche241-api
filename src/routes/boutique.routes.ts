@@ -484,6 +484,13 @@ router.patch('/:id/statut', auth, validateParams(idParamSchema), isAdmin, valida
 router.get('/:id/stats', auth, validateParams(idParamSchema), isBoutiqueOwner, BoutiqueController.getBoutiqueStats);
 
 /**
+ * @route   GET /api/v1/boutiques/:id/stats/geo
+ * @desc    Répartition géographique (pays/ville) des vues de la boutique
+ * @access  Privé (propriétaire de la boutique)
+ */
+router.get('/:id/stats/geo', auth, validateParams(idParamSchema), isBoutiqueOwner, BoutiqueController.getBoutiqueStatsGeo);
+
+/**
  * @swagger
  * /api/v1/boutiques/{id}/produits/top-vues:
  *   get:

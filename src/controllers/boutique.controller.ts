@@ -471,6 +471,48 @@ export class BoutiqueController {
   }
 
   /**
+   * Récupère la répartition géographique (pays/ville) des vues d'une boutique
+   */
+  static async getBoutiqueStatsGeo(req: Request, res: Response): Promise<void> {
+    try {
+      const id = parseInt(req.params.id);
+
+      if (isNaN(id)) {
+        res.status(400).json({
+          success: false,
+          message: 'ID de boutique invalide'
+        });
+        return;
+      }
+
+      const boutique = await BoutiqueModel.getBoutiqueById(id);
+      if (!boutique) {
+        res.status(404).json({
+          success: false,
+          message: 'Boutique non trouvée'
+        });
+        return;
+      }
+
+      const jours = parseInt(req.query.jours as string) || 30;
+      const repartitionGeo = await VueModel.getStatsVuesGeo('boutique', id, jours);
+
+      res.status(200).json({
+        success: true,
+        boutique_id: id,
+        periode_jours: jours,
+        repartition_geo: repartitionGeo
+      });
+    } catch (error: any) {
+      res.status(500).json({
+        success: false,
+        message: 'Erreur lors de la récupération de la répartition géographique',
+        error: error.message
+      });
+    }
+  }
+
+  /**
    * Récupère les produits les plus vus d'une boutique
    */
   static async getTopVuesProduits(req: Request, res: Response): Promise<void> {
