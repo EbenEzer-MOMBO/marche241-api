@@ -19,6 +19,22 @@ function getClientIp(req: Request): string {
   return req.socket?.remoteAddress || req.ip || 'unknown';
 }
 
+/**
+ * Une visite ne doit pas être comptabilisée quand elle vient du vendeur
+ * propriétaire lui-même (session authentifiée) ou d'une prévisualisation
+ * explicite depuis son dashboard (?preview=1), pour ne pas fausser les
+ * statistiques de vues avec ses propres clics "Voir la boutique".
+ */
+function doitEnregistrerLaVue(req: Request, boutique: { vendeur_id: number }): boolean {
+  if (req.query.preview === '1') {
+    return false;
+  }
+  if (req.vendeur && req.vendeur.id === boutique.vendeur_id) {
+    return false;
+  }
+  return true;
+}
+
 export class BoutiqueController {
   /**
    * Récupère toutes les boutiques avec pagination
@@ -80,13 +96,16 @@ export class BoutiqueController {
       }
 
 
-      // Enregistrer la vue (en arrière-plan, ne pas bloquer la réponse)
-      const clientIp = getClientIp(req);
-      const userAgent = req.headers['user-agent'] || undefined;
-      const referer = req.headers['referer'] || undefined;
-      
-      VueModel.enregistrerVue('boutique', boutique.id, clientIp, userAgent, referer)
-        .catch(err => logger.error('[BoutiqueController] Erreur tracking vue:', err));
+      // Enregistrer la vue (en arrière-plan, ne pas bloquer la réponse), sauf si c'est
+      // le vendeur propriétaire qui prévisualise sa propre boutique
+      if (doitEnregistrerLaVue(req, boutique)) {
+        const clientIp = getClientIp(req);
+        const userAgent = req.headers['user-agent'] || undefined;
+        const referer = req.headers['referer'] || undefined;
+
+        VueModel.enregistrerVue('boutique', boutique.id, clientIp, userAgent, referer)
+          .catch(err => logger.error('[BoutiqueController] Erreur tracking vue:', err));
+      }
 
       res.status(200).json({
         success: true,
@@ -127,13 +146,16 @@ export class BoutiqueController {
         return;
       }
 
-      // Enregistrer la vue (en arrière-plan)
-      const clientIp = getClientIp(req);
-      const userAgent = req.headers['user-agent'] || undefined;
-      const referer = req.headers['referer'] || undefined;
-      
-      VueModel.enregistrerVue('boutique', boutique.id, clientIp, userAgent, referer)
-        .catch(err => logger.error('[BoutiqueController] Erreur tracking vue:', err));
+      // Enregistrer la vue (en arrière-plan), sauf si c'est le vendeur propriétaire
+      // qui prévisualise sa propre boutique
+      if (doitEnregistrerLaVue(req, boutique)) {
+        const clientIp = getClientIp(req);
+        const userAgent = req.headers['user-agent'] || undefined;
+        const referer = req.headers['referer'] || undefined;
+
+        VueModel.enregistrerVue('boutique', boutique.id, clientIp, userAgent, referer)
+          .catch(err => logger.error('[BoutiqueController] Erreur tracking vue:', err));
+      }
 
       res.status(200).json({
         success: true,

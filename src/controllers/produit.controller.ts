@@ -24,6 +24,14 @@ function estProprietaireDuProduit(req: Request, produit: any): boolean {
   return !!(req.vendeur && produit.boutique && produit.boutique.vendeur_id === req.vendeur.id);
 }
 
+/**
+ * Ne pas compter la vue quand c'est le vendeur propriétaire qui consulte son
+ * propre produit/boutique, ou une prévisualisation explicite (?preview=1).
+ */
+function doitEnregistrerLaVue(req: Request, produit: any): boolean {
+  return req.query.preview !== '1' && !estProprietaireDuProduit(req, produit);
+}
+
 export class ProduitController {
   /**
    * Récupère tous les produits avec pagination
@@ -84,29 +92,32 @@ export class ProduitController {
         return;
       }
 
-      // Enregistrer la vue (en arrière-plan, ne pas bloquer la réponse)
-      const clientIp = getClientIp(req);
-      const userAgent = req.headers['user-agent'] || undefined;
-      const referer = req.headers['referer'] || undefined;
+      // Enregistrer la vue (en arrière-plan, ne pas bloquer la réponse), sauf si c'est
+      // le vendeur propriétaire qui prévisualise son propre produit
+      if (doitEnregistrerLaVue(req, produit)) {
+        const clientIp = getClientIp(req);
+        const userAgent = req.headers['user-agent'] || undefined;
+        const referer = req.headers['referer'] || undefined;
 
-      // Vue du produit
-      VueModel.enregistrerVue('produit', produit.id, clientIp, userAgent, referer)
-        .then(nouvelleVue => {
-          if (nouvelleVue) {
-            logger.debug(`[ProduitController] Nouvelle vue enregistrée pour produit ${produit.id}`);
-          }
-        })
-        .catch(err => logger.error('[ProduitController] Erreur tracking vue produit:', err));
-
-      // Vue de la boutique (voir un produit = visiter la boutique)
-      if (produit.boutique_id) {
-        VueModel.enregistrerVue('boutique', produit.boutique_id, clientIp, userAgent, referer)
+        // Vue du produit
+        VueModel.enregistrerVue('produit', produit.id, clientIp, userAgent, referer)
           .then(nouvelleVue => {
             if (nouvelleVue) {
-              logger.debug(`[ProduitController] Nouvelle vue enregistrée pour boutique ${produit.boutique_id}`);
+              logger.debug(`[ProduitController] Nouvelle vue enregistrée pour produit ${produit.id}`);
             }
           })
-          .catch(err => logger.error('[ProduitController] Erreur tracking vue boutique:', err));
+          .catch(err => logger.error('[ProduitController] Erreur tracking vue produit:', err));
+
+        // Vue de la boutique (voir un produit = visiter la boutique)
+        if (produit.boutique_id) {
+          VueModel.enregistrerVue('boutique', produit.boutique_id, clientIp, userAgent, referer)
+            .then(nouvelleVue => {
+              if (nouvelleVue) {
+                logger.debug(`[ProduitController] Nouvelle vue enregistrée pour boutique ${produit.boutique_id}`);
+              }
+            })
+            .catch(err => logger.error('[ProduitController] Erreur tracking vue boutique:', err));
+        }
       }
 
       res.status(200).json({
@@ -139,29 +150,32 @@ export class ProduitController {
         return;
       }
 
-      // Enregistrer la vue (en arrière-plan)
-      const clientIp = getClientIp(req);
-      const userAgent = req.headers['user-agent'] || undefined;
-      const referer = req.headers['referer'] || undefined;
-      
-      // Vue du produit
-      VueModel.enregistrerVue('produit', produit.id, clientIp, userAgent, referer)
-        .then(nouvelleVue => {
-          if (nouvelleVue) {
-            logger.debug(`[ProduitController] Nouvelle vue enregistrée pour produit ${produit.id}`);
-          }
-        })
-        .catch(err => logger.error('[ProduitController] Erreur tracking vue produit:', err));
+      // Enregistrer la vue (en arrière-plan), sauf si c'est le vendeur propriétaire
+      // qui prévisualise son propre produit
+      if (doitEnregistrerLaVue(req, produit)) {
+        const clientIp = getClientIp(req);
+        const userAgent = req.headers['user-agent'] || undefined;
+        const referer = req.headers['referer'] || undefined;
 
-      // Vue de la boutique (voir un produit = visiter la boutique)
-      if (produit.boutique_id) {
-        VueModel.enregistrerVue('boutique', produit.boutique_id, clientIp, userAgent, referer)
+        // Vue du produit
+        VueModel.enregistrerVue('produit', produit.id, clientIp, userAgent, referer)
           .then(nouvelleVue => {
             if (nouvelleVue) {
-              logger.debug(`[ProduitController] Nouvelle vue enregistrée pour boutique ${produit.boutique_id}`);
+              logger.debug(`[ProduitController] Nouvelle vue enregistrée pour produit ${produit.id}`);
             }
           })
-          .catch(err => logger.error('[ProduitController] Erreur tracking vue boutique:', err));
+          .catch(err => logger.error('[ProduitController] Erreur tracking vue produit:', err));
+
+        // Vue de la boutique (voir un produit = visiter la boutique)
+        if (produit.boutique_id) {
+          VueModel.enregistrerVue('boutique', produit.boutique_id, clientIp, userAgent, referer)
+            .then(nouvelleVue => {
+              if (nouvelleVue) {
+                logger.debug(`[ProduitController] Nouvelle vue enregistrée pour boutique ${produit.boutique_id}`);
+              }
+            })
+            .catch(err => logger.error('[ProduitController] Erreur tracking vue boutique:', err));
+        }
       }
 
       res.status(200).json({
