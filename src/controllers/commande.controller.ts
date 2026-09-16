@@ -324,7 +324,9 @@ export class CommandeController {
       
       const page = parseInt(query.page as string) || 1;
       const limite = parseInt(query.limite as string) || 10;
-      const inclureArchivees = query.include_archived === 'true';
+      // validatedQuery (Joi, convert: true) donne déjà un booléen ; en secours sur
+      // req.query brut (pas de schéma dédié), la valeur est une chaîne de requête.
+      const inclureArchivees = query.include_archived === true || query.include_archived === 'true';
 
       const { commandes, total } = await CommandeModel.getCommandesByBoutique(boutiqueId, page, limite, inclureArchivees);
       

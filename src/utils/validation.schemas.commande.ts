@@ -16,6 +16,19 @@ export const numeroParamSchema = Joi.object({
   })
 });
 
+// Schéma de pagination pour la liste des commandes d'une boutique, avec le
+// filtre optionnel include_archived (MAR-35). validateQuery utilise
+// stripUnknown : tout champ absent du schéma est silencieusement supprimé,
+// il faut donc le déclarer explicitement ici plutôt que de compter sur
+// paginationQuerySchema (générique, partagé par d'autres routes).
+export const commandesByBoutiqueQuerySchema = Joi.object({
+  page: Joi.number().integer().min(1).default(1),
+  limite: Joi.number().integer().min(1).max(100).default(10),
+  tri_par: Joi.string(),
+  ordre: Joi.string().valid('ASC', 'DESC').default('DESC'),
+  include_archived: Joi.boolean().default(false)
+});
+
 // Schéma pour la création d'un article de commande
 const commandeArticleSchema = Joi.object({
   produit_id: Joi.number().integer().required().messages({

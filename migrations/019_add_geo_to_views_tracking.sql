@@ -86,7 +86,11 @@ BEGIN
       AND vt.entite_id = p_entite_id
       AND vt.date_vue >= NOW() - (p_jours || ' days')::INTERVAL
     GROUP BY COALESCE(vt.pays, 'Inconnu'), COALESCE(vt.ville, 'Inconnue')
-    ORDER BY nombre_vues DESC;
+    -- ORDER BY sur l'expression agrégée directement (et non sur l'alias
+    -- `nombre_vues`) : en PL/pgSQL, `RETURNS TABLE` déclare `nombre_vues`
+    -- comme variable de sortie, qui masquerait l'alias de la colonne
+    -- SELECT dans un ORDER BY par nom et renverrait un tri non défini.
+    ORDER BY COUNT(*) DESC;
 END;
 $$ LANGUAGE plpgsql;
 

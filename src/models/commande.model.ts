@@ -455,8 +455,9 @@ export class CommandeModel {
 
     if (archivee) {
       const { statut, statut_paiement } = actuelles[0];
-      if (statut === 'expedie' || statut === 'livree' || statut_paiement === 'paye') {
-        throw new Error('Impossible d\'archiver une commande expédiée, livrée ou payée');
+      const estPayeeMemePartiellement = statut_paiement === 'paye' || statut_paiement === 'partiellement_paye';
+      if (statut === 'expedie' || statut === 'livree' || estPayeeMemePartiellement) {
+        throw new Error('Impossible d\'archiver une commande expédiée, livrée ou payée (même partiellement)');
       }
     }
 

@@ -3,13 +3,14 @@ import { CommandeController } from '../controllers/commande.controller';
 import { auth, isBoutiqueOwner, isCommandeOwner } from '../middlewares/auth.middleware';
 import { validate, validateParams, validateQuery } from '../middlewares/validation.middleware';
 import { idParamSchema, paginationQuerySchema } from '../utils/validation.schemas';
-import { 
-  boutiqueIdParamSchema, 
-  createCommandeSchema, 
-  initierPaiementSchema, 
-  numeroParamSchema, 
-  updateCommandeStatusSchema, 
-  updatePaymentStatusSchema 
+import {
+  boutiqueIdParamSchema,
+  commandesByBoutiqueQuerySchema,
+  createCommandeSchema,
+  initierPaiementSchema,
+  numeroParamSchema,
+  updateCommandeStatusSchema,
+  updatePaymentStatusSchema
 } from '../utils/validation.schemas.commande';
 import { orderLimiter } from '../middlewares/rate-limit.middleware';
 import { validateTurnstile } from '../middlewares/captcha.middleware';
@@ -55,7 +56,7 @@ router.get('/numero/:numero', auth, validateParams(numeroParamSchema), isCommand
  * @desc    Récupère les commandes d'une boutique
  * @access  Private (propriétaire de la boutique)
  */
-router.get('/boutique/:boutiqueId', auth, validateParams(boutiqueIdParamSchema), validateQuery(paginationQuerySchema), isBoutiqueOwner, CommandeController.getCommandesByBoutique);
+router.get('/boutique/:boutiqueId', auth, validateParams(boutiqueIdParamSchema), validateQuery(commandesByBoutiqueQuerySchema), isBoutiqueOwner, CommandeController.getCommandesByBoutique);
 
 /**
  * @route   GET /api/v1/commandes/:id
