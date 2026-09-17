@@ -96,6 +96,53 @@ export const auth = async (req: Request, res: Response, next: NextFunction) => {
   }
 };
 
+/**
+ * Comme `auth`, mais n'échoue jamais : si aucun token (ou un token invalide/expiré)
+ * n'est fourni, la requête continue en anonyme (req.vendeur reste undefined).
+ * Sert aux routes publiques qui doivent néanmoins reconnaître le vendeur
+ * propriétaire quand il est connecté (ex: prévisualisation de sa propre boutique).
+ */
+export const optionalAuth = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return next();
+    }
+
+    const token = authHeader.split(' ')[1];
+    if (!token) {
+      return next();
+    }
+
+    const jwtSecret = process.env.JWT_SECRET;
+    if (!jwtSecret) {
+      logger.error('[AuthMiddleware] JWT_SECRET non défini');
+      return next();
+    }
+
+    const decoded = jwt.verify(token, jwtSecret) as { id: number };
+    const vendeur = await VendeurModel.getVendeurById(decoded.id);
+
+    if (vendeur && vendeur.statut === 'actif') {
+      req.vendeur = vendeur;
+      req.user = vendeur;
+
+      const allowedAdminIds = (process.env.ALLOWED_ADMIN_IDS || '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .map(Number)
+        .filter((id) => !Number.isNaN(id));
+      req.isAdmin = allowedAdminIds.includes(vendeur.id);
+    }
+
+    next();
+  } catch (error) {
+    // Token invalide/expiré : on continue en anonyme plutôt que de bloquer la requête publique
+    next();
+  }
+};
+
 export const isAdmin = (req: Request, res: Response, next: NextFunction) => {
   if (!req.vendeur || !req.isAdmin) {
     return res.status(403).json({

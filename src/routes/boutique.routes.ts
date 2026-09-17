@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { BoutiqueController } from '../controllers/boutique.controller';
-import { auth, isAdmin, isBoutiqueOwner } from '../middlewares/auth.middleware';
+import { auth, isAdmin, isBoutiqueOwner, optionalAuth } from '../middlewares/auth.middleware';
 import { validate, validateParams, validateQuery } from '../middlewares/validation.middleware';
 import { 
   createBoutiqueSchema, 
@@ -106,7 +106,7 @@ router.get('/', validateQuery(paginationQuerySchema), BoutiqueController.getAllB
  * @desc    Récupère une boutique par son slug
  * @access  Public
  */
-router.get('/slug/:slug', validateParams(slugParamSchema), BoutiqueController.getBoutiqueBySlug);
+router.get('/slug/:slug', optionalAuth, validateParams(slugParamSchema), BoutiqueController.getBoutiqueBySlug);
 
 /**
  * @swagger
@@ -172,7 +172,7 @@ router.get('/vendeur/:vendeurId', validateParams(vendeurIdParamSchema), Boutique
  * @desc    Récupère une boutique par son ID
  * @access  Public
  */
-router.get('/:id', validateParams(idParamSchema), BoutiqueController.getBoutiqueById);
+router.get('/:id', optionalAuth, validateParams(idParamSchema), BoutiqueController.getBoutiqueById);
 
 /**
  * @swagger
@@ -482,6 +482,13 @@ router.patch('/:id/statut', auth, validateParams(idParamSchema), isAdmin, valida
  * @access  Private (propriétaire de la boutique)
  */
 router.get('/:id/stats', auth, validateParams(idParamSchema), isBoutiqueOwner, BoutiqueController.getBoutiqueStats);
+
+/**
+ * @route   GET /api/v1/boutiques/:id/stats/geo
+ * @desc    Répartition géographique (pays/ville) des vues de la boutique
+ * @access  Privé (propriétaire de la boutique)
+ */
+router.get('/:id/stats/geo', auth, validateParams(idParamSchema), isBoutiqueOwner, BoutiqueController.getBoutiqueStatsGeo);
 
 /**
  * @swagger

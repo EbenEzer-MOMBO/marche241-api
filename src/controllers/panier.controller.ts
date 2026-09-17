@@ -226,6 +226,14 @@ export class PanierController {
         return;
       }
 
+      if (produit.statut !== 'actif') {
+        res.status(400).json({
+          success: false,
+          message: 'Ce produit n\'est plus disponible'
+        });
+        return;
+      }
+
       logger.debug('[PanierController] Produit trouvé:', { id: produit.id, nom: produit.nom });
       logger.debug('[PanierController] Format variants produit:', produit.variants);
 

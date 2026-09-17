@@ -3,17 +3,32 @@ import { ProduitModel } from '../models/produit.model';
 import { VueModel } from '../models/vue.model';
 import { BoutiqueModel } from '../models/boutique.model';
 import { logger } from '../utils/logger';
+import { doitEnregistrerLaVue, getClientIp } from '../utils/view-tracking';
 
 /**
- * Utilitaire pour extraire l'IP réelle du client
+ * Un produit désactivé ne doit rester visible que pour le vendeur propriétaire
+ * de sa boutique (accès admin), jamais pour un visiteur public.
  */
-function getClientIp(req: Request): string {
-  const forwarded = req.headers['x-forwarded-for'];
-  if (forwarded) {
-    const ips = (typeof forwarded === 'string' ? forwarded : forwarded[0]).split(',');
-    return ips[0].trim();
-  }
-  return req.socket?.remoteAddress || req.ip || 'unknown';
+function estProprietaireDuProduit(req: Request, produit: any): boolean {
+  return !!(req.vendeur && produit.boutique && produit.boutique.vendeur_id === req.vendeur.id);
+}
+
+function vendeurIdDuProduit(produit: { boutique?: { vendeur_id?: number } }): number | undefined {
+  return produit.boutique?.vendeur_id;
+}
+
+function enregistrerVueProduit(req: Request, produit: { id: number }): void {
+  const clientIp = getClientIp(req);
+  const userAgent = req.headers['user-agent'] || undefined;
+  const referer = req.headers['referer'] || undefined;
+
+  VueModel.enregistrerVue('produit', produit.id, clientIp, userAgent, referer)
+    .then((nouvelleVue) => {
+      if (nouvelleVue) {
+        logger.debug(`[ProduitController] Nouvelle vue enregistrée pour produit ${produit.id}`);
+      }
+    })
+    .catch((err) => logger.error('[ProduitController] Erreur tracking vue produit:', err));
 }
 
 export class ProduitController {
@@ -30,7 +45,7 @@ export class ProduitController {
       const tri_par = (query.tri_par as string) || 'date_creation';
       const ordre = ((query.ordre as string)?.toUpperCase() === 'ASC' ? 'ASC' : 'DESC') as 'ASC' | 'DESC';
       
-      const { produits, total } = await ProduitModel.getAllProduits(page, limite, tri_par, ordre);
+      const { produits, total } = await ProduitModel.getAllProduits(page, limite, tri_par, ordre, true);
       
       res.status(200).json({
         success: true,
@@ -68,37 +83,16 @@ export class ProduitController {
         produit = await ProduitModel.getProduitBySlug(idOrSlug);
       }
       
-      if (!produit) {
+      if (!produit || (produit.statut !== 'actif' && !estProprietaireDuProduit(req, produit))) {
         res.status(404).json({
           success: false,
           message: 'Produit non trouvé'
         });
         return;
       }
-      
-      // Enregistrer la vue (en arrière-plan, ne pas bloquer la réponse)
-      const clientIp = getClientIp(req);
-      const userAgent = req.headers['user-agent'] || undefined;
-      const referer = req.headers['referer'] || undefined;
-      
-      // Vue du produit
-      VueModel.enregistrerVue('produit', produit.id, clientIp, userAgent, referer)
-        .then(nouvelleVue => {
-          if (nouvelleVue) {
-            logger.debug(`[ProduitController] Nouvelle vue enregistrée pour produit ${produit.id}`);
-          }
-        })
-        .catch(err => logger.error('[ProduitController] Erreur tracking vue produit:', err));
 
-      // Vue de la boutique (voir un produit = visiter la boutique)
-      if (produit.boutique_id) {
-        VueModel.enregistrerVue('boutique', produit.boutique_id, clientIp, userAgent, referer)
-          .then(nouvelleVue => {
-            if (nouvelleVue) {
-              logger.debug(`[ProduitController] Nouvelle vue enregistrée pour boutique ${produit.boutique_id}`);
-            }
-          })
-          .catch(err => logger.error('[ProduitController] Erreur tracking vue boutique:', err));
+      if (doitEnregistrerLaVue(req, vendeurIdDuProduit(produit))) {
+        enregistrerVueProduit(req, produit);
       }
 
       res.status(200).json({
@@ -122,38 +116,17 @@ export class ProduitController {
       const { slug } = req.params;
       
       const produit = await ProduitModel.getProduitBySlug(slug);
-      
-      if (!produit) {
+
+      if (!produit || (produit.statut !== 'actif' && !estProprietaireDuProduit(req, produit))) {
         res.status(404).json({
           success: false,
           message: 'Produit non trouvé'
         });
         return;
       }
-      
-      // Enregistrer la vue (en arrière-plan)
-      const clientIp = getClientIp(req);
-      const userAgent = req.headers['user-agent'] || undefined;
-      const referer = req.headers['referer'] || undefined;
-      
-      // Vue du produit
-      VueModel.enregistrerVue('produit', produit.id, clientIp, userAgent, referer)
-        .then(nouvelleVue => {
-          if (nouvelleVue) {
-            logger.debug(`[ProduitController] Nouvelle vue enregistrée pour produit ${produit.id}`);
-          }
-        })
-        .catch(err => logger.error('[ProduitController] Erreur tracking vue produit:', err));
 
-      // Vue de la boutique (voir un produit = visiter la boutique)
-      if (produit.boutique_id) {
-        VueModel.enregistrerVue('boutique', produit.boutique_id, clientIp, userAgent, referer)
-          .then(nouvelleVue => {
-            if (nouvelleVue) {
-              logger.debug(`[ProduitController] Nouvelle vue enregistrée pour boutique ${produit.boutique_id}`);
-            }
-          })
-          .catch(err => logger.error('[ProduitController] Erreur tracking vue boutique:', err));
+      if (doitEnregistrerLaVue(req, vendeurIdDuProduit(produit))) {
+        enregistrerVueProduit(req, produit);
       }
 
       res.status(200).json({
@@ -512,8 +485,13 @@ export class ProduitController {
       
       logger.debug('[ProduitController] Recherche des produits pour boutique:', boutiqueId);
       logger.debug('[ProduitController] Paramètres pagination:', { page, limite, tri_par, ordre });
-      
-      const { produits, total } = await ProduitModel.getProduitsByBoutique(boutiqueId, page, limite, tri_par, ordre);
+
+      // Le vendeur propriétaire de la boutique voit aussi ses produits inactifs/brouillons ;
+      // tout autre appelant (visiteur public, ou vendeur d'une autre boutique) ne voit que les produits actifs.
+      const boutique = await BoutiqueModel.getBoutiqueById(boutiqueId);
+      const estProprietaire = !!(req.vendeur && boutique && boutique.vendeur_id === req.vendeur.id);
+
+      const { produits, total } = await ProduitModel.getProduitsByBoutique(boutiqueId, page, limite, tri_par, ordre, !estProprietaire);
       
       logger.debug('[ProduitController] Nombre de produits trouvés:', produits.length);
       logger.debug('[ProduitController] Total de produits pour cette boutique:', total);

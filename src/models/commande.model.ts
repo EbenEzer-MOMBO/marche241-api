@@ -409,14 +409,16 @@ export class CommandeModel {
    * @param boutiqueId ID de la boutique
    * @param page Numéro de la page
    * @param limite Nombre d'éléments par page
+   * @param inclureArchivees Si true, inclut aussi les commandes archivées (exclues par défaut)
    */
-  static async getCommandesByBoutique(boutiqueId: number, page: number = 1, limite: number = 10): Promise<{ commandes: Commande[], total: number }> {
+  static async getCommandesByBoutique(boutiqueId: number, page: number = 1, limite: number = 10, inclureArchivees: boolean = false): Promise<{ commandes: Commande[], total: number }> {
     // Calculer l'offset pour la pagination
     const offset = (page - 1) * limite;
+    const filtreArchivee = inclureArchivees ? '' : 'AND c.archivee = false';
 
     // Récupérer le nombre total de commandes
     const { rows: total } = await query<{ count: string }>(
-      `SELECT COUNT(*) AS count FROM commandes WHERE boutique_id = $1`,
+      `SELECT COUNT(*) AS count FROM commandes c WHERE c.boutique_id = $1 ${filtreArchivee}`,
       [boutiqueId]
     );
 
@@ -424,7 +426,7 @@ export class CommandeModel {
     const { rows } = await query<Commande>(
       `SELECT c.*, (SELECT row_to_json(b) FROM boutiques b WHERE b.id = c.boutique_id) AS boutique
        FROM commandes c
-       WHERE c.boutique_id = $1
+       WHERE c.boutique_id = $1 ${filtreArchivee}
        ORDER BY c.date_commande DESC
        LIMIT $2 OFFSET $3`,
       [boutiqueId, limite, offset]
@@ -434,6 +436,37 @@ export class CommandeModel {
       commandes: rows,
       total: Number(total[0].count)
     };
+  }
+
+  /**
+   * Archive ou désarchive une commande (action réversible du vendeur, ex: nettoyer
+   * ses commandes de test). Refusée si la commande est expédiée, livrée, ou payée :
+   * ces commandes réelles ne doivent pas disparaître des stats/listes par erreur.
+   */
+  static async setCommandeArchivee(id: number, archivee: boolean): Promise<Commande> {
+    const { rows: actuelles } = await query<{ statut: StatutCommande; statut_paiement: string }>(
+      `SELECT statut, statut_paiement FROM commandes WHERE id = $1`,
+      [id]
+    );
+
+    if (!actuelles[0]) {
+      throw new Error(`Commande non trouvée: ${id}`);
+    }
+
+    if (archivee) {
+      const { statut, statut_paiement } = actuelles[0];
+      const estPayeeMemePartiellement = statut_paiement === 'paye' || statut_paiement === 'partiellement_paye';
+      if (statut === 'expedie' || statut === 'livree' || estPayeeMemePartiellement) {
+        throw new Error('Impossible d\'archiver une commande expédiée, livrée ou payée (même partiellement)');
+      }
+    }
+
+    const { rows } = await query<Commande>(
+      `UPDATE commandes SET archivee = $1, date_modification = NOW() WHERE id = $2 RETURNING *`,
+      [archivee, id]
+    );
+
+    return rows[0];
   }
 
   /**

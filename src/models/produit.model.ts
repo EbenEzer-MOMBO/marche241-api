@@ -586,12 +586,13 @@ export class ProduitModel {
   /**
    * Récupère tous les produits avec pagination
    */
-  static async getAllProduits(page: number = 1, limite: number = 10, tri_par: string = 'date_creation', ordre: 'ASC' | 'DESC' = 'DESC'): Promise<{ produits: Produit[], total: number }> {
+  static async getAllProduits(page: number = 1, limite: number = 10, tri_par: string = 'date_creation', ordre: 'ASC' | 'DESC' = 'DESC', onlyActive: boolean = false): Promise<{ produits: Produit[], total: number }> {
     // Calculer l'offset pour la pagination
     const offset = (page - 1) * limite;
-    
+    const filtreStatut = onlyActive ? `WHERE statut = 'actif'` : '';
+
     // Récupérer le nombre total de produits
-    const { rows: total } = await query<{ count: string }>(`SELECT COUNT(*) AS count FROM produits`);
+    const { rows: total } = await query<{ count: string }>(`SELECT COUNT(*) AS count FROM produits ${filtreStatut}`);
 
     // N'accepter que des valeurs connues : elles sont interpolées dans le SQL
     const colonneTri = (COLONNES_TRI as readonly string[]).includes(tri_par) ? tri_par : 'date_creation';
@@ -601,6 +602,7 @@ export class ProduitModel {
     const { rows } = await query<Produit>(
       `SELECT p.*, ${JOINTURES}
        FROM produits p
+       ${onlyActive ? `WHERE p.statut = 'actif'` : ''}
        ORDER BY ${colonneTri} ${sensTri}
        LIMIT $1 OFFSET $2`,
       [limite, offset]
@@ -615,9 +617,9 @@ export class ProduitModel {
   /**
    * Récupère un produit par son ID
    */
-  static async getProduitById(id: number): Promise<Produit | null> {
+  static async getProduitById(id: number, onlyActive: boolean = false): Promise<Produit | null> {
     const { rows } = await query<Produit>(
-      `SELECT p.*, ${JOINTURES} FROM produits p WHERE p.id = $1`,
+      `SELECT p.*, ${JOINTURES} FROM produits p WHERE p.id = $1 ${onlyActive ? `AND p.statut = 'actif'` : ''}`,
       [id]
     );
 
@@ -627,9 +629,9 @@ export class ProduitModel {
   /**
    * Récupère un produit par son slug
    */
-  static async getProduitBySlug(slug: string): Promise<Produit | null> {
+  static async getProduitBySlug(slug: string, onlyActive: boolean = false): Promise<Produit | null> {
     const { rows } = await query<Produit>(
-      `SELECT p.*, ${JOINTURES} FROM produits p WHERE p.slug = $1`,
+      `SELECT p.*, ${JOINTURES} FROM produits p WHERE p.slug = $1 ${onlyActive ? `AND p.statut = 'actif'` : ''}`,
       [slug]
     );
 
@@ -996,13 +998,14 @@ export class ProduitModel {
   /**
    * Récupère tous les produits d'une boutique avec pagination
    */
-  static async getProduitsByBoutique(boutiqueId: number, page: number = 1, limite: number = 10, tri_par: string = 'date_creation', ordre: 'ASC' | 'DESC' = 'DESC'): Promise<{ produits: Produit[], total: number }> {
+  static async getProduitsByBoutique(boutiqueId: number, page: number = 1, limite: number = 10, tri_par: string = 'date_creation', ordre: 'ASC' | 'DESC' = 'DESC', onlyActive: boolean = false): Promise<{ produits: Produit[], total: number }> {
     // Calculer l'offset pour la pagination
     const offset = (page - 1) * limite;
-    
+    const filtreStatut = onlyActive ? `AND statut = 'actif'` : '';
+
     // Récupérer le nombre total de produits pour cette boutique
     const { rows: total } = await query<{ count: string }>(
-      `SELECT COUNT(*) AS count FROM produits WHERE boutique_id = $1`,
+      `SELECT COUNT(*) AS count FROM produits WHERE boutique_id = $1 ${filtreStatut}`,
       [boutiqueId]
     );
 
@@ -1014,7 +1017,7 @@ export class ProduitModel {
     const { rows: data } = await query<Produit>(
       `SELECT p.*, ${JOINTURES}
        FROM produits p
-       WHERE p.boutique_id = $1
+       WHERE p.boutique_id = $1 ${onlyActive ? `AND p.statut = 'actif'` : ''}
        ORDER BY ${colonneTri} ${sensTri}
        LIMIT $2 OFFSET $3`,
       [boutiqueId, limite, offset]
