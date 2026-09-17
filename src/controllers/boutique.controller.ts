@@ -6,18 +6,7 @@ import { VendeurModel } from '../models/vendeur.model';
 import { CreateBoutiqueData, Boutique, StatutBoutique } from '../lib/database-types';
 import { logger } from '../utils/logger';
 import { EmailService } from '../services/email.service';
-
-/**
- * Utilitaire pour extraire l'IP réelle du client
- */
-function getClientIp(req: Request): string {
-  const forwarded = req.headers['x-forwarded-for'];
-  if (forwarded) {
-    const ips = (typeof forwarded === 'string' ? forwarded : forwarded[0]).split(',');
-    return ips[0].trim();
-  }
-  return req.socket?.remoteAddress || req.ip || 'unknown';
-}
+import { doitEnregistrerLaVue, getClientIp } from '../utils/view-tracking';
 
 export class BoutiqueController {
   /**
@@ -80,13 +69,16 @@ export class BoutiqueController {
       }
 
 
-      // Enregistrer la vue (en arrière-plan, ne pas bloquer la réponse)
-      const clientIp = getClientIp(req);
-      const userAgent = req.headers['user-agent'] || undefined;
-      const referer = req.headers['referer'] || undefined;
-      
-      VueModel.enregistrerVue('boutique', boutique.id, clientIp, userAgent, referer)
-        .catch(err => logger.error('[BoutiqueController] Erreur tracking vue:', err));
+      // Enregistrer la vue (en arrière-plan, ne pas bloquer la réponse), sauf si c'est
+      // le vendeur propriétaire qui prévisualise sa propre boutique
+      if (doitEnregistrerLaVue(req, boutique.vendeur_id)) {
+        const clientIp = getClientIp(req);
+        const userAgent = req.headers['user-agent'] || undefined;
+        const referer = req.headers['referer'] || undefined;
+
+        VueModel.enregistrerVue('boutique', boutique.id, clientIp, userAgent, referer)
+          .catch(err => logger.error('[BoutiqueController] Erreur tracking vue:', err));
+      }
 
       res.status(200).json({
         success: true,
@@ -127,13 +119,16 @@ export class BoutiqueController {
         return;
       }
 
-      // Enregistrer la vue (en arrière-plan)
-      const clientIp = getClientIp(req);
-      const userAgent = req.headers['user-agent'] || undefined;
-      const referer = req.headers['referer'] || undefined;
-      
-      VueModel.enregistrerVue('boutique', boutique.id, clientIp, userAgent, referer)
-        .catch(err => logger.error('[BoutiqueController] Erreur tracking vue:', err));
+      // Enregistrer la vue (en arrière-plan), sauf si c'est le vendeur propriétaire
+      // qui prévisualise sa propre boutique
+      if (doitEnregistrerLaVue(req, boutique.vendeur_id)) {
+        const clientIp = getClientIp(req);
+        const userAgent = req.headers['user-agent'] || undefined;
+        const referer = req.headers['referer'] || undefined;
+
+        VueModel.enregistrerVue('boutique', boutique.id, clientIp, userAgent, referer)
+          .catch(err => logger.error('[BoutiqueController] Erreur tracking vue:', err));
+      }
 
       res.status(200).json({
         success: true,
@@ -443,6 +438,48 @@ export class BoutiqueController {
       res.status(500).json({
         success: false,
         message: 'Erreur lors de la récupération des statistiques',
+        error: error.message
+      });
+    }
+  }
+
+  /**
+   * Récupère la répartition géographique (pays/ville) des vues d'une boutique
+   */
+  static async getBoutiqueStatsGeo(req: Request, res: Response): Promise<void> {
+    try {
+      const id = parseInt(req.params.id);
+
+      if (isNaN(id)) {
+        res.status(400).json({
+          success: false,
+          message: 'ID de boutique invalide'
+        });
+        return;
+      }
+
+      const boutique = await BoutiqueModel.getBoutiqueById(id);
+      if (!boutique) {
+        res.status(404).json({
+          success: false,
+          message: 'Boutique non trouvée'
+        });
+        return;
+      }
+
+      const jours = parseInt(req.query.jours as string) || 30;
+      const repartitionGeo = await VueModel.getStatsVuesGeo('boutique', id, jours);
+
+      res.status(200).json({
+        success: true,
+        boutique_id: id,
+        periode_jours: jours,
+        repartition_geo: repartitionGeo
+      });
+    } catch (error: any) {
+      res.status(500).json({
+        success: false,
+        message: 'Erreur lors de la récupération de la répartition géographique',
         error: error.message
       });
     }

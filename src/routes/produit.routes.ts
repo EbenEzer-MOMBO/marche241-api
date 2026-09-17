@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { ProduitController } from '../controllers/produit.controller';
-import { auth } from '../middlewares/auth.middleware';
+import { auth, optionalAuth } from '../middlewares/auth.middleware';
 import { authOrServiceKey } from '../middlewares/service-auth.middleware';
 import { validate, validateParams, validateQuery } from '../middlewares/validation.middleware';
 import { idParamSchema, slugParamSchema, paginationQuerySchema, boutiqueIdParamSchema } from '../utils/validation.schemas';
@@ -138,7 +138,7 @@ const router = Router();
  * @desc    Récupère tous les produits avec pagination
  * @access  Public
  */
-router.get('/', validateQuery(paginationQuerySchema), ProduitController.getAllProduits);
+router.get('/', optionalAuth, validateQuery(paginationQuerySchema), ProduitController.getAllProduits);
 
 /**
  * @swagger
@@ -292,7 +292,7 @@ router.get('/categorie/:categorieId', validateParams(idParamSchema), ProduitCont
  * @desc    Récupère tous les produits d'une boutique avec pagination
  * @access  Public
  */
-router.get('/boutique/:boutiqueId', validateParams(boutiqueIdParamSchema), validateQuery(paginationQuerySchema), ProduitController.getProduitsByBoutique);
+router.get('/boutique/:boutiqueId', optionalAuth, validateParams(boutiqueIdParamSchema), validateQuery(paginationQuerySchema), ProduitController.getProduitsByBoutique);
 
 /**
  * @swagger
@@ -320,7 +320,7 @@ router.get('/boutique/:boutiqueId', validateParams(boutiqueIdParamSchema), valid
  * @desc    Récupère un produit par son slug
  * @access  Public
  */
-router.get('/slug/:slug', validateParams(slugParamSchema), ProduitController.getProduitBySlug);
+router.get('/slug/:slug', optionalAuth, validateParams(slugParamSchema), ProduitController.getProduitBySlug);
 
 /**
  * @swagger
@@ -348,7 +348,7 @@ router.get('/slug/:slug', validateParams(slugParamSchema), ProduitController.get
  * @desc    Récupère un produit par son ID
  * @access  Public
  */
-router.get('/:id', validateParams(idParamSchema), ProduitController.getProduitById);
+router.get('/:id', optionalAuth, validateParams(idParamSchema), ProduitController.getProduitById);
 
 /**
  * @swagger

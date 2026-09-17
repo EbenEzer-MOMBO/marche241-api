@@ -37,7 +37,7 @@ app.use(cors({
     'https://marche241.ga'
   ],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-cf-token'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-cf-token', 'x-boutique-preview', 'x-skip-view-tracking'],
   credentials: true,
   optionsSuccessStatus: 200
 }));
