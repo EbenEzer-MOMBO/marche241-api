@@ -17,7 +17,7 @@ function vendeurIdDuProduit(produit: { boutique?: { vendeur_id?: number } }): nu
   return produit.boutique?.vendeur_id;
 }
 
-function enregistrerVueProduit(req: Request, produit: { id: number }): void {
+function enregistrerVueProduit(req: Request, produit: { id: number; boutique_id?: number; boutique?: { id?: number } }): void {
   const clientIp = getClientIp(req);
   const userAgent = req.headers['user-agent'] || undefined;
   const referer = req.headers['referer'] || undefined;
@@ -29,6 +29,18 @@ function enregistrerVueProduit(req: Request, produit: { id: number }): void {
       }
     })
     .catch((err) => logger.error('[ProduitController] Erreur tracking vue produit:', err));
+
+  // Voir un produit = visiter la boutique
+  const boutiqueId = produit.boutique_id ?? produit.boutique?.id;
+  if (boutiqueId) {
+    VueModel.enregistrerVue('boutique', boutiqueId, clientIp, userAgent, referer)
+      .then((nouvelleVue) => {
+        if (nouvelleVue) {
+          logger.debug(`[ProduitController] Nouvelle vue enregistrée pour boutique ${boutiqueId}`);
+        }
+      })
+      .catch((err) => logger.error('[ProduitController] Erreur tracking vue boutique:', err));
+  }
 }
 
 export class ProduitController {
