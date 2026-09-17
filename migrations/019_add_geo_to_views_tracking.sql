@@ -20,6 +20,10 @@ CREATE INDEX IF NOT EXISTS idx_vues_tracking_pays ON vues_tracking(pays);
 -- ============================================
 -- ENREGISTRER_VUE : ACCEPTE DÉSORMAIS PAYS/VILLE
 -- ============================================
+-- PostgreSQL refuse CREATE OR REPLACE si le nombre d'arguments change
+-- (signature existante à 5 paramètres). On drop l'ancienne d'abord.
+
+DROP FUNCTION IF EXISTS enregistrer_vue(type_entite_vue, integer, varchar, text, text);
 
 CREATE OR REPLACE FUNCTION enregistrer_vue(
     p_type_entite type_entite_vue,

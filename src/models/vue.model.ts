@@ -1,6 +1,7 @@
 import geoip from 'geoip-lite';
 import { query } from '../config/database';
 import { logger } from '../utils/logger';
+import { normaliserIp } from '../utils/view-tracking';
 
 export type TypeEntiteVue = 'boutique' | 'produit';
 
@@ -43,7 +44,7 @@ const STATS_VIDES: StatsVues = {
  */
 function resoudreGeoIp(ipAddress: string): { pays: string | null; ville: string | null } {
   try {
-    const resultat = geoip.lookup(ipAddress);
+    const resultat = geoip.lookup(normaliserIp(ipAddress));
 
     if (!resultat) {
       return { pays: null, ville: null };

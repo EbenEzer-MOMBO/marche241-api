@@ -6,34 +6,7 @@ import { VendeurModel } from '../models/vendeur.model';
 import { CreateBoutiqueData, Boutique, StatutBoutique } from '../lib/database-types';
 import { logger } from '../utils/logger';
 import { EmailService } from '../services/email.service';
-
-/**
- * Utilitaire pour extraire l'IP réelle du client
- */
-function getClientIp(req: Request): string {
-  const forwarded = req.headers['x-forwarded-for'];
-  if (forwarded) {
-    const ips = (typeof forwarded === 'string' ? forwarded : forwarded[0]).split(',');
-    return ips[0].trim();
-  }
-  return req.socket?.remoteAddress || req.ip || 'unknown';
-}
-
-/**
- * Une visite ne doit pas être comptabilisée quand elle vient du vendeur
- * propriétaire lui-même (session authentifiée) ou d'une prévisualisation
- * explicite depuis son dashboard (?preview=1), pour ne pas fausser les
- * statistiques de vues avec ses propres clics "Voir la boutique".
- */
-function doitEnregistrerLaVue(req: Request, boutique: { vendeur_id: number }): boolean {
-  if (req.query.preview === '1') {
-    return false;
-  }
-  if (req.vendeur && req.vendeur.id === boutique.vendeur_id) {
-    return false;
-  }
-  return true;
-}
+import { doitEnregistrerLaVue, getClientIp } from '../utils/view-tracking';
 
 export class BoutiqueController {
   /**
@@ -98,7 +71,7 @@ export class BoutiqueController {
 
       // Enregistrer la vue (en arrière-plan, ne pas bloquer la réponse), sauf si c'est
       // le vendeur propriétaire qui prévisualise sa propre boutique
-      if (doitEnregistrerLaVue(req, boutique)) {
+      if (doitEnregistrerLaVue(req, boutique.vendeur_id)) {
         const clientIp = getClientIp(req);
         const userAgent = req.headers['user-agent'] || undefined;
         const referer = req.headers['referer'] || undefined;
@@ -148,7 +121,7 @@ export class BoutiqueController {
 
       // Enregistrer la vue (en arrière-plan), sauf si c'est le vendeur propriétaire
       // qui prévisualise sa propre boutique
-      if (doitEnregistrerLaVue(req, boutique)) {
+      if (doitEnregistrerLaVue(req, boutique.vendeur_id)) {
         const clientIp = getClientIp(req);
         const userAgent = req.headers['user-agent'] || undefined;
         const referer = req.headers['referer'] || undefined;
