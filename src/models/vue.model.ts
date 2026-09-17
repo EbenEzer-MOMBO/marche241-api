@@ -2,6 +2,7 @@ import geoip from 'geoip-lite';
 import { query } from '../config/database';
 import { logger } from '../utils/logger';
 import { normaliserIp } from '../utils/view-tracking';
+import { CODE_PAYS_VPN, estIpProxyOuCdn } from '../utils/ip-proxy';
 
 export type TypeEntiteVue = 'boutique' | 'produit';
 
@@ -44,7 +45,13 @@ const STATS_VIDES: StatsVues = {
  */
 function resoudreGeoIp(ipAddress: string): { pays: string | null; ville: string | null } {
   try {
-    const resultat = geoip.lookup(normaliserIp(ipAddress));
+    const ip = normaliserIp(ipAddress);
+
+    if (estIpProxyOuCdn(ip)) {
+      return { pays: CODE_PAYS_VPN, ville: null };
+    }
+
+    const resultat = geoip.lookup(ip);
 
     if (!resultat) {
       return { pays: null, ville: null };
