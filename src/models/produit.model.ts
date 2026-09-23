@@ -161,7 +161,7 @@ function construireWhereListeProduits(
   if (filtres.commune_id !== undefined && !Number.isNaN(Number(filtres.commune_id))) {
     params.push(filtres.commune_id);
     conditions.push(
-      `EXISTS (SELECT 1 FROM communes_livraison cl WHERE cl.boutique_id = p.boutique_id AND cl.id = $${params.length})`
+      `EXISTS (SELECT 1 FROM communes_livraison cl WHERE cl.boutique_id = p.boutique_id AND cl.id = $${params.length} AND cl.est_active = true)`
     );
   }
 
