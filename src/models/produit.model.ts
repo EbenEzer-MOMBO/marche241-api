@@ -666,9 +666,13 @@ export class ProduitModel {
   ): Promise<{ produits: Produit[], total: number }> {
     const offset = (page - 1) * limite;
     const { whereSql, params } = construireWhereListeProduits(filtres, { onlyActive });
+    const exclusionBoutique = 'p.boutique_id <> 1';
+    const whereCatalogue = whereSql
+      ? `${whereSql} AND ${exclusionBoutique}`
+      : `WHERE ${exclusionBoutique}`;
 
     const { rows: total } = await query<{ count: string }>(
-      `SELECT COUNT(*) AS count FROM produits p ${whereSql}`,
+      `SELECT COUNT(*) AS count FROM produits p ${whereCatalogue}`,
       params
     );
 
@@ -680,8 +684,14 @@ export class ProduitModel {
     const { rows } = await query<Produit>(
       `SELECT p.*, ${JOINTURES}
        FROM produits p
-       ${whereSql}
-       ORDER BY p.${colonneTri} ${sensTri}
+       ${whereCatalogue}
+       ORDER BY
+         CASE WHEN p.en_stock IS TRUE THEN 0 ELSE 1 END ASC,
+         CASE WHEN EXISTS (
+           SELECT 1 FROM boutiques b
+           WHERE b.id = p.boutique_id AND b.est_verifiee IS TRUE
+         ) THEN 0 ELSE 1 END ASC,
+         p.${colonneTri} ${sensTri}
        LIMIT $${limitePos} OFFSET $${offsetPos}`,
       [...params, limite, offset]
     );
