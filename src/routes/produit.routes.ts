@@ -3,7 +3,7 @@ import { ProduitController } from '../controllers/produit.controller';
 import { auth, optionalAuth } from '../middlewares/auth.middleware';
 import { authOrServiceKey } from '../middlewares/service-auth.middleware';
 import { validate, validateParams, validateQuery } from '../middlewares/validation.middleware';
-import { idParamSchema, slugParamSchema, paginationQuerySchema, boutiqueIdParamSchema } from '../utils/validation.schemas';
+import { idParamSchema, slugParamSchema, produitsListQuerySchema, boutiqueIdParamSchema } from '../utils/validation.schemas';
 import Joi from 'joi';
 
 // Schémas de validation pour les produits
@@ -128,17 +128,50 @@ const router = Router();
  *           enum: [ASC, DESC]
  *           default: DESC
  *         description: Ordre de tri
+ *       - in: query
+ *         name: q
+ *         schema:
+ *           type: string
+ *         description: Recherche insensible à la casse sur le nom et la description (produits actifs uniquement). Chaîne vide = pas de filtre.
+ *       - in: query
+ *         name: prix_min
+ *         schema:
+ *           type: number
+ *           minimum: 0
+ *         description: Prix de vente effectif minimum (colonne prix, déjà promotionnel si promo)
+ *       - in: query
+ *         name: prix_max
+ *         schema:
+ *           type: number
+ *           minimum: 0
+ *         description: Prix de vente effectif maximum (colonne prix, déjà promotionnel si promo)
+ *       - in: query
+ *         name: commune_id
+ *         schema:
+ *           type: integer
+ *         description: Filtre les produits dont la boutique livre dans cette commune (communes_livraison)
+ *       - in: query
+ *         name: categorie_id
+ *         schema:
+ *           type: integer
+ *         description: Filtre par identifiant de catégorie
  *     responses:
  *       200:
  *         description: Liste des produits récupérée avec succès
+ *       400:
+ *         description: Paramètre invalide (validation Joi)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ValidationErrorResponse'
  *       500:
  *         description: Erreur serveur
  * 
  * @route   GET /api/v1/produits
- * @desc    Récupère tous les produits avec pagination
+ * @desc    Récupère tous les produits avec pagination, recherche et filtres
  * @access  Public
  */
-router.get('/', optionalAuth, validateQuery(paginationQuerySchema), ProduitController.getAllProduits);
+router.get('/', optionalAuth, validateQuery(produitsListQuerySchema), ProduitController.getAllProduits);
 
 /**
  * @swagger
@@ -248,6 +281,33 @@ router.get('/categorie/:categorieId', validateParams(idParamSchema), ProduitCont
  *           enum: [ASC, DESC]
  *           default: DESC
  *         description: Ordre de tri
+ *       - in: query
+ *         name: q
+ *         schema:
+ *           type: string
+ *         description: Recherche insensible à la casse sur le nom et la description. Chaîne vide = pas de filtre.
+ *       - in: query
+ *         name: prix_min
+ *         schema:
+ *           type: number
+ *           minimum: 0
+ *         description: Prix de vente effectif minimum
+ *       - in: query
+ *         name: prix_max
+ *         schema:
+ *           type: number
+ *           minimum: 0
+ *         description: Prix de vente effectif maximum
+ *       - in: query
+ *         name: commune_id
+ *         schema:
+ *           type: integer
+ *         description: Filtre par commune de livraison de la boutique
+ *       - in: query
+ *         name: categorie_id
+ *         schema:
+ *           type: integer
+ *         description: Filtre par identifiant de catégorie
  *     responses:
  *       200:
  *         description: Produits de la boutique récupérés avec succès
@@ -292,7 +352,7 @@ router.get('/categorie/:categorieId', validateParams(idParamSchema), ProduitCont
  * @desc    Récupère tous les produits d'une boutique avec pagination
  * @access  Public
  */
-router.get('/boutique/:boutiqueId', optionalAuth, validateParams(boutiqueIdParamSchema), validateQuery(paginationQuerySchema), ProduitController.getProduitsByBoutique);
+router.get('/boutique/:boutiqueId', optionalAuth, validateParams(boutiqueIdParamSchema), validateQuery(produitsListQuerySchema), ProduitController.getProduitsByBoutique);
 
 /**
  * @swagger
