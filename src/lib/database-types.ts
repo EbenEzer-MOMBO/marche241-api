@@ -429,6 +429,8 @@ export interface FiltresProduits {
   categorie_id?: number;
   prix_min?: number;
   prix_max?: number;
+  commune_id?: number;
+  q?: string;
   en_stock?: boolean;
   est_nouveau?: boolean;
   est_en_promotion?: boolean;

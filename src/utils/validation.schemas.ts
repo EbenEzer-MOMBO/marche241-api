@@ -219,6 +219,42 @@ export const paginationQuerySchema = Joi.object({
   })
 });
 
+/**
+ * Pagination + recherche/filtres pour GET /produits et GET /produits/boutique/:id
+ */
+export const produitListingQuerySchema = paginationQuerySchema.keys({
+  q: Joi.string().allow('').max(200).optional().messages({
+    'string.max': 'La recherche ne doit pas dépasser {#limit} caractères'
+  }),
+  prix_min: Joi.number().min(0).optional().messages({
+    'number.base': 'Le prix minimum doit être un nombre',
+    'number.min': 'Le prix minimum doit être positif'
+  }),
+  prix_max: Joi.number().min(0).optional().messages({
+    'number.base': 'Le prix maximum doit être un nombre',
+    'number.min': 'Le prix maximum doit être positif'
+  }),
+  commune_id: Joi.number().integer().min(1).optional().messages({
+    'number.base': 'L\'ID de la commune doit être un nombre',
+    'number.min': 'L\'ID de la commune doit être positif'
+  }),
+  categorie_id: Joi.number().integer().min(1).optional().messages({
+    'number.base': 'L\'ID de la catégorie doit être un nombre',
+    'number.min': 'L\'ID de la catégorie doit être positif'
+  })
+}).custom((value, helpers) => {
+  if (
+    value.prix_min !== undefined &&
+    value.prix_max !== undefined &&
+    value.prix_max < value.prix_min
+  ) {
+    return helpers.error('any.invalid');
+  }
+  return value;
+}).messages({
+  'any.invalid': 'Le prix maximum doit être supérieur ou égal au prix minimum'
+});
+
 // Schémas de validation pour le panier
 export const sessionIdParamSchema = Joi.object({
   sessionId: Joi.string().required().messages({

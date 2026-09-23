@@ -3,7 +3,7 @@ import { ProduitController } from '../controllers/produit.controller';
 import { auth, optionalAuth } from '../middlewares/auth.middleware';
 import { authOrServiceKey } from '../middlewares/service-auth.middleware';
 import { validate, validateParams, validateQuery } from '../middlewares/validation.middleware';
-import { idParamSchema, slugParamSchema, paginationQuerySchema, boutiqueIdParamSchema } from '../utils/validation.schemas';
+import { idParamSchema, slugParamSchema, boutiqueIdParamSchema, produitListingQuerySchema } from '../utils/validation.schemas';
 import Joi from 'joi';
 
 // Schémas de validation pour les produits
@@ -100,7 +100,7 @@ const router = Router();
  * /api/v1/produits:
  *   get:
  *     summary: Récupère tous les produits
- *     description: Récupère une liste paginée de tous les produits disponibles
+ *     description: Récupère une liste paginée de produits actifs, avec recherche mot-clé et filtres avancés
  *     tags: [Produits]
  *     parameters:
  *       - in: query
@@ -128,17 +128,51 @@ const router = Router();
  *           enum: [ASC, DESC]
  *           default: DESC
  *         description: Ordre de tri
+ *       - in: query
+ *         name: q
+ *         schema:
+ *           type: string
+ *           maxLength: 200
+ *         description: Recherche insensible à la casse sur le nom et la description (ILIKE). Une valeur vide conserve le comportement actuel.
+ *       - in: query
+ *         name: prix_min
+ *         schema:
+ *           type: number
+ *           minimum: 0
+ *         description: Prix de vente effectif minimum (colonne prix, déjà le tarif promo si une promotion existe)
+ *       - in: query
+ *         name: prix_max
+ *         schema:
+ *           type: number
+ *           minimum: 0
+ *         description: Prix de vente effectif maximum
+ *       - in: query
+ *         name: commune_id
+ *         schema:
+ *           type: integer
+ *         description: Filtre les produits dont la boutique livre cette commune (communes_livraison)
+ *       - in: query
+ *         name: categorie_id
+ *         schema:
+ *           type: integer
+ *         description: Filtre par catégorie
  *     responses:
  *       200:
  *         description: Liste des produits récupérée avec succès
+ *       400:
+ *         description: Paramètre invalide (validation Joi)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ValidationErrorResponse'
  *       500:
  *         description: Erreur serveur
  * 
  * @route   GET /api/v1/produits
- * @desc    Récupère tous les produits avec pagination
+ * @desc    Récupère tous les produits actifs avec pagination, recherche et filtres
  * @access  Public
  */
-router.get('/', optionalAuth, validateQuery(paginationQuerySchema), ProduitController.getAllProduits);
+router.get('/', optionalAuth, validateQuery(produitListingQuerySchema), ProduitController.getAllProduits);
 
 /**
  * @swagger
@@ -214,7 +248,7 @@ router.get('/categorie/:categorieId', validateParams(idParamSchema), ProduitCont
  * /api/v1/produits/boutique/{boutiqueId}:
  *   get:
  *     summary: Récupère tous les produits d'une boutique
- *     description: Récupère une liste paginée de tous les produits appartenant à une boutique spécifique
+ *     description: Récupère une liste paginée des produits d'une boutique, avec les mêmes filtres que GET /produits
  *     tags: [Produits]
  *     parameters:
  *       - in: path
@@ -248,6 +282,34 @@ router.get('/categorie/:categorieId', validateParams(idParamSchema), ProduitCont
  *           enum: [ASC, DESC]
  *           default: DESC
  *         description: Ordre de tri
+ *       - in: query
+ *         name: q
+ *         schema:
+ *           type: string
+ *           maxLength: 200
+ *         description: Recherche insensible à la casse sur le nom et la description
+ *       - in: query
+ *         name: prix_min
+ *         schema:
+ *           type: number
+ *           minimum: 0
+ *         description: Prix de vente effectif minimum
+ *       - in: query
+ *         name: prix_max
+ *         schema:
+ *           type: number
+ *           minimum: 0
+ *         description: Prix de vente effectif maximum
+ *       - in: query
+ *         name: commune_id
+ *         schema:
+ *           type: integer
+ *         description: Filtre si la boutique livre cette commune
+ *       - in: query
+ *         name: categorie_id
+ *         schema:
+ *           type: integer
+ *         description: Filtre par catégorie
  *     responses:
  *       200:
  *         description: Produits de la boutique récupérés avec succès
@@ -292,7 +354,7 @@ router.get('/categorie/:categorieId', validateParams(idParamSchema), ProduitCont
  * @desc    Récupère tous les produits d'une boutique avec pagination
  * @access  Public
  */
-router.get('/boutique/:boutiqueId', optionalAuth, validateParams(boutiqueIdParamSchema), validateQuery(paginationQuerySchema), ProduitController.getProduitsByBoutique);
+router.get('/boutique/:boutiqueId', optionalAuth, validateParams(boutiqueIdParamSchema), validateQuery(produitListingQuerySchema), ProduitController.getProduitsByBoutique);
 
 /**
  * @swagger

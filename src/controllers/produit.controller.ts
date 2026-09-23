@@ -1,9 +1,30 @@
 import { Request, Response } from 'express';
-import { ProduitModel } from '../models/produit.model';
+import { ProduitModel, ProduitListingFiltres } from '../models/produit.model';
 import { VueModel } from '../models/vue.model';
 import { BoutiqueModel } from '../models/boutique.model';
 import { logger } from '../utils/logger';
 import { doitEnregistrerLaVue, getClientIp } from '../utils/view-tracking';
+
+function extraireFiltresListing(query: Record<string, unknown>): ProduitListingFiltres {
+  const filtres: ProduitListingFiltres = {};
+
+  if (typeof query.q === 'string')
+    filtres.q = query.q;
+
+  if (query.prix_min !== undefined)
+    filtres.prix_min = Number(query.prix_min);
+
+  if (query.prix_max !== undefined)
+    filtres.prix_max = Number(query.prix_max);
+
+  if (query.commune_id !== undefined)
+    filtres.commune_id = Number(query.commune_id);
+
+  if (query.categorie_id !== undefined)
+    filtres.categorie_id = Number(query.categorie_id);
+
+  return filtres;
+}
 
 /**
  * Un produit désactivé ne doit rester visible que pour le vendeur propriétaire
@@ -44,8 +65,9 @@ export class ProduitController {
       const limite = parseInt(query.limite as string) || 10;
       const tri_par = (query.tri_par as string) || 'date_creation';
       const ordre = ((query.ordre as string)?.toUpperCase() === 'ASC' ? 'ASC' : 'DESC') as 'ASC' | 'DESC';
+      const filtres = extraireFiltresListing(query);
       
-      const { produits, total } = await ProduitModel.getAllProduits(page, limite, tri_par, ordre, true);
+      const { produits, total } = await ProduitModel.getAllProduits(page, limite, tri_par, ordre, true, filtres);
       
       res.status(200).json({
         success: true,
@@ -484,14 +506,17 @@ export class ProduitController {
       const ordre = ((query.ordre as string)?.toUpperCase() === 'ASC' ? 'ASC' : 'DESC') as 'ASC' | 'DESC';
       
       logger.debug('[ProduitController] Recherche des produits pour boutique:', boutiqueId);
-      logger.debug('[ProduitController] Paramètres pagination:', { page, limite, tri_par, ordre });
+      const filtres = extraireFiltresListing(query);
+      logger.debug('[ProduitController] Paramètres pagination:', { page, limite, tri_par, ordre, filtres });
 
       // Le vendeur propriétaire de la boutique voit aussi ses produits inactifs/brouillons ;
       // tout autre appelant (visiteur public, ou vendeur d'une autre boutique) ne voit que les produits actifs.
       const boutique = await BoutiqueModel.getBoutiqueById(boutiqueId);
       const estProprietaire = !!(req.vendeur && boutique && boutique.vendeur_id === req.vendeur.id);
 
-      const { produits, total } = await ProduitModel.getProduitsByBoutique(boutiqueId, page, limite, tri_par, ordre, !estProprietaire);
+      const { produits, total } = await ProduitModel.getProduitsByBoutique(
+        boutiqueId, page, limite, tri_par, ordre, !estProprietaire, filtres
+      );
       
       logger.debug('[ProduitController] Nombre de produits trouvés:', produits.length);
       logger.debug('[ProduitController] Total de produits pour cette boutique:', total);
