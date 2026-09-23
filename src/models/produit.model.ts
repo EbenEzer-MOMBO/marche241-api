@@ -101,6 +101,76 @@ const placeholder = (colonne: string, position: number): string => {
   return colonne === 'statut' ? `$${position}::statut_produit` : `$${position}`;
 };
 
+export interface FiltresListeProduits {
+  q?: string;
+  prix_min?: number;
+  prix_max?: number;
+  commune_id?: number;
+  categorie_id?: number;
+}
+
+/**
+ * Échappe %, _ et \ pour une recherche ILIKE sûre.
+ */
+function echapperIlike(terme: string): string {
+  return terme.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
+}
+
+/**
+ * Construit le WHERE partagé des listes paginées (recherche, prix, catégorie, commune).
+ */
+function construireWhereListeProduits(
+  filtres: FiltresListeProduits,
+  options: { onlyActive: boolean; boutiqueId?: number }
+): { whereSql: string; params: unknown[] } {
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+
+  if (options.boutiqueId !== undefined) {
+    params.push(options.boutiqueId);
+    conditions.push(`p.boutique_id = $${params.length}`);
+  }
+
+  if (options.onlyActive)
+    conditions.push(`p.statut = 'actif'`);
+
+  const motCle = filtres.q?.trim();
+  if (motCle) {
+    params.push(`%${echapperIlike(motCle)}%`);
+    const index = params.length;
+    conditions.push(
+      `(p.nom ILIKE $${index} ESCAPE '\\' OR COALESCE(p.description, '') ILIKE $${index} ESCAPE '\\')`
+    );
+  }
+
+  if (filtres.prix_min !== undefined && filtres.prix_min !== null && !Number.isNaN(Number(filtres.prix_min))) {
+    params.push(filtres.prix_min);
+    conditions.push(`p.prix >= $${params.length}`);
+  }
+
+  if (filtres.prix_max !== undefined && filtres.prix_max !== null && !Number.isNaN(Number(filtres.prix_max))) {
+    params.push(filtres.prix_max);
+    conditions.push(`p.prix <= $${params.length}`);
+  }
+
+  if (filtres.categorie_id !== undefined && !Number.isNaN(Number(filtres.categorie_id))) {
+    params.push(filtres.categorie_id);
+    conditions.push(`p.categorie_id = $${params.length}`);
+  }
+
+  if (filtres.commune_id !== undefined && !Number.isNaN(Number(filtres.commune_id))) {
+    params.push(filtres.commune_id);
+    conditions.push(
+      `EXISTS (SELECT 1 FROM communes_livraison cl WHERE cl.boutique_id = p.boutique_id AND cl.id = $${params.length})`
+    );
+  }
+
+  return {
+    whereSql: conditions.length ? `WHERE ${conditions.join(' AND ')}` : '',
+    params
+  };
+}
+
 export class ProduitModel {
   /**
    * Transforme un produit pour ajouter prix_promo si nécessaire
@@ -586,26 +656,34 @@ export class ProduitModel {
   /**
    * Récupère tous les produits avec pagination
    */
-  static async getAllProduits(page: number = 1, limite: number = 10, tri_par: string = 'date_creation', ordre: 'ASC' | 'DESC' = 'DESC', onlyActive: boolean = false): Promise<{ produits: Produit[], total: number }> {
-    // Calculer l'offset pour la pagination
+  static async getAllProduits(
+    page: number = 1,
+    limite: number = 10,
+    tri_par: string = 'date_creation',
+    ordre: 'ASC' | 'DESC' = 'DESC',
+    onlyActive: boolean = false,
+    filtres: FiltresListeProduits = {}
+  ): Promise<{ produits: Produit[], total: number }> {
     const offset = (page - 1) * limite;
-    const filtreStatut = onlyActive ? `WHERE statut = 'actif'` : '';
+    const { whereSql, params } = construireWhereListeProduits(filtres, { onlyActive });
 
-    // Récupérer le nombre total de produits
-    const { rows: total } = await query<{ count: string }>(`SELECT COUNT(*) AS count FROM produits ${filtreStatut}`);
+    const { rows: total } = await query<{ count: string }>(
+      `SELECT COUNT(*) AS count FROM produits p ${whereSql}`,
+      params
+    );
 
-    // N'accepter que des valeurs connues : elles sont interpolées dans le SQL
     const colonneTri = (COLONNES_TRI as readonly string[]).includes(tri_par) ? tri_par : 'date_creation';
     const sensTri = ordre === 'ASC' ? 'ASC' : 'DESC';
+    const limitePos = params.length + 1;
+    const offsetPos = params.length + 2;
 
-    // Récupérer les produits avec pagination
     const { rows } = await query<Produit>(
       `SELECT p.*, ${JOINTURES}
        FROM produits p
-       ${onlyActive ? `WHERE p.statut = 'actif'` : ''}
-       ORDER BY ${colonneTri} ${sensTri}
-       LIMIT $1 OFFSET $2`,
-      [limite, offset]
+       ${whereSql}
+       ORDER BY p.${colonneTri} ${sensTri}
+       LIMIT $${limitePos} OFFSET $${offsetPos}`,
+      [...params, limite, offset]
     );
 
     return {
@@ -998,29 +1076,35 @@ export class ProduitModel {
   /**
    * Récupère tous les produits d'une boutique avec pagination
    */
-  static async getProduitsByBoutique(boutiqueId: number, page: number = 1, limite: number = 10, tri_par: string = 'date_creation', ordre: 'ASC' | 'DESC' = 'DESC', onlyActive: boolean = false): Promise<{ produits: Produit[], total: number }> {
-    // Calculer l'offset pour la pagination
+  static async getProduitsByBoutique(
+    boutiqueId: number,
+    page: number = 1,
+    limite: number = 10,
+    tri_par: string = 'date_creation',
+    ordre: 'ASC' | 'DESC' = 'DESC',
+    onlyActive: boolean = false,
+    filtres: FiltresListeProduits = {}
+  ): Promise<{ produits: Produit[], total: number }> {
     const offset = (page - 1) * limite;
-    const filtreStatut = onlyActive ? `AND statut = 'actif'` : '';
+    const { whereSql, params } = construireWhereListeProduits(filtres, { onlyActive, boutiqueId });
 
-    // Récupérer le nombre total de produits pour cette boutique
     const { rows: total } = await query<{ count: string }>(
-      `SELECT COUNT(*) AS count FROM produits WHERE boutique_id = $1 ${filtreStatut}`,
-      [boutiqueId]
+      `SELECT COUNT(*) AS count FROM produits p ${whereSql}`,
+      params
     );
 
-    // N'accepter que des valeurs connues : elles sont interpolées dans le SQL
     const colonneTri = (COLONNES_TRI as readonly string[]).includes(tri_par) ? tri_par : 'date_creation';
     const sensTri = ordre === 'ASC' ? 'ASC' : 'DESC';
+    const limitePos = params.length + 1;
+    const offsetPos = params.length + 2;
 
-    // Récupérer les produits avec pagination
     const { rows: data } = await query<Produit>(
       `SELECT p.*, ${JOINTURES}
        FROM produits p
-       WHERE p.boutique_id = $1 ${onlyActive ? `AND p.statut = 'actif'` : ''}
-       ORDER BY ${colonneTri} ${sensTri}
-       LIMIT $2 OFFSET $3`,
-      [boutiqueId, limite, offset]
+       ${whereSql}
+       ORDER BY p.${colonneTri} ${sensTri}
+       LIMIT $${limitePos} OFFSET $${offsetPos}`,
+      [...params, limite, offset]
     );
 
     const count = Number(total[0].count);

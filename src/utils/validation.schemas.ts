@@ -219,6 +219,42 @@ export const paginationQuerySchema = Joi.object({
   })
 });
 
+/**
+ * Pagination + filtres de recherche pour GET /produits et GET /produits/boutique/:id
+ */
+export const produitsListQuerySchema = paginationQuerySchema.keys({
+  q: Joi.string().allow('').max(200).optional().messages({
+    'string.max': 'La recherche ne doit pas dépasser {#limit} caractères'
+  }),
+  prix_min: Joi.number().min(0).optional().messages({
+    'number.base': 'Le prix minimum doit être un nombre',
+    'number.min': 'Le prix minimum doit être positif'
+  }),
+  prix_max: Joi.number().min(0).optional().messages({
+    'number.base': 'Le prix maximum doit être un nombre',
+    'number.min': 'Le prix maximum doit être positif'
+  }),
+  commune_id: Joi.number().integer().min(1).optional().messages({
+    'number.base': 'L\'ID de commune doit être un nombre',
+    'number.min': 'L\'ID de commune doit être supérieur ou égal à {#limit}'
+  }),
+  categorie_id: Joi.number().integer().min(1).optional().messages({
+    'number.base': 'L\'ID de catégorie doit être un nombre',
+    'number.min': 'L\'ID de catégorie doit être supérieur ou égal à {#limit}'
+  })
+}).custom((value, helpers) => {
+  if (
+    value.prix_min !== undefined &&
+    value.prix_max !== undefined &&
+    value.prix_min > value.prix_max
+  ) {
+    return helpers.message({
+      custom: 'Le prix minimum ne peut pas être supérieur au prix maximum'
+    });
+  }
+  return value;
+}, 'prix_min <= prix_max');
+
 // Schémas de validation pour le panier
 export const sessionIdParamSchema = Joi.object({
   sessionId: Joi.string().required().messages({

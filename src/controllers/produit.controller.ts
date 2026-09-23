@@ -4,6 +4,23 @@ import { VueModel } from '../models/vue.model';
 import { BoutiqueModel } from '../models/boutique.model';
 import { logger } from '../utils/logger';
 import { doitEnregistrerLaVue, getClientIp } from '../utils/view-tracking';
+import { FiltresListeProduits } from '../models/produit.model';
+
+function extraireFiltresListe(query: Record<string, unknown>): FiltresListeProduits {
+  const q = typeof query.q === 'string' ? query.q : undefined;
+  const prixMin = query.prix_min !== undefined ? Number(query.prix_min) : undefined;
+  const prixMax = query.prix_max !== undefined ? Number(query.prix_max) : undefined;
+  const communeId = query.commune_id !== undefined ? Number(query.commune_id) : undefined;
+  const categorieId = query.categorie_id !== undefined ? Number(query.categorie_id) : undefined;
+
+  return {
+    q,
+    prix_min: prixMin !== undefined && !Number.isNaN(prixMin) ? prixMin : undefined,
+    prix_max: prixMax !== undefined && !Number.isNaN(prixMax) ? prixMax : undefined,
+    commune_id: communeId !== undefined && !Number.isNaN(communeId) ? communeId : undefined,
+    categorie_id: categorieId !== undefined && !Number.isNaN(categorieId) ? categorieId : undefined
+  };
+}
 
 /**
  * Un produit désactivé ne doit rester visible que pour le vendeur propriétaire
@@ -45,7 +62,8 @@ export class ProduitController {
       const tri_par = (query.tri_par as string) || 'date_creation';
       const ordre = ((query.ordre as string)?.toUpperCase() === 'ASC' ? 'ASC' : 'DESC') as 'ASC' | 'DESC';
       
-      const { produits, total } = await ProduitModel.getAllProduits(page, limite, tri_par, ordre, true);
+      const filtres = extraireFiltresListe(query);
+      const { produits, total } = await ProduitModel.getAllProduits(page, limite, tri_par, ordre, true, filtres);
       
       res.status(200).json({
         success: true,
@@ -491,7 +509,16 @@ export class ProduitController {
       const boutique = await BoutiqueModel.getBoutiqueById(boutiqueId);
       const estProprietaire = !!(req.vendeur && boutique && boutique.vendeur_id === req.vendeur.id);
 
-      const { produits, total } = await ProduitModel.getProduitsByBoutique(boutiqueId, page, limite, tri_par, ordre, !estProprietaire);
+      const filtres = extraireFiltresListe(query);
+      const { produits, total } = await ProduitModel.getProduitsByBoutique(
+        boutiqueId,
+        page,
+        limite,
+        tri_par,
+        ordre,
+        !estProprietaire,
+        filtres
+      );
       
       logger.debug('[ProduitController] Nombre de produits trouvés:', produits.length);
       logger.debug('[ProduitController] Total de produits pour cette boutique:', total);
