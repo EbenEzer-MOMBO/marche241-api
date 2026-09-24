@@ -833,6 +833,18 @@ export class PaiementController {
         }
       }
 
+      if (commande.boutique?.vendeur_id) {
+        try {
+          await PushService.sendToVendeur(commande.boutique.vendeur_id, {
+            title: 'Nouvelle commande !',
+            body: `${commande.client_nom || 'Un client'} vient de commander pour ${commande.total} FCFA`,
+            url: `/admin/${(commande.boutique as any)?.slug || ''}/commandes`
+          });
+        } catch (pushError: any) {
+          logger.error('[PaiementController] Erreur envoi push vendeur:', pushError.message);
+        }
+      }
+
       const vendeurTelephone = await this.resolveVendeurWhatsAppPhone(commande);
       if (!vendeurTelephone) {
         logger.debug(`[PaiementController] Aucun téléphone vendeur pour commande ${commande.numero_commande}`);
@@ -859,18 +871,6 @@ export class PaiementController {
         }
       } catch (vendeurWaError: any) {
         logger.error('[PaiementController] Erreur WhatsApp vendeur:', vendeurWaError.message);
-      }
-
-      if (commande.boutique?.vendeur_id) {
-        try {
-          await PushService.sendToVendeur(commande.boutique.vendeur_id, {
-            title: 'Nouvelle commande !',
-            body: `${commande.client_nom || 'Un client'} vient de commander pour ${commande.total} FCFA`,
-            url: `/admin/${(commande.boutique as any)?.slug || ''}/commandes`
-          });
-        } catch (pushError: any) {
-          logger.error('[PaiementController] Erreur envoi push vendeur:', pushError.message);
-        }
       }
     } catch (error: any) {
       logger.error('[PaiementController] Erreur notifications confirmation WhatsApp:', error.message);
