@@ -7,6 +7,7 @@ import { ProduitModel } from '../models/produit.model';
 import { VendeurModel } from '../models/vendeur.model';
 import { WhatsappSubscriberModel } from '../models/whatsapp_subscriber.model';
 import { WhatsAppService } from '../services/whatsapp.service';
+import { PushService } from '../services/push.service';
 import { logger } from '../utils/logger';
 
 export class PaiementController {
@@ -858,6 +859,18 @@ export class PaiementController {
         }
       } catch (vendeurWaError: any) {
         logger.error('[PaiementController] Erreur WhatsApp vendeur:', vendeurWaError.message);
+      }
+
+      if (commande.boutique?.vendeur_id) {
+        try {
+          await PushService.sendToVendeur(commande.boutique.vendeur_id, {
+            title: 'Nouvelle commande !',
+            body: `${commande.client_nom || 'Un client'} vient de commander pour ${commande.total} FCFA`,
+            url: `/admin/${(commande.boutique as any)?.slug || ''}/commandes`
+          });
+        } catch (pushError: any) {
+          logger.error('[PaiementController] Erreur envoi push vendeur:', pushError.message);
+        }
       }
     } catch (error: any) {
       logger.error('[PaiementController] Erreur notifications confirmation WhatsApp:', error.message);
