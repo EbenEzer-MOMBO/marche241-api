@@ -4,7 +4,17 @@ import { TransactionModel } from '../models/transaction.model';
 import { ProduitModel } from '../models/produit.model';
 import { StatutCommande, StatutPaiement, MethodePaiement } from '../lib/database-types';
 import { WhatsAppService } from '../services/whatsapp.service';
+import { PushService } from '../services/push.service';
 import { logger } from '../utils/logger';
+
+const STATUT_PUSH_LABELS: Record<string, string> = {
+  confirmee: 'confirmée',
+  en_preparation: 'en préparation',
+  expedie: 'expédiée',
+  livree: 'livrée',
+  annulee: 'annulée',
+  remboursee: 'remboursée'
+};
 
 export class CommandeController {
   /**
@@ -429,7 +439,22 @@ export class CommandeController {
           logger.error('[CommandeController] Erreur envoi WhatsApp:', whatsappError.message);
         }
       }
-      
+
+      // Notifier le vendeur par push (ne bloque jamais la mise à jour de statut)
+      const vendeurId = (updatedCommande.boutique as any)?.vendeur_id;
+      if (vendeurId) {
+        try {
+          const statutLabel = STATUT_PUSH_LABELS[body.statut] || body.statut;
+          await PushService.sendToVendeur(vendeurId, {
+            title: `Commande #${updatedCommande.numero_commande}`,
+            body: `Statut mis à jour : ${statutLabel}`,
+            url: `/admin/${(updatedCommande.boutique as any)?.slug || ''}/commandes`
+          });
+        } catch (pushError: any) {
+          logger.error('[CommandeController] Erreur envoi push vendeur:', pushError.message);
+        }
+      }
+
       res.status(200).json({
         success: true,
         message: 'Statut de la commande mis à jour avec succès',

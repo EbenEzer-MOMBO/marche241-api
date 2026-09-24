@@ -334,7 +334,7 @@ export class CommandeModel {
       // Recharger avec la boutique associée, comme le faisait la jointure d'origine
       const { rows } = await query<Commande>(
         `SELECT c.*, (SELECT row_to_json(b) FROM (
-           SELECT b.id, b.nom, b.telephone, b.adresse, b.slug FROM boutiques b WHERE b.id = c.boutique_id
+           SELECT b.id, b.nom, b.telephone, b.adresse, b.slug, b.vendeur_id FROM boutiques b WHERE b.id = c.boutique_id
          ) b) AS boutique
          FROM commandes c WHERE c.id = $1`,
         [id]
