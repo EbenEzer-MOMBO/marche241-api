@@ -18,6 +18,7 @@ export class HtmlToPdfService {
   static async generateBilletsPdf(payload: HtmlToPdfBilletPayload): Promise<Buffer> {
     const baseUrl = (process.env.HTMLTOPDF_URL || '')
       .replace(/\/$/, '')
+      .replace(/\/v1\/marche241\/billets$/i, '')
       .replace(/\/v1\/pdf$/i, '');
     const apiKey = process.env.HTMLTOPDF_API_KEY || '';
 
