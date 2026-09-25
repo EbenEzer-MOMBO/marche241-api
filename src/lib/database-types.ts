@@ -56,6 +56,29 @@ export interface Vendeur {
   derniere_connexion?: Date;
 }
 
+export type PasskeyChallengeType = 'register' | 'login';
+
+export interface VendeurPasskey {
+  id: number;
+  vendeur_id: number;
+  credential_id: string;
+  public_key: Buffer;
+  counter: number;
+  device_name?: string | null;
+  transports?: string[] | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface VendeurPasskeyChallenge {
+  id: number;
+  vendeur_id: number | null;
+  challenge: string;
+  type: PasskeyChallengeType;
+  expires_at: Date;
+  created_at: Date;
+}
+
 // Table boutiques
 export interface Boutique {
   id: number;

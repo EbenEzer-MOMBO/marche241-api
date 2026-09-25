@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { VendeurController } from '../controllers/vendeur.controller';
+import { PasskeyController } from '../controllers/passkey.controller';
 import { auth, isAdmin, isSelfVendeur } from '../middlewares/auth.middleware';
 import { validate, validateParams, validateQuery } from '../middlewares/validation.middleware';
 import { validateTurnstile } from '../middlewares/captcha.middleware';
@@ -10,7 +11,10 @@ import {
   demandeCodeSchema,
   verificationCodeSchema,
   idParamSchema,
-  paginationQuerySchema
+  paginationQuerySchema,
+  passkeyLoginOptionsSchema,
+  passkeyVerifySchema,
+  passkeyIdParamSchema
 } from '../utils/validation.schemas';
 
 const router = Router();
@@ -82,6 +86,13 @@ const router = Router();
  * @access  Private (admin)
  */
 router.get('/', auth, isAdmin, validateQuery(paginationQuerySchema), VendeurController.getAllVendeurs);
+
+router.post('/me/passkeys/register/options', auth, PasskeyController.registerOptions);
+router.post('/me/passkeys/register/verify', auth, validate(passkeyVerifySchema), PasskeyController.registerVerify);
+router.get('/me/passkeys', auth, PasskeyController.list);
+router.delete('/me/passkeys/:id', auth, validateParams(passkeyIdParamSchema), PasskeyController.revoke);
+router.post('/passkeys/login/options', registrationLimiter, validate(passkeyLoginOptionsSchema), PasskeyController.loginOptions);
+router.post('/passkeys/login/verify', registrationLimiter, validate(passkeyVerifySchema), PasskeyController.loginVerify);
 
 /**
  * @swagger

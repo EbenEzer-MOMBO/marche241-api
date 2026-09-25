@@ -84,6 +84,26 @@ export const verificationCodeSchema = Joi.object({
   'object.missing': 'L\'adresse email ou le numéro de téléphone est obligatoire'
 });
 
+export const passkeyLoginOptionsSchema = Joi.object({
+  email: Joi.string().email().required().messages({
+    'string.email': 'L\'adresse email n\'est pas valide',
+    'any.required': 'L\'adresse email est obligatoire'
+  })
+});
+
+export const passkeyVerifySchema = Joi.object({
+  response: Joi.object().required().messages({
+    'any.required': 'La réponse WebAuthn est obligatoire'
+  }),
+  device_name: Joi.string().max(255).allow('', null)
+});
+
+export const passkeyIdParamSchema = Joi.object({
+  id: Joi.number().integer().required().messages({
+    'any.required': 'L\'identifiant de la clé est obligatoire'
+  })
+});
+
 // Schémas de validation pour les boutiques
 export const createBoutiqueSchema = Joi.object({
   nom: Joi.string().required().min(2).max(100).messages({
