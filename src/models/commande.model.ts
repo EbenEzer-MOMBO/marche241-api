@@ -27,6 +27,7 @@ const COLONNES_COMMANDE = [
   'boutique_id',
   'client_nom',
   'client_telephone',
+  'client_email',
   'client_adresse',
   'client_ville',
   'client_commune',

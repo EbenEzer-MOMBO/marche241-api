@@ -6,6 +6,7 @@ import { StatutCommande, StatutPaiement, MethodePaiement } from '../lib/database
 import { WhatsAppService } from '../services/whatsapp.service';
 import { PushService } from '../services/push.service';
 import { logger } from '../utils/logger';
+import { isProduitEvenement, MESSAGE_MIX_PANIER } from '../utils/produit-evenement';
 
 const STATUT_PUSH_LABELS: Record<string, string> = {
   confirmee: 'confirmée',
@@ -38,6 +39,8 @@ export class CommandeController {
         logger.debug('[createCommande] Vérification de la disponibilité des produits');
         const produitsIndisponibles: any[] = [];
         const quantitesInsuffisantes: any[] = [];
+        let hasEvenement = false;
+        let hasAutre = false;
         
         for (const article of articles) {
           const produit = await ProduitModel.getProduitById(article.produit_id);
@@ -52,6 +55,12 @@ export class CommandeController {
           }
           
           // Vérifier si le produit est actif
+          if (isProduitEvenement(produit)) {
+            hasEvenement = true;
+          } else {
+            hasAutre = true;
+          }
+
           if (produit.statut !== 'actif') {
             produitsIndisponibles.push({
               produit_id: article.produit_id,
@@ -152,6 +161,25 @@ export class CommandeController {
         }
         
         logger.debug('[createCommande] Tous les produits sont disponibles en quantité suffisante');
+
+        if (hasEvenement && hasAutre) {
+          res.status(400).json({
+            success: false,
+            message: MESSAGE_MIX_PANIER
+          });
+          return;
+        }
+
+        const adresseVide = !String(commandeData.client_adresse || '').trim()
+          || !String(commandeData.client_ville || '').trim()
+          || !String(commandeData.client_commune || '').trim();
+        if (hasAutre && adresseVide) {
+          res.status(400).json({
+            success: false,
+            message: 'L’adresse de livraison est obligatoire pour cette commande'
+          });
+          return;
+        }
       }
       
       // Créer la commande

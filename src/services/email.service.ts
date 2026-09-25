@@ -7,6 +7,7 @@ import {
   vendeurBoutiqueSuspendueTemplate,
   vendeurCodeConnexionTemplate,
   vendeurCodeInscriptionTemplate,
+  billetsCommandeTemplate,
 } from './email-templates';
 
 const RESEND_API_URL = 'https://api.resend.com/emails';
@@ -135,6 +136,20 @@ export class EmailService {
       boutiqueUrl: `${frontendUrl}/${boutiqueSlug}`,
       dateAttribution: new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }),
     });
+    await this.send(email, subject, html, text);
+  }
+
+  static async envoyerBilletsCommande(
+    email: string,
+    data: {
+      clientNom: string;
+      numeroCommande: string;
+      evenementNom: string;
+      nombreBillets: number;
+      billetsUrl: string;
+    }
+  ): Promise<void> {
+    const { subject, html, text } = billetsCommandeTemplate(data);
     await this.send(email, subject, html, text);
   }
 }

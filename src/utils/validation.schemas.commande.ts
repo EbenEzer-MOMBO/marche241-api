@@ -67,17 +67,17 @@ export const createCommandeSchema = Joi.object({
     'string.pattern.base': 'Le numéro de téléphone doit être au format international (8-15 chiffres)',
     'any.required': 'Le numéro de téléphone est obligatoire'
   }),
-  client_adresse: Joi.string().required().messages({
-    'string.empty': 'L\'adresse du client ne peut pas être vide',
-    'any.required': 'L\'adresse du client est obligatoire'
+  client_email: Joi.string().email().allow(null, '').messages({
+    'string.email': 'L\'adresse email du client n\'est pas valide'
   }),
-  client_ville: Joi.string().required().messages({
-    'string.empty': 'La ville du client ne peut pas être vide',
-    'any.required': 'La ville du client est obligatoire'
+  client_adresse: Joi.string().allow(null, '').messages({
+    'string.base': 'L\'adresse du client doit être une chaîne'
   }),
-  client_commune: Joi.string().required().messages({
-    'string.empty': 'La commune du client ne peut pas être vide',
-    'any.required': 'La commune du client est obligatoire'
+  client_ville: Joi.string().allow(null, '').messages({
+    'string.base': 'La ville du client doit être une chaîne'
+  }),
+  client_commune: Joi.string().allow(null, '').messages({
+    'string.base': 'La commune du client doit être une chaîne'
   }),
   client_instructions: Joi.string().allow(null, ''),
   frais_livraison: Joi.number().min(0).default(0).messages({

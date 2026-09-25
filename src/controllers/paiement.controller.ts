@@ -8,6 +8,9 @@ import { VendeurModel } from '../models/vendeur.model';
 import { WhatsappSubscriberModel } from '../models/whatsapp_subscriber.model';
 import { WhatsAppService } from '../services/whatsapp.service';
 import { PushService } from '../services/push.service';
+import { EmailService } from '../services/email.service';
+import { BilletService } from '../services/billet.service';
+import { BilletModel } from '../models/billet.model';
 import { logger } from '../utils/logger';
 
 export class PaiementController {
@@ -633,7 +636,13 @@ export class PaiementController {
 
           // Confirmation WhatsApp client + vendeur uniquement au passage en_attente → confirmee
           if (commande.statut === 'en_attente' && nouveauStatutCommande === 'confirmee') {
-            await this.sendConfirmationNotifications(transaction.commande_id, montantPaye);
+            let billetsUrl: string | null = null;
+            try {
+              billetsUrl = await BilletService.emitSiCommandeEvenement(commande);
+            } catch (billetError: any) {
+              logger.error('[PaiementController] Émission des billets:', billetError.message);
+            }
+            await this.sendConfirmationNotifications(transaction.commande_id, montantPaye, billetsUrl);
           }
         }
 
@@ -793,7 +802,8 @@ export class PaiementController {
    */
   private static async sendConfirmationNotifications(
     commandeId: number,
-    montantPaye: number
+    montantPaye: number,
+    billetsUrl: string | null = null
   ): Promise<void> {
     try {
       const commande = await CommandeModel.getCommandeById(commandeId);
@@ -845,6 +855,10 @@ export class PaiementController {
         }
       }
 
+      if (billetsUrl) {
+        await this.sendBilletsNotifications(commande, billetsUrl);
+      }
+
       const vendeurTelephone = await this.resolveVendeurWhatsAppPhone(commande);
       if (!vendeurTelephone) {
         logger.debug(`[PaiementController] Aucun téléphone vendeur pour commande ${commande.numero_commande}`);
@@ -874,6 +888,40 @@ export class PaiementController {
       }
     } catch (error: any) {
       logger.error('[PaiementController] Erreur notifications confirmation WhatsApp:', error.message);
+    }
+  }
+
+  private static async sendBilletsNotifications(commande: Commande, billetsUrl: string): Promise<void> {
+    const billets = await BilletModel.findByCommandeId(commande.id);
+    const nombreBillets = billets.length;
+    const evenementNom = commande.articles?.[0]?.nom_produit || 'Événement';
+
+    if (commande.client_email) {
+      try {
+        await EmailService.envoyerBilletsCommande(commande.client_email, {
+          clientNom: commande.client_nom || 'Client',
+          numeroCommande: commande.numero_commande,
+          evenementNom,
+          nombreBillets,
+          billetsUrl,
+        });
+      } catch (emailError: any) {
+        logger.error('[PaiementController] Email billets:', emailError.message);
+      }
+    }
+
+    if (commande.client_telephone) {
+      try {
+        const jeton = billets[0]?.jeton || billetsUrl.split('/').pop() || '';
+        await WhatsAppService.sendBilletsLink(commande.client_telephone, {
+          clientNom: commande.client_nom || 'Client',
+          evenementNom,
+          numeroCommande: commande.numero_commande,
+          jeton,
+        });
+      } catch (waError: any) {
+        logger.error('[PaiementController] WhatsApp billets:', waError.message);
+      }
     }
   }
 

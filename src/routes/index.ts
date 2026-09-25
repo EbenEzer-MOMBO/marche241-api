@@ -14,6 +14,7 @@ import uploadRoutes from './upload.routes';
 import cronRoutes from './cron.routes';
 import politiqueRoutes from './politique.routes';
 import emailRoutes from './email.routes';
+import billetRoutes from './billet.routes';
 import { CronController } from '../controllers/cron.controller';
 import { requireCronSecret } from '../middlewares/cron-auth.middleware';
 
@@ -63,6 +64,9 @@ router.use(`${apiPrefix}/politique-confidentialite`, politiqueRoutes);
 
 // Routes emails transactionnels (clé de service admin)
 router.use(`${apiPrefix}/emails`, emailRoutes);
+
+// Consultation publique des billets événement (jeton)
+router.use(`${apiPrefix}/billets`, billetRoutes);
 
 // Routes pour les tâches cron
 router.use(`${apiPrefix}/cron`, cronRoutes);

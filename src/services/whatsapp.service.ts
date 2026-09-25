@@ -4,6 +4,7 @@ import {
   OrderArticleLike,
   TemplateComponent,
   buildAnnulationComponents,
+  buildBilletsComponents,
   buildConfirmationClientComponents,
   buildConfirmationVendeurComponents,
   buildExpeditionComponents,
@@ -425,6 +426,33 @@ export class WhatsAppService {
     customMessage: string
   ): Promise<string | null> {
     return this.sendMessage(phone, customMessage);
+  }
+
+  /**
+   * Template Meta `billets_commande` (pas de GREEN-API).
+   * Bouton URL : {FRONTEND}/billets/{{1}} avec le jeton public.
+   */
+  static async sendBilletsLink(
+    phone: string,
+    data: {
+      clientNom: string;
+      evenementNom: string;
+      numeroCommande: string;
+      jeton: string;
+    }
+  ): Promise<string | null> {
+    if (!this.isMetaConfigured()) {
+      logger.warn('[WhatsAppService] Meta non configuré — billets_commande non envoyé');
+      return null;
+    }
+
+    const tpl = META_TEMPLATES.billets;
+    return this.sendTemplateMessage(
+      phone,
+      tpl.name,
+      tpl.language,
+      buildBilletsComponents(data)
+    );
   }
 
   /**

@@ -18,3 +18,6 @@ export type { VendeurBoutiqueRemiseEnAttenteData } from './vendeurBoutiqueRemise
 
 export { vendeurBoutiqueBadgeVerifieTemplate } from './vendeurBoutiqueBadgeVerifie';
 export type { VendeurBoutiqueBadgeVerifieData } from './vendeurBoutiqueBadgeVerifie';
+
+export { billetsCommandeTemplate } from './billetsCommande';
+export type { BilletsCommandeData } from './billetsCommande';

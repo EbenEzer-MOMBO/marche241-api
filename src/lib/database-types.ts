@@ -175,6 +175,7 @@ export interface Commande {
   // Informations client
   client_nom: string;
   client_telephone: string;
+  client_email?: string;
   client_adresse: string;
   client_ville: string;
   client_commune: string;
@@ -222,6 +223,16 @@ export interface CommandeArticle {
   // Relations
   commande?: Commande;
   produit?: Produit;
+}
+
+export interface Billet {
+  id: number;
+  commande_id: number;
+  produit_id: number;
+  type_billet: string;
+  numero: number;
+  jeton: string;
+  date_creation: Date;
 }
 
 // Table transactions
@@ -416,6 +427,7 @@ export interface CreateCommandeData {
   boutique_id: number;
   client_nom: string;
   client_telephone: string;
+  client_email?: string;
   client_adresse: string;
   client_ville: string;
   client_commune: string;

@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { PanierModel } from '../models/panier.model';
 import { Panier } from '../lib/database-types';
 import { logger } from '../utils/logger';
+import { isProduitEvenement, MESSAGE_MIX_PANIER } from '../utils/produit-evenement';
 
 export class PanierController {
   /**
@@ -293,6 +294,17 @@ export class PanierController {
 
       // Récupérer les items existants du panier
       const panierItems = await PanierModel.getPanierBySessionId(session_id);
+
+      const incomingIsEvent = isProduitEvenement(produit);
+      const cartHasEvent = panierItems.some((item) => isProduitEvenement(item.produit));
+      const cartHasOther = panierItems.some((item) => item.produit && !isProduitEvenement(item.produit));
+      if ((incomingIsEvent && cartHasOther) || (!incomingIsEvent && cartHasEvent)) {
+        res.status(400).json({
+          success: false,
+          message: MESSAGE_MIX_PANIER
+        });
+        return;
+      }
       
       // Chercher un item identique (même produit ET mêmes variants)
       let itemExistant = null;

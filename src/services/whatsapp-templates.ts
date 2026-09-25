@@ -28,6 +28,7 @@ const META_TEMPLATES = {
   confirmationVendeur: { name: 'confirmation_de_commande_vendeur', language: 'fr' },
   annulation: { name: 'commande_annulee_notification', language: 'fr' },
   paiementEchoue: { name: 'tentative_de_paiement_echouee', language: 'fr' },
+  billets: { name: 'billets_commande', language: 'fr' },
 } as const;
 
 export { META_TEMPLATES };
@@ -151,6 +152,26 @@ export function buildConfirmationVendeurComponents(data: {
         formatAmountXaf(data.montantPaye),
         data.adresseLivraison
       ),
+    },
+  ];
+}
+
+export function buildBilletsComponents(data: {
+  clientNom: string;
+  evenementNom: string;
+  numeroCommande: string;
+  jeton: string;
+}): TemplateComponent[] {
+  return [
+    {
+      type: 'body',
+      parameters: textParams(data.clientNom, data.evenementNom, data.numeroCommande),
+    },
+    {
+      type: 'button',
+      sub_type: 'url',
+      index: 0,
+      parameters: textParams(data.jeton),
     },
   ];
 }
