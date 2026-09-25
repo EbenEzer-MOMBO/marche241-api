@@ -23,13 +23,16 @@ function formatDateEvenement(meta: Record<string, unknown> | undefined): string 
   if (Number.isNaN(date.getTime())) {
     return String(raw);
   }
-  return date.toLocaleString('fr-FR', {
+  const datePart = date.toLocaleDateString('fr-FR', {
     day: 'numeric',
     month: 'long',
     year: 'numeric',
+  });
+  const timePart = date.toLocaleTimeString('fr-FR', {
     hour: '2-digit',
     minute: '2-digit',
   });
+  return `${datePart} · ${timePart}`;
 }
 
 export class BilletService {
@@ -79,8 +82,9 @@ export class BilletService {
   }
 
   static async payloadPdfParJeton(jeton: string): Promise<{
-    evenement: { nom: string; date?: string; lieu?: string; adresse?: string };
+    evenement: { nom: string; date?: string; lieu?: string; adresse?: string; image?: string };
     billets: Array<{ type_billet: string; numero: number }>;
+    jeton: string;
   } | null> {
     const billets = await BilletModel.findByJeton(jeton);
     if (billets.length === 0) {
@@ -96,11 +100,13 @@ export class BilletService {
         date: formatDateEvenement(meta),
         lieu: meta?.lieu ? String(meta.lieu) : '',
         adresse: meta?.adresse ? String(meta.adresse) : '',
+        image: premierProduit?.image_principale || '',
       },
       billets: billets.map((billet) => ({
         type_billet: billet.type_billet,
         numero: billet.numero,
       })),
+      jeton,
     };
   }
 }

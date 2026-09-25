@@ -6,8 +6,10 @@ export interface HtmlToPdfBilletPayload {
     date?: string;
     lieu?: string;
     adresse?: string;
+    image?: string;
   };
   billets: Array<{ type_billet: string; numero: number }>;
+  jeton: string;
 }
 
 export class HtmlToPdfService {
