@@ -1,6 +1,7 @@
 import { Commande } from '../lib/database-types';
 import { BilletACreer, BilletModel } from '../models/billet.model';
 import { ProduitModel } from '../models/produit.model';
+import { isProduitEvenement } from '../utils/produit-evenement';
 import { logger } from '../utils/logger';
 
 function typeBilletDepuisArticle(article: { variants_selectionnes?: any }): string {
@@ -39,6 +40,16 @@ export class BilletService {
   static publicUrl(jeton: string): string {
     const frontend = (process.env.FRONTEND_URL || 'https://marche241.ga').replace(/\/$/, '');
     return `${frontend}/billets/${jeton}`;
+  }
+
+  static async isCommandeEvenement(commande: Commande): Promise<boolean> {
+    for (const article of commande.articles || []) {
+      const produit = await ProduitModel.getProduitById(article.produit_id);
+      if (isProduitEvenement(produit)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   static async emitSiCommandeEvenement(commande: Commande): Promise<string | null> {

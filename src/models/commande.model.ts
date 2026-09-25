@@ -305,14 +305,22 @@ export class CommandeModel {
       } else if (statut === 'expedie') {
         affectations.push('date_expedition = NOW()');
       } else if (statut === 'livree') {
+        if (statutActuel === 'en_attente') {
+          affectations.push('date_confirmation = NOW()');
+        }
         affectations.push('date_livraison = NOW()');
       }
 
       // Déterminer l'ajustement de stock induit par le changement de statut
-      const doitDecrementer = statut === 'confirmee' && statutActuel !== 'confirmee';
+      const doitDecrementer =
+        (statut === 'confirmee' && statutActuel !== 'confirmee') ||
+        (statut === 'livree' && statutActuel === 'en_attente');
       const doitIncrementer =
         (statut === 'annulee' || statut === 'remboursee') &&
-        (statutActuel === 'confirmee' || statutActuel === 'en_preparation' || statutActuel === 'expedie');
+        (statutActuel === 'confirmee' ||
+          statutActuel === 'en_preparation' ||
+          statutActuel === 'expedie' ||
+          statutActuel === 'livree');
 
       // Le stock est ajusté avant le changement de statut : un stock
       // insuffisant interrompt l'opération sans que la commande passe en

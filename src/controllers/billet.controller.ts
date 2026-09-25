@@ -4,6 +4,22 @@ import { HtmlToPdfService } from '../services/htmltopdf.service';
 import { logger } from '../utils/logger';
 
 export class BilletController {
+  static async detailsParJeton(req: Request, res: Response): Promise<void> {
+    const jeton = String(req.params.jeton || '').trim();
+    if (!/^[a-f0-9]{48}$/i.test(jeton)) {
+      res.status(404).json({ success: false, message: 'Billets introuvables' });
+      return;
+    }
+
+    const payload = await BilletService.payloadPdfParJeton(jeton);
+    if (!payload) {
+      res.status(404).json({ success: false, message: 'Billets introuvables' });
+      return;
+    }
+
+    res.json({ success: true, data: payload });
+  }
+
   static async telechargerParJeton(req: Request, res: Response): Promise<void> {
     const jeton = String(req.params.jeton || '').trim();
     if (!/^[a-f0-9]{48}$/i.test(jeton)) {

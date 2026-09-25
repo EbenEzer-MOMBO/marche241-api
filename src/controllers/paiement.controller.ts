@@ -613,7 +613,8 @@ export class PaiementController {
           }
 
           if (montantPaye > 0 && commande.statut === 'en_attente') {
-            nouveauStatutCommande = 'confirmee';
+            const estEvenement = await BilletService.isCommandeEvenement(commande);
+            nouveauStatutCommande = estEvenement ? 'livree' : 'confirmee';
           }
 
           await CommandeModel.updatePaymentStatus(
@@ -634,8 +635,11 @@ export class PaiementController {
             }
           }
 
-          // Confirmation WhatsApp client + vendeur uniquement au passage en_attente → confirmee
-          if (commande.statut === 'en_attente' && nouveauStatutCommande === 'confirmee') {
+          // Notifications + billets au premier paiement (confirmee ou livree pour un événement)
+          if (
+            commande.statut === 'en_attente' &&
+            (nouveauStatutCommande === 'confirmee' || nouveauStatutCommande === 'livree')
+          ) {
             let billetsUrl: string | null = null;
             try {
               billetsUrl = await BilletService.emitSiCommandeEvenement(commande);
