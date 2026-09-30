@@ -807,6 +807,10 @@ router.get('/:id/stats', auth, validateParams(idParamSchema), ProduitController.
  *                     billets_vendus: { type: integer }
  *                     billets_scannes: { type: integer }
  *                     revenus: { type: number, description: Somme des lignes du produit sur les commandes payées }
+ *                     ventes_par_type:
+ *                       type: object
+ *                       additionalProperties: { type: integer }
+ *                       description: Nombre de billets émis par type de billet (clé = nom du billet)
  *       400:
  *         description: Paramètre invalide
  *       401:

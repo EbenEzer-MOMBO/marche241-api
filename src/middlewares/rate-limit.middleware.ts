@@ -107,3 +107,19 @@ export const paymentVerificationLimiter = rateLimit({
   }
 });
 
+
+/**
+ * Limiteur pour le renvoi des billets par email depuis l'espace vendeur
+ * (20 envois par 15 minutes par IP) : évite de spammer un acheteur.
+ */
+export const renvoiBilletsLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: "Trop d'envois d'emails de billets, veuillez réessayer dans quelques minutes.",
+    code: 'TOO_MANY_REQUESTS'
+  }
+});

@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { BilletService } from '../services/billet.service';
 import { BilletModel } from '../models/billet.model';
 import { ProduitModel } from '../models/produit.model';
+import { CommandeModel } from '../models/commande.model';
 import { HtmlToPdfService } from '../services/htmltopdf.service';
 import { logger } from '../utils/logger';
 
@@ -39,12 +40,13 @@ export class BilletController {
         return;
       }
 
-      const [participants, stats] = await Promise.all([
+      const [participants, stats, ventesParType] = await Promise.all([
         BilletModel.findParticipantsByProduit(produitId),
-        BilletModel.statsProduit(produitId)
+        BilletModel.statsProduit(produitId),
+        BilletModel.ventesParType(produitId)
       ]);
 
-      res.json({ success: true, participants, stats });
+      res.json({ success: true, participants, stats: { ...stats, ventes_par_type: ventesParType } });
     } catch (error: any) {
       logger.error('[BilletController] Participants produit:', error.message);
       res.status(500).json({ success: false, message: 'Erreur lors de la récupération des participants' });
@@ -70,6 +72,38 @@ export class BilletController {
     } catch (error: any) {
       logger.error('[BilletController] Scan billet:', error.message);
       res.status(500).json({ success: false, message: 'Erreur lors de la mise à jour du billet' });
+    }
+  }
+
+  static async renvoyerEmail(req: Request, res: Response): Promise<void> {
+    try {
+      const commandeId = parseInt(String(req.params.commandeId), 10);
+      const billets = await BilletModel.findByCommandeId(commandeId);
+      if (billets.length === 0) {
+        res.status(404).json({ success: false, message: 'Aucun billet pour cette commande' });
+        return;
+      }
+
+      const produit = await chargerProduitAutorise(req, res, billets[0].produit_id);
+      if (!produit) {
+        return;
+      }
+
+      const commande = await CommandeModel.getCommandeById(commandeId);
+      if (!commande) {
+        res.status(404).json({ success: false, message: 'Commande introuvable' });
+        return;
+      }
+      if (!commande.client_email) {
+        res.status(400).json({ success: false, message: "Cette commande n'a pas d'adresse email" });
+        return;
+      }
+
+      await BilletService.envoyerEmailBillets(commande, billets);
+      res.json({ success: true, message: `Billets renvoyés à ${commande.client_email}` });
+    } catch (error: any) {
+      logger.error('[BilletController] Renvoi email billets:', error.message);
+      res.status(500).json({ success: false, message: "Erreur lors de l'envoi de l'email" });
     }
   }
 

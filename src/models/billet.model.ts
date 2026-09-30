@@ -91,6 +91,17 @@ export class BilletModel {
     };
   }
 
+  /**
+   * Nombre de billets émis par type de billet (= nom du billet) pour un produit.
+   */
+  static async ventesParType(produitId: number): Promise<Record<string, number>> {
+    const { rows } = await query<{ type_billet: string; vendus: string }>(
+      `SELECT type_billet, COUNT(*) AS vendus FROM billets WHERE produit_id = $1 GROUP BY type_billet`,
+      [produitId]
+    );
+    return Object.fromEntries(rows.map((r) => [r.type_billet, Number(r.vendus)]));
+  }
+
   static async setScanne(id: number, scanne: boolean): Promise<Billet | null> {
     const { rows } = await query<Billet>(
       `UPDATE billets

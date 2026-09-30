@@ -5,6 +5,8 @@ import { BoutiqueModel } from '../models/boutique.model';
 import { logger } from '../utils/logger';
 import { doitEnregistrerLaVue, getClientIp } from '../utils/view-tracking';
 import { FiltresListeProduits } from '../models/produit.model';
+import { BilletModel } from '../models/billet.model';
+import { isProduitEvenement, verifierModificationEvenement } from '../utils/produit-evenement';
 
 function extraireFiltresListe(query: Record<string, unknown>): FiltresListeProduits {
   const q = typeof query.q === 'string' ? query.q : undefined;
@@ -368,6 +370,20 @@ export class ProduitController {
           res.status(403).json({
             success: false,
             message: 'Vous n\'êtes pas autorisé à modifier ce produit'
+          });
+          return;
+        }
+      }
+
+      if (isProduitEvenement(existingProduit)) {
+        const ventesParType = await BilletModel.ventesParType(id);
+        const erreurs = verifierModificationEvenement(existingProduit, produitData, ventesParType);
+        if (erreurs.length > 0) {
+          res.status(400).json({
+            success: false,
+            code: 'VALIDATION_ERROR',
+            message: erreurs.map((e) => e.message).join(' · '),
+            errors: erreurs
           });
           return;
         }

@@ -3,6 +3,7 @@ import Joi from 'joi';
 import { BilletController } from '../controllers/billet.controller';
 import { authOrServiceKey } from '../middlewares/service-auth.middleware';
 import { validate, validateParams } from '../middlewares/validation.middleware';
+import { renvoiBilletsLimiter } from '../middlewares/rate-limit.middleware';
 
 const router = Router();
 
@@ -66,6 +67,53 @@ router.patch(
   validateParams(billetIdParamSchema),
   validate(scanBilletSchema),
   BilletController.marquerScan
+);
+
+const commandeIdParamSchema = Joi.object({
+  commandeId: Joi.number().integer().positive().required().messages({
+    'number.base': "L'ID de la commande doit être un nombre",
+    'number.integer': "L'ID de la commande doit être un entier",
+    'number.positive': "L'ID de la commande doit être positif",
+    'any.required': "L'ID de la commande est obligatoire"
+  })
+});
+
+/**
+ * @swagger
+ * /billets/commande/{commandeId}/renvoyer-email:
+ *   post:
+ *     summary: Renvoyer à l'acheteur l'email contenant ses billets
+ *     description: Même email que celui envoyé à la confirmation du paiement. Réservé au vendeur de l'événement (ou admin via clé de service).
+ *     tags: [Billets]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: commandeId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID de la commande
+ *     responses:
+ *       200:
+ *         description: Email renvoyé
+ *       400:
+ *         description: Paramètre invalide ou commande sans adresse email
+ *       401:
+ *         description: Non authentifié
+ *       403:
+ *         description: La commande ne concerne pas un événement du vendeur
+ *       404:
+ *         description: Aucun billet pour cette commande
+ *       429:
+ *         description: Trop d'envois
+ */
+router.post(
+  '/commande/:commandeId/renvoyer-email',
+  authOrServiceKey,
+  renvoiBilletsLimiter,
+  validateParams(commandeIdParamSchema),
+  BilletController.renvoyerEmail
 );
 
 router.get('/:jeton/details', BilletController.detailsParJeton);
