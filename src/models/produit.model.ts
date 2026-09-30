@@ -107,7 +107,16 @@ export interface FiltresListeProduits {
   prix_max?: number;
   commune_id?: number;
   categorie_id?: number;
+  /** 'evenement' : uniquement les événements ; 'autre' : tout sauf les événements. */
+  type_vente?: 'evenement' | 'autre';
 }
+
+/**
+ * Un produit est un événement si variants.type = 'evenement' ou s'il est classé
+ * dans la catégorie globale « Événements » (même règle que le front).
+ */
+const CONDITION_EVENEMENT = `(COALESCE(p.variants->>'type', '') = 'evenement'
+  OR EXISTS (SELECT 1 FROM categories ce WHERE ce.id = p.categorie_id AND ce.slug = 'evenements'))`;
 
 /**
  * Échappe %, _ et \ pour une recherche ILIKE sûre.
@@ -151,6 +160,12 @@ function construireWhereListeProduits(
   if (filtres.prix_max !== undefined && filtres.prix_max !== null && !Number.isNaN(Number(filtres.prix_max))) {
     params.push(filtres.prix_max);
     conditions.push(`p.prix <= $${params.length}`);
+  }
+
+  if (filtres.type_vente === 'evenement') {
+    conditions.push(CONDITION_EVENEMENT);
+  } else if (filtres.type_vente === 'autre') {
+    conditions.push(`NOT ${CONDITION_EVENEMENT}`);
   }
 
   if (filtres.categorie_id !== undefined && !Number.isNaN(Number(filtres.categorie_id))) {

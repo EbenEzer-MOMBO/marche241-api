@@ -8,7 +8,6 @@ import { VendeurModel } from '../models/vendeur.model';
 import { WhatsappSubscriberModel } from '../models/whatsapp_subscriber.model';
 import { WhatsAppService } from '../services/whatsapp.service';
 import { PushService } from '../services/push.service';
-import { EmailService } from '../services/email.service';
 import { BilletService } from '../services/billet.service';
 import { BilletModel } from '../models/billet.model';
 import { logger } from '../utils/logger';
@@ -897,21 +896,12 @@ export class PaiementController {
 
   private static async sendBilletsNotifications(commande: Commande, billetsUrl: string): Promise<void> {
     const billets = await BilletModel.findByCommandeId(commande.id);
-    const nombreBillets = billets.length;
     const evenementNom = commande.articles?.[0]?.nom_produit || 'Événement';
 
-    if (commande.client_email) {
-      try {
-        await EmailService.envoyerBilletsCommande(commande.client_email, {
-          clientNom: commande.client_nom || 'Client',
-          numeroCommande: commande.numero_commande,
-          evenementNom,
-          nombreBillets,
-          billetsUrl,
-        });
-      } catch (emailError: any) {
-        logger.error('[PaiementController] Email billets:', emailError.message);
-      }
+    try {
+      await BilletService.envoyerEmailBillets(commande, billets);
+    } catch (emailError: any) {
+      logger.error('[PaiementController] Email billets:', emailError.message);
     }
 
     if (commande.client_telephone) {

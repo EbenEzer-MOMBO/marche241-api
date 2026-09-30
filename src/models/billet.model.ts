@@ -8,6 +8,28 @@ export interface BilletACreer {
   quantite: number;
 }
 
+export interface ParticipantBillet {
+  id: number;
+  numero: number;
+  type_billet: string;
+  jeton: string;
+  scanne_le: Date | null;
+  date_creation: Date;
+  commande_id: number;
+  numero_commande: string;
+  client_nom: string;
+  client_email: string | null;
+  client_telephone: string;
+  statut_paiement: string;
+  date_commande: Date;
+}
+
+export interface StatsBilletsProduit {
+  billets_vendus: number;
+  billets_scannes: number;
+  revenus: number;
+}
+
 export class BilletModel {
   static async findByCommandeId(commandeId: number): Promise<Billet[]> {
     const { rows } = await query<Billet>(
@@ -23,6 +45,72 @@ export class BilletModel {
       [jeton]
     );
     return rows;
+  }
+
+  static async findById(id: number): Promise<Billet | null> {
+    const { rows } = await query<Billet>(`SELECT * FROM billets WHERE id = $1`, [id]);
+    return rows[0] ?? null;
+  }
+
+  /**
+   * Liste des billets d'un produit événement avec les informations de l'acheteur.
+   */
+  static async findParticipantsByProduit(produitId: number): Promise<ParticipantBillet[]> {
+    const { rows } = await query<ParticipantBillet>(
+      `SELECT b.id, b.numero, b.type_billet, b.jeton, b.scanne_le, b.date_creation,
+              c.id AS commande_id, c.numero_commande, c.client_nom, c.client_email,
+              c.client_telephone, c.statut_paiement, c.date_commande
+         FROM billets b
+         JOIN commandes c ON c.id = b.commande_id
+        WHERE b.produit_id = $1
+        ORDER BY b.date_creation DESC, b.numero DESC`,
+      [produitId]
+    );
+    return rows;
+  }
+
+  /**
+   * Billets émis / scannés et revenus encaissés (commandes payées) d'un produit.
+   */
+  static async statsProduit(produitId: number): Promise<StatsBilletsProduit> {
+    const { rows } = await query<{ billets_vendus: string; billets_scannes: string; revenus: string }>(
+      `SELECT
+         (SELECT COUNT(*) FROM billets WHERE produit_id = $1) AS billets_vendus,
+         (SELECT COUNT(*) FROM billets WHERE produit_id = $1 AND scanne_le IS NOT NULL) AS billets_scannes,
+         (SELECT COALESCE(SUM(ca.sous_total), 0)
+            FROM commande_articles ca
+            JOIN commandes c ON c.id = ca.commande_id
+           WHERE ca.produit_id = $1 AND c.statut_paiement = 'paye') AS revenus`,
+      [produitId]
+    );
+    const ligne = rows[0];
+    return {
+      billets_vendus: Number(ligne?.billets_vendus ?? 0),
+      billets_scannes: Number(ligne?.billets_scannes ?? 0),
+      revenus: Number(ligne?.revenus ?? 0)
+    };
+  }
+
+  /**
+   * Nombre de billets émis par type de billet (= nom du billet) pour un produit.
+   */
+  static async ventesParType(produitId: number): Promise<Record<string, number>> {
+    const { rows } = await query<{ type_billet: string; vendus: string }>(
+      `SELECT type_billet, COUNT(*) AS vendus FROM billets WHERE produit_id = $1 GROUP BY type_billet`,
+      [produitId]
+    );
+    return Object.fromEntries(rows.map((r) => [r.type_billet, Number(r.vendus)]));
+  }
+
+  static async setScanne(id: number, scanne: boolean): Promise<Billet | null> {
+    const { rows } = await query<Billet>(
+      `UPDATE billets
+          SET scanne_le = CASE WHEN $2::boolean THEN COALESCE(scanne_le, NOW()) ELSE NULL END
+        WHERE id = $1
+        RETURNING *`,
+      [id, scanne]
+    );
+    return rows[0] ?? null;
   }
 
   /**

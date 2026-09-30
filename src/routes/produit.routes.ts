@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { ProduitController } from '../controllers/produit.controller';
+import { BilletController } from '../controllers/billet.controller';
 import { auth, optionalAuth } from '../middlewares/auth.middleware';
 import { authOrServiceKey } from '../middlewares/service-auth.middleware';
 import { validate, validateParams, validateQuery } from '../middlewares/validation.middleware';
@@ -308,6 +309,12 @@ router.get('/categorie/:categorieId', validateParams(idParamSchema), ProduitCont
  *         schema:
  *           type: integer
  *         description: Filtre par identifiant de catégorie
+ *       - in: query
+ *         name: type_vente
+ *         schema:
+ *           type: string
+ *           enum: [evenement, autre]
+ *         description: "evenement : uniquement les événements ; autre : tous les produits sauf les événements"
  *     responses:
  *       200:
  *         description: Produits de la boutique récupérés avec succès
@@ -748,5 +755,71 @@ router.delete('/:id', auth, validateParams(idParamSchema), ProduitController.del
  * @access  Private (propriétaire)
  */
 router.get('/:id/stats', auth, validateParams(idParamSchema), ProduitController.getProduitStats);
+
+/**
+ * @swagger
+ * /produits/{id}/participants:
+ *   get:
+ *     summary: Liste des billets / participants d'un produit événement
+ *     description: Réservé au vendeur propriétaire de la boutique (ou admin via clé de service).
+ *     tags: [Produits, Billets]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID du produit événement
+ *     responses:
+ *       200:
+ *         description: Participants et statistiques de billetterie
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 participants:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id: { type: integer }
+ *                       numero: { type: integer }
+ *                       type_billet: { type: string }
+ *                       jeton: { type: string }
+ *                       scanne_le: { type: string, format: date-time, nullable: true }
+ *                       date_creation: { type: string, format: date-time }
+ *                       commande_id: { type: integer }
+ *                       numero_commande: { type: string }
+ *                       client_nom: { type: string }
+ *                       client_email: { type: string, nullable: true }
+ *                       client_telephone: { type: string }
+ *                       statut_paiement: { type: string }
+ *                       date_commande: { type: string, format: date-time }
+ *                 stats:
+ *                   type: object
+ *                   properties:
+ *                     billets_vendus: { type: integer }
+ *                     billets_scannes: { type: integer }
+ *                     revenus: { type: number, description: Somme des lignes du produit sur les commandes payées }
+ *                     ventes_par_type:
+ *                       type: object
+ *                       additionalProperties: { type: integer }
+ *                       description: Nombre de billets émis par type de billet (clé = nom du billet)
+ *       400:
+ *         description: Paramètre invalide
+ *       401:
+ *         description: Non authentifié
+ *       403:
+ *         description: Produit d'une autre boutique
+ *       404:
+ *         description: Produit non trouvé
+ */
+router.get('/:id/participants', authOrServiceKey, validateParams(idParamSchema), BilletController.participantsParProduit);
 
 export default router;

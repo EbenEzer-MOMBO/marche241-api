@@ -1,4 +1,5 @@
-import { Commande } from '../lib/database-types';
+import { Billet, Commande } from '../lib/database-types';
+import { EmailService } from './email.service';
 import { BilletACreer, BilletModel } from '../models/billet.model';
 import { ProduitModel } from '../models/produit.model';
 import { isProduitEvenement } from '../utils/produit-evenement';
@@ -40,6 +41,28 @@ export class BilletService {
   static publicUrl(jeton: string): string {
     const frontend = (process.env.FRONTEND_URL || 'https://marche241.ga').replace(/\/$/, '');
     return `${frontend}/billets/${jeton}`;
+  }
+
+  /**
+   * Envoie à l'acheteur l'email « billets de la commande » (même email qu'à l'achat).
+   * Utilisé à la confirmation du paiement et pour le renvoi depuis l'espace vendeur.
+   */
+  static async envoyerEmailBillets(commande: Commande, billets?: Billet[]): Promise<void> {
+    if (!commande.client_email) {
+      return;
+    }
+    const liste = billets ?? (await BilletModel.findByCommandeId(commande.id));
+    if (liste.length === 0) {
+      return;
+    }
+
+    await EmailService.envoyerBilletsCommande(commande.client_email, {
+      clientNom: commande.client_nom || 'Client',
+      numeroCommande: commande.numero_commande,
+      evenementNom: commande.articles?.[0]?.nom_produit || 'Événement',
+      nombreBillets: liste.length,
+      billetsUrl: this.publicUrl(liste[0].jeton),
+    });
   }
 
   static async isCommandeEvenement(commande: Commande): Promise<boolean> {
