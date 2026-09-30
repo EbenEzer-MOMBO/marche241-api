@@ -129,3 +129,45 @@ export function verifierModificationEvenement(
 
   return erreurs;
 }
+
+/**
+ * Interprète une date d'événement saisie en heure locale du Gabon (UTC+1, sans heure d'été)
+ * au format « AAAA-MM-JJTHH:mm[:ss] » ; une date avec fuseau explicite est lue telle quelle.
+ */
+export function dateEvenementEnMs(valeur: unknown): number | null {
+  const texteDate = texte(valeur);
+  if (!texteDate) return null;
+  const sansFuseau = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(texteDate);
+  const ms = Date.parse(sansFuseau ? `${texteDate}+01:00` : texteDate);
+  return Number.isNaN(ms) ? null : ms;
+}
+
+/**
+ * Cohérence des dates d'un événement : à la création, le début doit être dans le futur ;
+ * la fin, si elle est renseignée, doit toujours être postérieure au début.
+ */
+export function verifierDatesEvenement(
+  variants: unknown,
+  { creation }: { creation: boolean }
+): ErreurModificationEvenement[] {
+  const meta = ((variants || {}) as VariantsEvenement).meta || {};
+  const debut = dateEvenementEnMs(meta.date_debut);
+  const fin = dateEvenementEnMs(meta.date_fin);
+  const erreurs: ErreurModificationEvenement[] = [];
+
+  if (creation && (debut === null || debut <= Date.now())) {
+    erreurs.push({
+      field: 'variants.meta.date_debut',
+      code: 'DATE_PASSEE',
+      message: 'La date de début doit être dans le futur'
+    });
+  }
+  if (debut !== null && fin !== null && fin <= debut) {
+    erreurs.push({
+      field: 'variants.meta.date_fin',
+      code: 'DATE_FIN_AVANT_DEBUT',
+      message: 'La date de fin doit être postérieure à la date de début'
+    });
+  }
+  return erreurs;
+}

@@ -6,7 +6,22 @@ import { logger } from '../utils/logger';
 import { doitEnregistrerLaVue, getClientIp } from '../utils/view-tracking';
 import { FiltresListeProduits } from '../models/produit.model';
 import { BilletModel } from '../models/billet.model';
-import { isProduitEvenement, verifierModificationEvenement } from '../utils/produit-evenement';
+import {
+  ErreurModificationEvenement,
+  isProduitEvenement,
+  verifierDatesEvenement,
+  verifierModificationEvenement
+} from '../utils/produit-evenement';
+
+/** Réponse 400 au format VALIDATION_ERROR (docs/ERREURS_VALIDATION.md) pour les règles événement. */
+function repondreErreursEvenement(res: Response, erreurs: ErreurModificationEvenement[]): void {
+  res.status(400).json({
+    success: false,
+    code: 'VALIDATION_ERROR',
+    message: erreurs.map((e) => e.message).join(' · '),
+    errors: erreurs
+  });
+}
 
 function extraireFiltresListe(query: Record<string, unknown>): FiltresListeProduits {
   const q = typeof query.q === 'string' ? query.q : undefined;
@@ -283,6 +298,14 @@ export class ProduitController {
         }
       }
 
+      if (isProduitEvenement(produitData)) {
+        const erreurs = verifierDatesEvenement(produitData.variants, { creation: true });
+        if (erreurs.length > 0) {
+          repondreErreursEvenement(res, erreurs);
+          return;
+        }
+      }
+
       logger.debug('[ProduitController] Tentative de création du produit avec les données:', {
         nom: produitData.nom,
         slug: produitData.slug,
@@ -377,14 +400,14 @@ export class ProduitController {
 
       if (isProduitEvenement(existingProduit)) {
         const ventesParType = await BilletModel.ventesParType(id);
-        const erreurs = verifierModificationEvenement(existingProduit, produitData, ventesParType);
+        const erreurs = [
+          ...verifierModificationEvenement(existingProduit, produitData, ventesParType),
+          ...(produitData.variants !== undefined
+            ? verifierDatesEvenement(produitData.variants, { creation: false })
+            : [])
+        ];
         if (erreurs.length > 0) {
-          res.status(400).json({
-            success: false,
-            code: 'VALIDATION_ERROR',
-            message: erreurs.map((e) => e.message).join(' · '),
-            errors: erreurs
-          });
+          repondreErreursEvenement(res, erreurs);
           return;
         }
       }
