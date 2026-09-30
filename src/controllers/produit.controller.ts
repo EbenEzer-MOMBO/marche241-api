@@ -12,13 +12,15 @@ function extraireFiltresListe(query: Record<string, unknown>): FiltresListeProdu
   const prixMax = query.prix_max !== undefined ? Number(query.prix_max) : undefined;
   const communeId = query.commune_id !== undefined ? Number(query.commune_id) : undefined;
   const categorieId = query.categorie_id !== undefined ? Number(query.categorie_id) : undefined;
+  const typeVente = query.type_vente === 'evenement' || query.type_vente === 'autre' ? query.type_vente : undefined;
 
   return {
     q,
     prix_min: prixMin !== undefined && !Number.isNaN(prixMin) ? prixMin : undefined,
     prix_max: prixMax !== undefined && !Number.isNaN(prixMax) ? prixMax : undefined,
     commune_id: communeId !== undefined && !Number.isNaN(communeId) ? communeId : undefined,
-    categorie_id: categorieId !== undefined && !Number.isNaN(categorieId) ? categorieId : undefined
+    categorie_id: categorieId !== undefined && !Number.isNaN(categorieId) ? categorieId : undefined,
+    type_vente: typeVente
   };
 }
 

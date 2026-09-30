@@ -261,6 +261,9 @@ export const produitsListQuerySchema = paginationQuerySchema.keys({
   categorie_id: Joi.number().integer().min(1).optional().messages({
     'number.base': 'L\'ID de catégorie doit être un nombre',
     'number.min': 'L\'ID de catégorie doit être supérieur ou égal à {#limit}'
+  }),
+  type_vente: Joi.string().valid('evenement', 'autre').optional().messages({
+    'any.only': 'Le type de vente doit être « evenement » ou « autre »'
   })
 }).custom((value, helpers) => {
   if (

@@ -232,6 +232,7 @@ export interface Billet {
   type_billet: string;
   numero: number;
   jeton: string;
+  scanne_le?: Date | null;
   date_creation: Date;
 }
 
