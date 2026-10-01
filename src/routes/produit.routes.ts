@@ -7,6 +7,22 @@ import { validate, validateParams, validateQuery } from '../middlewares/validati
 import { idParamSchema, slugParamSchema, produitsListQuerySchema, boutiqueIdParamSchema } from '../utils/validation.schemas';
 import Joi from 'joi';
 
+/**
+ * Statuts acceptés en saisie. Pour un événement, un vendeur est limité à brouillon /
+ * en_attente_validation : la publication passe par PATCH /produits/:id/publication.
+ */
+const STATUTS_PRODUIT_SAISISSABLES = ['actif', 'inactif', 'rupture_stock', 'brouillon', 'en_attente_validation'];
+
+const moderationEvenementSchema = Joi.object({
+  action: Joi.string().valid('publier', 'depublier', 'refuser').required().messages({
+    'any.only': 'L\'action doit être publier, depublier ou refuser',
+    'any.required': 'L\'action est obligatoire'
+  }),
+  motif: Joi.string().trim().max(500).allow('').optional().messages({
+    'string.max': 'Le motif ne doit pas dépasser {#limit} caractères'
+  })
+});
+
 // Schémas de validation pour les produits
 const createProduitSchema = Joi.object({
   nom: Joi.string().required().min(2).max(200).messages({
@@ -51,7 +67,7 @@ const createProduitSchema = Joi.object({
   variants: Joi.object().optional().allow(null).messages({
     'object.base': 'Les variants doivent être un objet'
   }),
-  statut: Joi.string().valid('actif', 'inactif', 'rupture_stock').default('actif')
+  statut: Joi.string().valid(...STATUTS_PRODUIT_SAISISSABLES).default('actif')
 });
 
 const updateProduitSchema = Joi.object({
@@ -91,7 +107,7 @@ const updateProduitSchema = Joi.object({
   variants: Joi.object().optional().allow(null).messages({
     'object.base': 'Les variants doivent être un objet'
   }),
-  statut: Joi.string().valid('actif', 'inactif', 'rupture_stock')
+  statut: Joi.string().valid(...STATUTS_PRODUIT_SAISISSABLES)
 });
 
 const router = Router();
@@ -489,9 +505,9 @@ router.get('/:id', optionalAuth, validateParams(idParamSchema), ProduitControlle
  *                 example: ["https://example.com/image1.jpg", "https://example.com/image2.jpg"]
  *               statut:
  *                 type: string
- *                 enum: [actif, inactif, rupture_stock]
+ *                 enum: [actif, inactif, rupture_stock, brouillon, en_attente_validation]
  *                 default: actif
- *                 description: Statut du produit
+ *                 description: "Statut du produit. Pour un événement, un vendeur ne peut choisir que brouillon ou en_attente_validation (403 PUBLICATION_RESERVEE_ADMIN sinon)."
  *     responses:
  *       201:
  *         description: Produit créé avec succès
@@ -598,8 +614,8 @@ router.post('/', authOrServiceKey, validate(createProduitSchema), ProduitControl
  *                 example: ["https://example.com/new-image1.jpg"]
  *               statut:
  *                 type: string
- *                 enum: [actif, inactif, rupture_stock]
- *                 description: Statut du produit
+ *                 enum: [actif, inactif, rupture_stock, brouillon, en_attente_validation]
+ *                 description: "Statut du produit. Pour un événement, un vendeur ne peut choisir que brouillon ou en_attente_validation (403 PUBLICATION_RESERVEE_ADMIN sinon)."
  *     responses:
  *       200:
  *         description: Produit mis à jour avec succès
@@ -679,6 +695,67 @@ router.post('/', authOrServiceKey, validate(createProduitSchema), ProduitControl
  * @access  Private (propriétaire)
  */
 router.put('/:id', authOrServiceKey, validateParams(idParamSchema), validate(updateProduitSchema), ProduitController.updateProduit);
+
+/**
+ * @swagger
+ * /api/v1/produits/{id}/publication:
+ *   patch:
+ *     summary: Modère un événement (équipe Marché 241)
+ *     description: |
+ *       Réservé à la clé de service admin (`x-service-key`). Les vendeurs ne peuvent pas publier
+ *       un événement : ils le passent en `en_attente_validation` (« Demander la publication »).
+ *       `publier` → statut `actif`, `depublier` → `inactif`, `refuser` → `brouillon`.
+ *       Le vendeur est prévenu par email à la publication et au refus (avec le motif).
+ *     tags: [Produits]
+ *     parameters:
+ *       - in: header
+ *         name: x-service-key
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [action]
+ *             properties:
+ *               action:
+ *                 type: string
+ *                 enum: [publier, depublier, refuser]
+ *               motif:
+ *                 type: string
+ *                 maxLength: 500
+ *                 description: Motif du refus, repris dans l'email au vendeur
+ *     responses:
+ *       200:
+ *         description: Statut de l'événement mis à jour (`{ success, message, produit }`)
+ *       400:
+ *         description: Action invalide (validation Joi)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ValidationErrorResponse'
+ *       403:
+ *         description: Réservé à l'équipe Marché 241 (`code` PUBLICATION_RESERVEE_ADMIN)
+ *       404:
+ *         description: Événement non trouvé
+ *       500:
+ *         description: Erreur serveur
+ */
+router.patch(
+  '/:id/publication',
+  authOrServiceKey,
+  validateParams(idParamSchema),
+  validate(moderationEvenementSchema),
+  ProduitController.modererEvenement
+);
 router.delete('/:id', auth, validateParams(idParamSchema), ProduitController.deleteProduit);
 
 /**

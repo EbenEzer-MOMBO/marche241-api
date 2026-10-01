@@ -6,12 +6,81 @@ import { logger } from '../utils/logger';
 import { doitEnregistrerLaVue, getClientIp } from '../utils/view-tracking';
 import { FiltresListeProduits } from '../models/produit.model';
 import { BilletModel } from '../models/billet.model';
+import { VendeurModel } from '../models/vendeur.model';
+import { CategorieModel } from '../models/categorie.model';
+import { EmailService } from '../services/email.service';
 import {
   ErreurModificationEvenement,
   isProduitEvenement,
+  MESSAGE_PUBLICATION_RESERVEE_ADMIN,
+  statutCreationEvenementVendeur,
+  transitionStatutEvenementVendeurAutorisee,
   verifierDatesEvenement,
   verifierModificationEvenement
 } from '../utils/produit-evenement';
+
+export type ActionModerationEvenement = 'publier' | 'depublier' | 'refuser';
+
+const STATUT_APRES_MODERATION: Record<ActionModerationEvenement, string> = {
+  publier: 'actif',
+  depublier: 'inactif',
+  refuser: 'brouillon'
+};
+
+const MESSAGE_APRES_MODERATION: Record<ActionModerationEvenement, string> = {
+  publier: 'Événement publié',
+  depublier: 'Événement dépublié',
+  refuser: 'Publication refusée, l’événement est repassé en brouillon'
+};
+
+/**
+ * Même définition que la liste publique (CONDITION_EVENEMENT) : variants.type = 'evenement'
+ * ou catégorie globale « evenements ». Sert à soumettre tout événement à la modération.
+ */
+async function estEvenementModere(produit: { variants?: unknown; categorie_id?: number | null }): Promise<boolean> {
+  if (isProduitEvenement(produit)) return true;
+  if (!produit.categorie_id) return false;
+  const categorie = await CategorieModel.getCategorieById(Number(produit.categorie_id));
+  return categorie?.slug === 'evenements';
+}
+
+/** Email au vendeur après publication ou refus ; un échec d'envoi ne bloque pas la modération. */
+function notifierModerationEvenement(produit: any, action: ActionModerationEvenement, motif?: string): void {
+  if (action === 'depublier') return;
+
+  void (async () => {
+    const vendeurId = produit.boutique?.vendeur_id;
+    const boutiqueSlug = produit.boutique?.slug;
+    const vendeur = vendeurId ? await VendeurModel.getVendeurById(vendeurId) : null;
+    if (!vendeur?.email || !boutiqueSlug) {
+      logger.warn(`[ProduitController] Pas d'email vendeur pour notifier la modération de l'événement ${produit.id}`);
+      return;
+    }
+
+    if (action === 'publier') {
+      const dateDebut = produit.variants?.meta?.date_debut;
+      const date = dateDebut ? new Date(dateDebut) : null;
+      await EmailService.envoyerEvenementPublie(vendeur.email, {
+        evenementNom: produit.nom,
+        boutiqueSlug,
+        produitId: produit.id,
+        dateEvenement:
+          date && !Number.isNaN(date.getTime())
+            ? date.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+            : undefined
+      });
+    } else {
+      await EmailService.envoyerEvenementRefuse(vendeur.email, {
+        evenementNom: produit.nom,
+        motif: motif?.trim() || 'Informations à compléter',
+        boutiqueSlug,
+        produitId: produit.id
+      });
+    }
+  })().catch((error) => {
+    logger.error(`[ProduitController] Échec email de modération de l'événement ${produit.id}:`, error);
+  });
+}
 
 /** Réponse 400 au format VALIDATION_ERROR (docs/ERREURS_VALIDATION.md) pour les règles événement. */
 function repondreErreursEvenement(res: Response, erreurs: ErreurModificationEvenement[]): void {
@@ -306,6 +375,11 @@ export class ProduitController {
         }
       }
 
+      // La mise en ligne d'un événement est validée par l'équipe Marché 241
+      if (!isAdmin && (await estEvenementModere(produitData))) {
+        produitData.statut = statutCreationEvenementVendeur(produitData.statut);
+      }
+
       logger.debug('[ProduitController] Tentative de création du produit avec les données:', {
         nom: produitData.nom,
         slug: produitData.slug,
@@ -398,6 +472,29 @@ export class ProduitController {
         }
       }
 
+      if (!isAdmin) {
+        const etaitEvenement = await estEvenementModere(existingProduit);
+        const seraEvenement = await estEvenementModere({
+          variants: produitData.variants !== undefined ? produitData.variants : existingProduit.variants,
+          categorie_id: produitData.categorie_id !== undefined ? produitData.categorie_id : existingProduit.categorie_id
+        });
+
+        if (!etaitEvenement && seraEvenement) {
+          // Un produit qui devient un événement repasse par la modération, comme à la création
+          produitData.statut = statutCreationEvenementVendeur(produitData.statut);
+        } else if (
+          etaitEvenement &&
+          !transitionStatutEvenementVendeurAutorisee(existingProduit.statut, produitData.statut)
+        ) {
+          res.status(403).json({
+            success: false,
+            code: 'PUBLICATION_RESERVEE_ADMIN',
+            message: MESSAGE_PUBLICATION_RESERVEE_ADMIN
+          });
+          return;
+        }
+      }
+
       if (isProduitEvenement(existingProduit)) {
         const ventesParType = await BilletModel.ventesParType(id);
         const erreurs = [
@@ -440,6 +537,51 @@ export class ProduitController {
           error: error.message
         });
       }
+    }
+  }
+
+  /**
+   * Publie, dépublie ou refuse un événement (équipe Marché 241 uniquement, clé de service).
+   * Le vendeur propriétaire est prévenu par email à la publication et au refus.
+   */
+  static async modererEvenement(req: Request, res: Response): Promise<void> {
+    try {
+      if (!(req as any).isAdmin) {
+        res.status(403).json({
+          success: false,
+          code: 'PUBLICATION_RESERVEE_ADMIN',
+          message: 'Action réservée à l’équipe Marché 241'
+        });
+        return;
+      }
+
+      const id = parseInt(req.params.id);
+      const { action, motif } = req.body as { action: ActionModerationEvenement; motif?: string };
+
+      const existingProduit = await ProduitModel.getProduitById(id);
+      if (!existingProduit || !(await estEvenementModere(existingProduit))) {
+        res.status(404).json({
+          success: false,
+          message: 'Événement non trouvé'
+        });
+        return;
+      }
+
+      const produit = await ProduitModel.updateProduit(id, { statut: STATUT_APRES_MODERATION[action] } as any);
+      notifierModerationEvenement(existingProduit, action, motif);
+
+      res.status(200).json({
+        success: true,
+        message: MESSAGE_APRES_MODERATION[action],
+        produit
+      });
+    } catch (error: any) {
+      logger.error('[ProduitController] Erreur dans modererEvenement:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erreur lors de la modération de l’événement',
+        error: error.message
+      });
     }
   }
 
