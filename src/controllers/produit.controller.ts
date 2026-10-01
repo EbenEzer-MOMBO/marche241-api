@@ -7,6 +7,7 @@ import { doitEnregistrerLaVue, getClientIp } from '../utils/view-tracking';
 import { FiltresListeProduits } from '../models/produit.model';
 import { BilletModel } from '../models/billet.model';
 import { VendeurModel } from '../models/vendeur.model';
+import { CategorieModel } from '../models/categorie.model';
 import { EmailService } from '../services/email.service';
 import {
   ErreurModificationEvenement,
@@ -31,6 +32,17 @@ const MESSAGE_APRES_MODERATION: Record<ActionModerationEvenement, string> = {
   depublier: 'Événement dépublié',
   refuser: 'Publication refusée, l’événement est repassé en brouillon'
 };
+
+/**
+ * Même définition que la liste publique (CONDITION_EVENEMENT) : variants.type = 'evenement'
+ * ou catégorie globale « evenements ». Sert à soumettre tout événement à la modération.
+ */
+async function estEvenementModere(produit: { variants?: unknown; categorie_id?: number | null }): Promise<boolean> {
+  if (isProduitEvenement(produit)) return true;
+  if (!produit.categorie_id) return false;
+  const categorie = await CategorieModel.getCategorieById(Number(produit.categorie_id));
+  return categorie?.slug === 'evenements';
+}
 
 /** Email au vendeur après publication ou refus ; un échec d'envoi ne bloque pas la modération. */
 function notifierModerationEvenement(produit: any, action: ActionModerationEvenement, motif?: string): void {
@@ -361,10 +373,11 @@ export class ProduitController {
           repondreErreursEvenement(res, erreurs);
           return;
         }
-        // La mise en ligne d'un événement est validée par l'équipe Marché 241
-        if (!isAdmin) {
-          produitData.statut = statutCreationEvenementVendeur(produitData.statut);
-        }
+      }
+
+      // La mise en ligne d'un événement est validée par l'équipe Marché 241
+      if (!isAdmin && (await estEvenementModere(produitData))) {
+        produitData.statut = statutCreationEvenementVendeur(produitData.statut);
       }
 
       logger.debug('[ProduitController] Tentative de création du produit avec les données:', {
@@ -459,17 +472,27 @@ export class ProduitController {
         }
       }
 
-      if (
-        !isAdmin &&
-        (isProduitEvenement(existingProduit) || isProduitEvenement(produitData)) &&
-        !transitionStatutEvenementVendeurAutorisee(existingProduit.statut, produitData.statut)
-      ) {
-        res.status(403).json({
-          success: false,
-          code: 'PUBLICATION_RESERVEE_ADMIN',
-          message: MESSAGE_PUBLICATION_RESERVEE_ADMIN
+      if (!isAdmin) {
+        const etaitEvenement = await estEvenementModere(existingProduit);
+        const seraEvenement = await estEvenementModere({
+          variants: produitData.variants !== undefined ? produitData.variants : existingProduit.variants,
+          categorie_id: produitData.categorie_id !== undefined ? produitData.categorie_id : existingProduit.categorie_id
         });
-        return;
+
+        if (!etaitEvenement && seraEvenement) {
+          // Un produit qui devient un événement repasse par la modération, comme à la création
+          produitData.statut = statutCreationEvenementVendeur(produitData.statut);
+        } else if (
+          etaitEvenement &&
+          !transitionStatutEvenementVendeurAutorisee(existingProduit.statut, produitData.statut)
+        ) {
+          res.status(403).json({
+            success: false,
+            code: 'PUBLICATION_RESERVEE_ADMIN',
+            message: MESSAGE_PUBLICATION_RESERVEE_ADMIN
+          });
+          return;
+        }
       }
 
       if (isProduitEvenement(existingProduit)) {
@@ -536,7 +559,7 @@ export class ProduitController {
       const { action, motif } = req.body as { action: ActionModerationEvenement; motif?: string };
 
       const existingProduit = await ProduitModel.getProduitById(id);
-      if (!existingProduit || !isProduitEvenement(existingProduit)) {
+      if (!existingProduit || !(await estEvenementModere(existingProduit))) {
         res.status(404).json({
           success: false,
           message: 'Événement non trouvé'
