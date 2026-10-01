@@ -171,3 +171,32 @@ export function verifierDatesEvenement(
   }
   return erreurs;
 }
+
+/** Statuts qu'un vendeur peut donner lui-même à un événement (publication réservée à l'équipe). */
+const STATUTS_EVENEMENT_VENDEUR = ['brouillon', 'en_attente_validation'];
+
+export const MESSAGE_PUBLICATION_RESERVEE_ADMIN =
+  'La publication des événements est validée par l’équipe Marché 241. Demandez la publication depuis votre tableau de bord.';
+
+/**
+ * Statut à enregistrer à la création d'un événement par un vendeur :
+ * brouillon, sauf demande explicite de publication.
+ */
+export function statutCreationEvenementVendeur(statutDemande: unknown): string {
+  return statutDemande === 'en_attente_validation' ? 'en_attente_validation' : 'brouillon';
+}
+
+/**
+ * Un vendeur ne peut faire passer un événement que de brouillon à « en attente de validation »
+ * (et inversement). Renvoyer le statut actuel (sauvegarde d'un événement publié) est accepté.
+ */
+export function transitionStatutEvenementVendeurAutorisee(statutActuel: string, statutDemande: unknown): boolean {
+  if (statutDemande === undefined || statutDemande === statutActuel) {
+    return true;
+  }
+  return (
+    STATUTS_EVENEMENT_VENDEUR.includes(statutActuel) &&
+    typeof statutDemande === 'string' &&
+    STATUTS_EVENEMENT_VENDEUR.includes(statutDemande)
+  );
+}

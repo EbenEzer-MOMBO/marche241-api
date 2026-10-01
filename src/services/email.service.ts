@@ -8,6 +8,8 @@ import {
   vendeurCodeConnexionTemplate,
   vendeurCodeInscriptionTemplate,
   billetsCommandeTemplate,
+  vendeurEvenementPublieTemplate,
+  vendeurEvenementRefuseTemplate,
 } from './email-templates';
 
 const RESEND_API_URL = 'https://api.resend.com/emails';
@@ -150,6 +152,32 @@ export class EmailService {
     }
   ): Promise<void> {
     const { subject, html, text } = billetsCommandeTemplate(data);
+    await this.send(email, subject, html, text);
+  }
+
+  static async envoyerEvenementPublie(
+    email: string,
+    data: { evenementNom: string; boutiqueSlug: string; produitId: number; dateEvenement?: string }
+  ): Promise<void> {
+    const frontendUrl = process.env.FRONTEND_URL || 'https://marche241.ga';
+    const { subject, html, text } = vendeurEvenementPublieTemplate({
+      evenementNom: data.evenementNom,
+      evenementUrl: `${frontendUrl}/${data.boutiqueSlug}/produit/${data.produitId}`,
+      dateEvenement: data.dateEvenement,
+    });
+    await this.send(email, subject, html, text);
+  }
+
+  static async envoyerEvenementRefuse(
+    email: string,
+    data: { evenementNom: string; motif: string; boutiqueSlug: string; produitId: number }
+  ): Promise<void> {
+    const frontendUrl = process.env.FRONTEND_URL || 'https://marche241.ga';
+    const { subject, html, text } = vendeurEvenementRefuseTemplate({
+      evenementNom: data.evenementNom,
+      motif: data.motif,
+      dashboardUrl: `${frontendUrl}/admin/${data.boutiqueSlug}/evenements/${data.produitId}`,
+    });
     await this.send(email, subject, html, text);
   }
 }
