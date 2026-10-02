@@ -10,9 +10,15 @@ import {
   billetsCommandeTemplate,
   vendeurEvenementPublieTemplate,
   vendeurEvenementRefuseTemplate,
+  vendeurAvisVersementTemplate,
 } from './email-templates';
 
 const RESEND_API_URL = 'https://api.resend.com/emails';
+
+const LIBELLES_MOYEN_VERSEMENT: Record<string, string> = {
+  moov_money: 'Moov Money',
+  airtel_money: 'Airtel Money',
+};
 
 interface ResendEmailResponse {
   id?: string;
@@ -137,6 +143,36 @@ export class EmailService {
       boutiqueNom,
       boutiqueUrl: `${frontendUrl}/${boutiqueSlug}`,
       dateAttribution: new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }),
+    });
+    await this.send(email, subject, html, text);
+  }
+
+  /** Avis de versement envoyé au vendeur après un paiement effectué par l'équipe (admin). */
+  static async envoyerAvisVersement(
+    email: string,
+    data: {
+      montant: number;
+      moyen: string;
+      telephone: string;
+      periodeLabel: string;
+      reference: string;
+      nombreCommandes?: number;
+      boutiques?: string;
+      boutiqueSlug?: string;
+    }
+  ): Promise<void> {
+    const frontendUrl = process.env.FRONTEND_URL || 'https://marche241.ga';
+    const { subject, html, text } = vendeurAvisVersementTemplate({
+      montantFormate: new Intl.NumberFormat('fr-FR').format(data.montant).replace(/\s/g, ' '),
+      moyenLabel: LIBELLES_MOYEN_VERSEMENT[data.moyen] ?? data.moyen,
+      telephone: data.telephone,
+      periodeLabel: data.periodeLabel,
+      reference: data.reference,
+      nombreCommandes: data.nombreCommandes,
+      boutiques: data.boutiques,
+      paiementsUrl: data.boutiqueSlug
+        ? `${frontendUrl}/admin/${data.boutiqueSlug}/payments`
+        : `${frontendUrl}/admin/login`,
     });
     await this.send(email, subject, html, text);
   }
