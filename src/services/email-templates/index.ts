@@ -24,3 +24,6 @@ export type { BilletsCommandeData } from './billetsCommande';
 
 export { vendeurEvenementPublieTemplate, vendeurEvenementRefuseTemplate } from './vendeurEvenementModere';
 export type { VendeurEvenementPublieData, VendeurEvenementRefuseData } from './vendeurEvenementModere';
+
+export { vendeurAvisVersementTemplate } from './vendeurAvisVersement';
+export type { VendeurAvisVersementData } from './vendeurAvisVersement';

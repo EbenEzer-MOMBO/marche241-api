@@ -26,4 +26,42 @@ export class EmailController {
       });
     }
   }
+
+  static async envoyerAvisVersement(req: Request, res: Response): Promise<void> {
+    if (!req.isAdmin) {
+      res.status(403).json({
+        success: false,
+        message: 'Action réservée à l\'équipe Marché 241',
+      });
+      return;
+    }
+
+    try {
+      const { email, ...data } = req.body as {
+        email: string;
+        montant: number;
+        moyen: string;
+        telephone: string;
+        periodeLabel: string;
+        reference: string;
+        nombreCommandes?: number;
+        boutiques?: string;
+        boutiqueSlug?: string;
+      };
+
+      await EmailService.envoyerAvisVersement(email, data);
+
+      res.status(200).json({
+        success: true,
+        message: 'Email d\'avis de versement envoyé',
+      });
+    } catch (error: any) {
+      logger.error('[EmailController] Échec envoi email avis de versement:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erreur lors de l\'envoi de l\'email d\'avis de versement',
+        error: error.message,
+      });
+    }
+  }
 }
