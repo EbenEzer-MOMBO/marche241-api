@@ -35,6 +35,12 @@ const swaggerOptions = {
           type: 'http',
           scheme: 'bearer',
           bearerFormat: 'JWT'
+        },
+        serviceKey: {
+          type: 'apiKey',
+          in: 'header',
+          name: 'x-service-key',
+          description: 'Clé de service du back-office Marché 241 (ADMIN_SERVICE_KEY)'
         }
       }
     },
