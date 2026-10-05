@@ -10,7 +10,7 @@ export type StatutProduit = 'actif' | 'inactif' | 'brouillon' | 'en_attente_vali
 export type StatutCommande = 'en_attente' | 'confirmee' | 'en_preparation' | 'expedie' | 'livree' | 'annulee' | 'remboursee';
 export type StatutPaiement = 'en_attente' | 'partiellement_paye' | 'paye' | 'echec' | 'rembourse';
 export type MethodePaiement = 'mobile_money' | 'airtel_money' | 'moov_money' | 'carte_bancaire' | 'especes' | 'virement';
-export type TypePaiement = 'paiement_complet' | 'acompte' | 'frais_livraison' | 'solde_apres_livraison' | 'complement';
+export type TypePaiement = 'paiement_complet' | 'acompte' | 'frais_livraison' | 'solde_apres_livraison' | 'complement' | 'boost';
 export type StatutAvis = 'en_attente' | 'approuve' | 'rejete';
 
 // Interface pour les dimensions
@@ -239,7 +239,8 @@ export interface Billet {
 // Table transactions
 export interface Transaction {
   id: number;
-  commande_id: number;
+  commande_id: number; // NULL en base pour une transaction de boost (boost_id renseigné)
+  boost_id?: number | null; // Boost publicitaire payé (type_paiement = 'boost')
   reference_transaction: string; // Référence unique de la transaction
   montant: number; // Montant en centimes
   methode_paiement: MethodePaiement;
@@ -498,4 +499,142 @@ export interface ResultatPagine<T> {
   page: number;
   limite: number;
   total_pages: number;
+}
+// ============================================
+// Boost publicitaire Meta Ads (migrations 026/027)
+// ============================================
+
+export type StatutBoost =
+  | 'brouillon'
+  | 'en_attente_paiement'
+  | 'en_attente_validation'
+  | 'refuse'
+  | 'actif'
+  | 'en_pause'
+  | 'termine'
+  | 'rejete_meta'
+  | 'erreur';
+export type ObjectifBoost = 'trafic' | 'whatsapp' | 'notoriete';
+export type TypeCibleBoost = 'boutique' | 'produit';
+export type StatutRemboursementBoost = 'aucun' | 'a_rembourser' | 'rembourse';
+export type SexeCiblage = 'homme' | 'femme';
+
+export interface CiblageBoost {
+  pays: string[]; // codes ISO 2 lettres
+  villes: string[]; // clés géo Meta
+  age_min: number;
+  age_max: number;
+  sexes: SexeCiblage[];
+  langues: string[]; // locales Meta
+  interets: string[]; // IDs d'intérêts Meta
+  etape_wizard?: number;
+}
+
+// Table boosts
+export interface Boost {
+  id: number;
+  boutique_id: number;
+  vendeur_id: number;
+  type_cible: TypeCibleBoost;
+  produit_id: number | null;
+  objectif: ObjectifBoost;
+  statut: StatutBoost;
+  nom: string;
+
+  budget_media_fcfa: number;
+  commission_bps: number;
+  commission_fcfa: number;
+  tva_fcfa: number;
+  total_fcfa: number; // montant payé par le vendeur
+  depense_fcfa: number;
+
+  duree_jours: number;
+  date_debut: Date | null;
+  date_fin: Date | null;
+
+  ciblage: CiblageBoost;
+  url_destination: string | null;
+  whatsapp_e164: string | null;
+
+  titre: string | null;
+  texte_principal: string | null;
+  description: string | null;
+  image_url: string | null;
+  cta: string;
+
+  note_revue: string | null;
+  conformite: string[] | null;
+  valide_par: string | null;
+  date_validation: Date | null;
+
+  meta_campaign_id: string | null;
+  meta_adset_id: string | null;
+  meta_ad_id: string | null;
+  meta_statut_effectif: string | null;
+  meta_derniere_erreur: string | null;
+  dry_run: boolean;
+  date_derniere_synchro: Date | null;
+
+  statut_remboursement: StatutRemboursementBoost;
+  montant_a_rembourser_fcfa: number;
+  date_remboursement: Date | null;
+  note_remboursement: string | null;
+
+  date_soumission: Date | null;
+  date_paiement: Date | null;
+  date_cloture: Date | null;
+  date_creation: Date;
+  date_modification: Date;
+
+  // Relations
+  boutique?: Pick<Boutique, 'id' | 'nom' | 'slug' | 'logo'>;
+}
+
+// Table boost_insights_jour
+export interface BoostInsightJour {
+  id: number;
+  boost_id: number;
+  date: string; // AAAA-MM-JJ
+  depense_fcfa: number;
+  depense_devise: number;
+  impressions: number;
+  portee: number;
+  clics: number;
+  messages: number;
+  brut?: unknown;
+  date_maj: Date;
+}
+
+// Table boost_evenements
+export interface BoostEvenement {
+  id: number;
+  boost_id: number;
+  type_evenement: string;
+  acteur: 'vendeur' | 'admin' | 'systeme' | 'meta';
+  donnees: Record<string, unknown> | null;
+  date_creation: Date;
+}
+
+export interface PackBoost {
+  code: string;
+  nom: string;
+  total_fcfa: number; // montant payé par le vendeur
+  duree_jours: number;
+}
+
+// Table boost_parametres (clé/valeur), une fois typée
+export interface BoostParametres {
+  commission_bps: number;
+  commission_min_fcfa: number;
+  tva_bps: number;
+  total_min_fcfa: number;
+  total_max_fcfa: number;
+  duree_min_jours: number;
+  duree_max_jours: number;
+  packs: PackBoost[];
+  fx_xaf_par_usd: number;
+  cpm_min_fcfa: number;
+  cpm_max_fcfa: number;
+  budget_jour_min_fcfa: number;
+  kill_switch: boolean;
 }
