@@ -212,7 +212,7 @@ export class BoostService {
     const erreurs = BoostService.validerPourSoumission(boost, parametres);
     if (erreurs.length) {
       const err = new BoostErreur('Le boost est incomplet', 400, 'VALIDATION_ERROR') as BoostErreur & { errors?: unknown };
-      err.errors = erreurs;
+      err.errors = erreurs.map((e) => ({ ...e, code: 'BOOST_CHAMP_INVALIDE' }));
       throw err;
     }
     const devis = devisDepuisTotal(boost.total_fcfa, parametres.commission_bps, parametres.commission_min_fcfa, parametres.tva_bps);

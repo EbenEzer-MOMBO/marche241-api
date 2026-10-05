@@ -109,7 +109,7 @@ export class BoostController {
           success: false,
           message: err.message,
           code: 'VALIDATION_ERROR',
-          errors: [{ field: 'total_fcfa', message: err.message }]
+          errors: [{ field: 'total_fcfa', code: 'BOOST_CHAMP_INVALIDE', message: err.message }]
         });
         return;
       }
@@ -384,7 +384,7 @@ export class BoostController {
         }
       }
       if (erreurs.length) {
-        res.status(400).json({ success: false, message: erreurs[0].message, code: 'VALIDATION_ERROR', errors: erreurs });
+        res.status(400).json({ success: false, message: erreurs[0].message, code: 'VALIDATION_ERROR', errors: erreurs.map((e) => ({ ...e, code: 'BOOST_PARAMETRE_INVALIDE' })) });
         return;
       }
       res.json({ success: true, parametres: await BoostParametresModel.ecrire(corps(req)) });
