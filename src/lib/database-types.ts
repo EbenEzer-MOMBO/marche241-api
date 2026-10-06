@@ -56,6 +56,16 @@ export interface Vendeur {
   derniere_connexion?: Date;
 }
 
+
+// Table vendeur_guides (migration 030) : visites guidées de l'espace vendeur terminées ou passées
+export type StatutGuideVendeur = 'termine' | 'ignore';
+
+export interface GuideVendeur {
+  vendeur_id: number;
+  guide: string; // ex. 'publicite'
+  statut: StatutGuideVendeur;
+  date_modification: Date;
+}
 export type PasskeyChallengeType = 'register' | 'login';
 
 export interface VendeurPasskey {

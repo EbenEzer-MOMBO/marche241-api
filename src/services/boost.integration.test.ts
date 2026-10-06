@@ -51,7 +51,7 @@ describe('Boost Meta — intégration HTTP (Postgres local, dry-run)', { skip: i
     sql = new Client({ connectionString: URL_BASE_TEST });
     await sql.connect();
     await sql.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
-    for (const fichier of ['tests/boost/schema-minimal.sql', 'migrations/026_create_boosts_tables.sql', 'migrations/027_extend_transactions_for_boost.sql', 'migrations/028_create_meta_connexion.sql', 'migrations/028_create_meta_connexion.sql', 'migrations/029_boost_frais_encaissement.sql', 'migrations/029_boost_frais_encaissement.sql']) {
+    for (const fichier of ['tests/boost/schema-minimal.sql', 'migrations/026_create_boosts_tables.sql', 'migrations/027_extend_transactions_for_boost.sql', 'migrations/028_create_meta_connexion.sql', 'migrations/028_create_meta_connexion.sql', 'migrations/029_boost_frais_encaissement.sql', 'migrations/029_boost_frais_encaissement.sql', 'migrations/030_create_vendeur_guides.sql', 'migrations/030_create_vendeur_guides.sql']) {
       await sql.query(fs.readFileSync(path.join(RACINE, fichier), 'utf8'));
     }
     const v1 = await sql.query(`INSERT INTO vendeurs (telephone, nom, email) VALUES ('24177000001', 'Awa', 'awa@test.ga') RETURNING id`);
@@ -379,6 +379,22 @@ describe('Boost Meta — intégration HTTP (Postgres local, dry-run)', { skip: i
     assert.ok(Array.isArray(liste));
     assert.ok(liste.every((t: any) => t.type_paiement !== 'boost'));
     assert.equal(liste.length, 1);
+  });
+
+  test('visite guidée Publicité : enregistrée par vendeur, terminée jamais repassée en ignorée', async () => {
+    assert.equal((await appel('GET', '/vendeurs/me/guides')).status, 401);
+    const vide = await appel('GET', '/vendeurs/me/guides', { jeton: jetonVendeur });
+    assert.equal(vide.status, 200);
+    assert.deepEqual(vide.json.guides, {});
+    const inconnu = await appel('PUT', '/vendeurs/me/guides/inconnu', { jeton: jetonVendeur, corps: { statut: 'termine' } });
+    assert.equal(inconnu.status, 400);
+    assert.equal(inconnu.json.errors[0].message, 'Visite guidée inconnue.');
+    assert.equal((await appel('PUT', '/vendeurs/me/guides/publicite', { jeton: jetonVendeur, corps: { statut: 'ignore' } })).json.guide.statut, 'ignore');
+    assert.equal((await appel('PUT', '/vendeurs/me/guides/publicite', { jeton: jetonVendeur, corps: { statut: 'termine' } })).json.guide.statut, 'termine');
+    assert.equal((await appel('PUT', '/vendeurs/me/guides/publicite', { jeton: jetonVendeur, corps: { statut: 'ignore' } })).json.guide.statut, 'termine');
+    const apres = await appel('GET', '/vendeurs/me/guides', { jeton: jetonVendeur });
+    assert.equal(apres.json.guides.publicite.statut, 'termine');
+    assert.deepEqual((await appel('GET', '/vendeurs/me/guides', { jeton: jetonAutreVendeur })).json.guides, {}, 'propre à chaque vendeur');
   });
 
   test('liste vendeur par boutique', async () => {
