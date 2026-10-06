@@ -493,7 +493,9 @@ export class PaiementController {
 
       return response.data;
     } catch (error: any) {
-      throw new Error(`Erreur lors de la création de la facture: ${error.message}`);
+      // eBilling détaille la cause dans le corps (ex. « missing required field payer_first_name »)
+      const detail = error.response?.data?.error_description ?? error.response?.data?.message;
+      throw new Error(`Erreur lors de la création de la facture: ${error.message}${detail ? ` (${detail})` : ''}`);
     }
   }
 

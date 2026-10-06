@@ -106,6 +106,16 @@ export interface DemandePaiement {
   nom?: string | null;
 }
 
+/**
+ * Nom et prénom du payeur pour eBilling, qui refuse une facture sans `payer_first_name` (HTTP 400).
+ * « Eben Ezer Mombo » → prénom « Eben », nom « Ezer Mombo » ; un seul mot sert aux deux.
+ */
+export function nomPayeur(nomComplet: string | null | undefined): { prenom: string; nom: string } {
+  const mots = (nomComplet ?? '').trim().split(/\s+/).filter(Boolean);
+  if (!mots.length) return { prenom: 'Vendeur', nom: 'Marché 241' };
+  return { prenom: mots[0], nom: mots.length > 1 ? mots.slice(1).join(' ') : mots[0] };
+}
+
 function ciblageComplet(partiel: Partial<CiblageBoost> | undefined, existant?: CiblageBoost): CiblageBoost {
   const base: CiblageBoost = existant ?? { pays: ['GA'], villes: [], age_min: 18, age_max: 65, sexes: [], langues: [], interets: [] };
   return { ...base, ...(partiel ?? {}) } as CiblageBoost;
@@ -284,6 +294,7 @@ export class BoostService {
     const reference = `BOOST-${boost.id}-${Date.now()}`;
     const description = `Boost publicitaire ${boost.nom}`.slice(0, 100);
     const accessToken = await PaiementController.getAccessToken();
+    const payeur = nomPayeur(demande.nom);
     const facture = await PaiementController.creerFacture(
       {
         email: demande.email || 'contact@marche241.ga',
@@ -291,8 +302,8 @@ export class BoostService {
         amount: boost.total_fcfa,
         reference,
         description,
-        lastname: demande.nom || 'Vendeur',
-        firstname: ''
+        lastname: payeur.nom,
+        firstname: payeur.prenom
       },
       accessToken
     );
