@@ -51,7 +51,7 @@ describe('Boost Meta — intégration HTTP (Postgres local, dry-run)', { skip: i
     sql = new Client({ connectionString: URL_BASE_TEST });
     await sql.connect();
     await sql.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
-    for (const fichier of ['tests/boost/schema-minimal.sql', 'migrations/026_create_boosts_tables.sql', 'migrations/027_extend_transactions_for_boost.sql', 'migrations/028_create_meta_connexion.sql', 'migrations/028_create_meta_connexion.sql']) {
+    for (const fichier of ['tests/boost/schema-minimal.sql', 'migrations/026_create_boosts_tables.sql', 'migrations/027_extend_transactions_for_boost.sql', 'migrations/028_create_meta_connexion.sql', 'migrations/028_create_meta_connexion.sql', 'migrations/029_boost_frais_encaissement.sql', 'migrations/029_boost_frais_encaissement.sql']) {
       await sql.query(fs.readFileSync(path.join(RACINE, fichier), 'utf8'));
     }
     const v1 = await sql.query(`INSERT INTO vendeurs (telephone, nom, email) VALUES ('24177000001', 'Awa', 'awa@test.ga') RETURNING id`);
@@ -329,20 +329,20 @@ describe('Boost Meta — intégration HTTP (Postgres local, dry-run)', { skip: i
     assert.equal(c.status, 200);
     assert.equal(c.json.boost.statut, 'termine');
     assert.equal(c.json.boost.depense_fcfa, 3000);
-    // 7500 payés − 3000 dépensés − commission au prorata 1250 × 3000 / 6250 = 600
-    assert.equal(c.json.boost.montant_a_rembourser_fcfa, 3900);
+    // 7500 payés − 3000 dépensés − commission au prorata 1250 × 3000 / 6250 = 600 − frais d’encaissement 188 (2,5 %)
+    assert.equal(c.json.boost.montant_a_rembourser_fcfa, 3712);
     assert.equal(c.json.boost.statut_remboursement, 'a_rembourser');
 
     const d = await appel('GET', `/boosts/${boostId}`, { jeton: jetonVendeur });
     assert.equal(d.json.totaux.impressions, 50000);
     assert.equal(d.json.insights.length, 2);
 
-    const remb = await appel('POST', `/boosts/admin/${boostId}/rembourse`, { cle: CLE_SERVICE, corps: { note: 'Versement Airtel 3900' } });
+    const remb = await appel('POST', `/boosts/admin/${boostId}/rembourse`, { cle: CLE_SERVICE, corps: { note: 'Versement Airtel 3712' } });
     assert.equal(remb.json.boost.statut_remboursement, 'rembourse');
     assert.equal((await appel('POST', `/boosts/admin/${boostId}/rembourse`, { cle: CLE_SERVICE, corps: {} })).status, 409);
   });
 
-  test('refus admin : remboursement intégral', async () => {
+  test('refus admin : remboursement intégral hors frais d’encaissement', async () => {
     const b = await appel('POST', '/boosts', {
       jeton: jetonVendeur,
       corps: { boutique_id: ids.boutique, type_cible: 'produit', produit_id: ids.produit, objectif: 'whatsapp', whatsapp_e164: '+24177000001', total_fcfa: 15000, duree_jours: 7, titre: 'Robe wax', texte_principal: 'Écrivez-nous sur WhatsApp', image_url: 'https://cdn.test/robe.jpg' }
@@ -357,7 +357,7 @@ describe('Boost Meta — intégration HTTP (Postgres local, dry-run)', { skip: i
     assert.equal(sansNote.status, 400);
     const r = await appel('POST', `/boosts/admin/${id}/refuser`, { cle: CLE_SERVICE, corps: { note: 'Visuel non conforme' } });
     assert.equal(r.json.boost.statut, 'refuse');
-    assert.equal(r.json.boost.montant_a_rembourser_fcfa, 15000);
+    assert.equal(r.json.boost.montant_a_rembourser_fcfa, 14625, '15 000 − 375 de frais d’encaissement (2,5 %)');
   });
 
   test('retour en brouillon possible tant que rien n’est payé', async () => {

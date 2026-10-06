@@ -10,7 +10,7 @@ import {
 } from '../models/boost.model';
 import { Boost, BoostEvenement, BoostParametres, CiblageBoost, ObjectifBoost, TypeCibleBoost } from '../lib/database-types';
 import { budgetParJour, devisDepuisTotal, estTotalDansBornes } from '../lib/boost/devis';
-import { calculerCloture, remboursementIntegral } from '../lib/boost/reliquat';
+import { calculerCloture, fraisEncaissement, remboursementIntegral } from '../lib/boost/reliquat';
 import { ajouterUtmBoost, estDestinationMarche241 } from '../lib/boost/utm';
 import { dateIso } from '../lib/boost/planning';
 import { estConformiteComplete } from '../config/conformite-boost.config';
@@ -228,6 +228,7 @@ export class BoostService {
       commission_fcfa: devis.commission_fcfa,
       tva_fcfa: devis.tva_fcfa,
       total_fcfa: devis.total_fcfa,
+      frais_encaissement_fcfa: fraisEncaissement(devis.total_fcfa, parametres.frais_encaissement_bps),
       url_destination: url,
       cta: objectifMeta(boost.objectif).cta,
       date_soumission: new Date()

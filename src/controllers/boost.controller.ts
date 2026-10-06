@@ -7,6 +7,7 @@ import { santeMeta, estModeSimule } from '../services/meta-ads.service';
 import { decouvrir, enregistrerChoix, MetaConnexionErreur, verifier } from '../services/meta-connexion.service';
 import { MetaGraphError } from '../lib/meta/graph';
 import { budgetParJour, devisDepuisTotal } from '../lib/boost/devis';
+import { fraisEncaissement } from '../lib/boost/reliquat';
 import { LIBELLES_STATUT_BOOST } from '../lib/boost/transitions';
 import { Boost } from '../lib/database-types';
 import {
@@ -76,6 +77,7 @@ export class BoostController {
           commission_bps: parametres.commission_bps,
           commission_min_fcfa: parametres.commission_min_fcfa,
           tva_bps: parametres.tva_bps,
+          frais_encaissement_bps: parametres.frais_encaissement_bps,
           budget_jour_min_fcfa: parametres.budget_jour_min_fcfa,
           packs: parametres.packs,
           kill_switch: parametres.kill_switch,
@@ -112,7 +114,15 @@ export class BoostController {
       const { total_fcfa, duree_jours } = corps(req);
       const p = await BoostParametresModel.lire();
       const devis = devisDepuisTotal(total_fcfa, p.commission_bps, p.commission_min_fcfa, p.tva_bps);
-      res.json({ success: true, devis: { ...devis, duree_jours, budget_jour_fcfa: budgetParJour(devis.budget_media_fcfa, duree_jours) } });
+      res.json({
+        success: true,
+        devis: {
+          ...devis,
+          duree_jours,
+          budget_jour_fcfa: budgetParJour(devis.budget_media_fcfa, duree_jours),
+          frais_encaissement_fcfa: fraisEncaissement(devis.total_fcfa, p.frais_encaissement_bps)
+        }
+      });
     } catch (err: any) {
       if (!(err instanceof BoostErreur) && err?.message?.includes('commission minimum')) {
         res.status(400).json({

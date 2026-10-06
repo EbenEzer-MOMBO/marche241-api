@@ -167,6 +167,7 @@ export const parametresBoostSchema = Joi.object({
   commission_bps: Joi.number().integer().min(0).max(10_000),
   commission_min_fcfa: Joi.number().integer().min(0),
   tva_bps: Joi.number().integer().min(0).max(5000),
+  frais_encaissement_bps: Joi.number().integer().min(0).max(1000),
   total_min_fcfa: Joi.number().integer().min(500),
   total_max_fcfa: Joi.number().integer().min(500),
   duree_min_jours: Joi.number().integer().min(1).max(60),

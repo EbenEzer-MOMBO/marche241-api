@@ -27,6 +27,7 @@ const COLONNES_AUTORISEES = [
   'commission_bps',
   'commission_fcfa',
   'tva_fcfa',
+  'frais_encaissement_fcfa',
   'total_fcfa',
   'depense_fcfa',
   'duree_jours',
@@ -314,9 +315,10 @@ export class BoostInsightModel {
 
 /** Valeurs de repli si la table n'a pas été initialisée (identiques à la migration 026). */
 export const PARAMETRES_BOOST_DEFAUT: BoostParametres = {
-  commission_bps: 2000,
+  commission_bps: 2500,
   commission_min_fcfa: 1000,
   tva_bps: 0,
+  frais_encaissement_bps: 250,
   total_min_fcfa: 3000,
   total_max_fcfa: 500_000,
   duree_min_jours: 3,

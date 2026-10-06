@@ -13,8 +13,9 @@ brouillon → en_attente_paiement → (paiement eBilling confirmé) en_attente_v
 ```
 
 - **Remboursement** : `statut_remboursement` passe de `aucun` à `a_rembourser`, puis à `rembourse`. Le montant à rembourser est stocké dans `montant_a_rembourser_fcfa`.
-  - Refus par l'équipe : le total payé est remboursé.
-  - Clôture ou rejet Meta : le reliquat est remboursé. Il vaut le total payé, moins la dépense réelle (plafonnée au budget média), moins la commission et la TVA gardées au prorata de la dépense (`src/lib/boost/reliquat.ts`).
+  - Refus par l'équipe : le total payé est remboursé, **hors frais d'encaissement**.
+  - Clôture ou rejet Meta : le reliquat est remboursé. Il vaut le total payé, moins la dépense réelle (plafonnée au budget média), moins la commission et la TVA gardées au prorata de la dépense, moins les frais d'encaissement (`src/lib/boost/reliquat.ts`).
+  - **Frais d'encaissement** : `frais_encaissement_bps` (paramètre, 250 = 2,5 %, le taux eBilling) est appliqué au total et figé sur le boost à la soumission (`boosts.frais_encaissement_fcfa`, migration 029). Ces frais ne sont jamais remboursés ; le vendeur en est informé avant de payer. Les boosts soumis avant la migration ont 0 (remboursement intégral). Un paiement en double reste remboursé en totalité.
 - **Transitions autorisées** : `src/lib/boost/transitions.ts`. Chaque changement de statut est conditionnel (`UPDATE … WHERE statut = ANY(...)`), ce qui rend les actions idempotentes.
 
 ## Tarification

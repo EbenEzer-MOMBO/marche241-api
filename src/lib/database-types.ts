@@ -545,6 +545,7 @@ export interface Boost {
   commission_bps: number;
   commission_fcfa: number;
   tva_fcfa: number;
+  frais_encaissement_fcfa: number; // frais eBilling non remboursables, figés à la soumission (inclus dans total_fcfa)
   total_fcfa: number; // montant payé par le vendeur
   depense_fcfa: number;
 
@@ -627,6 +628,7 @@ export interface BoostParametres {
   commission_bps: number;
   commission_min_fcfa: number;
   tva_bps: number;
+  frais_encaissement_bps: number; // frais eBilling retenus sur les remboursements (250 = 2,5 %)
   total_min_fcfa: number;
   total_max_fcfa: number;
   duree_min_jours: number;
