@@ -13,6 +13,25 @@ import { BilletModel } from '../models/billet.model';
 import { BoostModel } from '../models/boost.model';
 import { BoostService } from '../services/boost.service';
 import { logger } from '../utils/logger';
+import { notifier } from '../services/telegram.service';
+import { formaterFcfa } from '../lib/boost/devis';
+import { BoutiqueModel } from '../models/boutique.model';
+
+/** Notification Telegram de l'équipe pour une commande payée (sans attente : n'interrompt jamais le flux). */
+function notifierEquipeCommande(commande: Commande, montantPaye: number, systeme: string | null | undefined): void {
+  void (async () => {
+    const boutique = await BoutiqueModel.getBoutiqueById(commande.boutique_id).catch(() => null);
+    await notifier('commande_payee', {
+      titre: `Commande ${commande.numero_commande} payée`,
+      lignes: [
+        `Boutique : ${boutique?.nom ?? `#${commande.boutique_id}`}`,
+        `Payé : ${formaterFcfa(montantPaye)}${montantPaye < commande.total ? ` sur ${formaterFcfa(commande.total)}` : ''}${systeme ? ` (${systeme})` : ''}`,
+        `Client : ${commande.client_nom}`
+      ],
+      lien: '/commandes'
+    });
+  })().catch(() => undefined);
+}
 
 export class PaiementController {
   private static ebillingTokenCache: { value: string; expiresAt: number } | null = null;
@@ -680,6 +699,7 @@ export class PaiementController {
               logger.error('[PaiementController] Émission des billets:', billetError.message);
             }
             await this.sendConfirmationNotifications(transaction.commande_id, montantPaye, billetsUrl);
+            notifierEquipeCommande(commande, montantPaye, paymentSystemName);
           }
         }
 
@@ -810,6 +830,15 @@ export class PaiementController {
           logger.info(
             `[PaiementController] Réconciliation: TX ${transaction.id} en échec (bill ${billId}, state=${billState})`
           );
+          void notifier('paiement_echoue', {
+            titre: transaction.boost_id ? 'Paiement de boost non abouti' : 'Paiement de commande non abouti',
+            lignes: [
+              `Montant : ${formaterFcfa(transaction.montant)}`,
+              transaction.boost_id ? `Boost #${transaction.boost_id}` : `Commande #${transaction.commande_id}`,
+              `Facture eBilling ${billId} restée « ${billState} » après ${timeoutMinutes} min`
+            ],
+            lien: transaction.boost_id ? `/boosts/${transaction.boost_id}` : '/transactions'
+          });
           continue;
         }
 

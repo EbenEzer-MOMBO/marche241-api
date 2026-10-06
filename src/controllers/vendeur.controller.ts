@@ -9,6 +9,7 @@ import jwt from 'jsonwebtoken';
 import { generateToken } from '../utils/jwt.utils';
 import { hasValidMxRecord } from '../utils/email.utils';
 import { logger } from '../utils/logger';
+import { notifier } from '../services/telegram.service';
 
 export class VendeurController {
   /**
@@ -233,6 +234,11 @@ export class VendeurController {
       }
 
       const nouveauVendeur = await VendeurModel.createVendeur(vendeurData);
+      void notifier('vendeur_inscrit', {
+        titre: 'Nouveau vendeur inscrit',
+        lignes: [nouveauVendeur.nom, `Téléphone : ${nouveauVendeur.telephone}`, nouveauVendeur.ville ? `Ville : ${nouveauVendeur.ville}` : null],
+        lien: '/vendeurs'
+      });
 
       // Enregistrer automatiquement le numéro WhatsApp du vendeur dans les abonnés actifs
       try {

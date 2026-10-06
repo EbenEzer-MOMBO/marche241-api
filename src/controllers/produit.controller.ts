@@ -18,6 +18,19 @@ import {
   verifierDatesEvenement,
   verifierModificationEvenement
 } from '../utils/produit-evenement';
+import { notifier } from '../services/telegram.service';
+
+/** Notification Telegram de l'équipe : un produit (événement) attend la validation (sans attente). */
+function notifierProduitAValider(produit: { id: number; nom: string; boutique_id: number }): void {
+  void (async () => {
+    const boutique = await BoutiqueModel.getBoutiqueById(produit.boutique_id).catch(() => null);
+    await notifier('produit_a_valider', {
+      titre: 'Produit en attente de validation',
+      lignes: [produit.nom, `Boutique : ${boutique?.nom ?? `#${produit.boutique_id}`}`],
+      lien: '/evenements'
+    });
+  })().catch(() => undefined);
+}
 
 export type ActionModerationEvenement = 'publier' | 'depublier' | 'refuser';
 
@@ -392,6 +405,7 @@ export class ProduitController {
       
       const produit = await ProduitModel.createProduit(produitData);
       logger.debug('[ProduitController] Produit créé avec succès:', produit.id);
+      if (produit.statut === 'en_attente_validation') notifierProduitAValider(produit);
       
       res.status(201).json({
         success: true,
@@ -512,6 +526,9 @@ export class ProduitController {
       logger.debug('[ProduitController] Données envoyées à updateProduit:', produitData);
       const produit = await ProduitModel.updateProduit(id, produitData);
       logger.debug('[ProduitController] Produit mis à jour avec succès:', produit.id);
+      if (produit.statut === 'en_attente_validation' && existingProduit.statut !== 'en_attente_validation') {
+        notifierProduitAValider(produit);
+      }
       
       res.status(200).json({
         success: true,

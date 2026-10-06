@@ -51,7 +51,7 @@ describe('Boost Meta — intégration HTTP (Postgres local, dry-run)', { skip: i
     sql = new Client({ connectionString: URL_BASE_TEST });
     await sql.connect();
     await sql.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
-    for (const fichier of ['tests/boost/schema-minimal.sql', 'migrations/026_create_boosts_tables.sql', 'migrations/027_extend_transactions_for_boost.sql', 'migrations/028_create_meta_connexion.sql', 'migrations/028_create_meta_connexion.sql', 'migrations/029_boost_frais_encaissement.sql', 'migrations/029_boost_frais_encaissement.sql', 'migrations/030_create_vendeur_guides.sql', 'migrations/030_create_vendeur_guides.sql']) {
+    for (const fichier of ['tests/boost/schema-minimal.sql', 'migrations/026_create_boosts_tables.sql', 'migrations/027_extend_transactions_for_boost.sql', 'migrations/028_create_meta_connexion.sql', 'migrations/028_create_meta_connexion.sql', 'migrations/029_boost_frais_encaissement.sql', 'migrations/029_boost_frais_encaissement.sql', 'migrations/030_create_vendeur_guides.sql', 'migrations/030_create_vendeur_guides.sql', 'migrations/031_create_notifications_telegram.sql', 'migrations/031_create_notifications_telegram.sql']) {
       await sql.query(fs.readFileSync(path.join(RACINE, fichier), 'utf8'));
     }
     const v1 = await sql.query(`INSERT INTO vendeurs (telephone, nom, email) VALUES ('24177000001', 'Awa', 'awa@test.ga') RETURNING id`);
@@ -395,6 +395,55 @@ describe('Boost Meta — intégration HTTP (Postgres local, dry-run)', { skip: i
     const apres = await appel('GET', '/vendeurs/me/guides', { jeton: jetonVendeur });
     assert.equal(apres.json.guides.publicite.statut, 'termine');
     assert.deepEqual((await appel('GET', '/vendeurs/me/guides', { jeton: jetonAutreVendeur })).json.guides, {}, 'propre à chaque vendeur');
+  });
+
+  test('notifications Telegram : réglages, test et envoi filtré (Telegram simulé)', async () => {
+    assert.equal((await appel('GET', '/notifications/admin/telegram', { jeton: jetonVendeur })).status, 403);
+
+    // Sans jeton de bot : lecture possible, test refusé avec un message clair
+    const sansJeton = await appel('GET', '/notifications/admin/telegram', { cle: CLE_SERVICE });
+    assert.equal(sansJeton.status, 200);
+    assert.equal(sansJeton.json.telegram.verification.jeton_present, false);
+    assert.equal(sansJeton.json.telegram.evenements.length, 11);
+    const invalide = await appel('PUT', '/notifications/admin/telegram', { cle: CLE_SERVICE, corps: { chat_id: 'mon canal', actif: true, evenements: ['inconnu'] } });
+    assert.equal(invalide.status, 400);
+    assert.deepEqual(invalide.json.errors.map((e: any) => e.field).sort(), ['chat_id', 'evenements.0']);
+
+    // Avec un jeton : seuls les appels à api.telegram.org sont simulés
+    const fetchReel = globalThis.fetch;
+    const envois: any[] = [];
+    process.env.TELEGRAM_BOT_TOKEN = '123:jeton-integration';
+    globalThis.fetch = (async (url: any, init?: any) => {
+      const u = String(url);
+      if (!u.startsWith('https://api.telegram.org/')) return fetchReel(url, init);
+      const methode = u.split('/').pop();
+      if (methode === 'sendMessage') envois.push(JSON.parse(init.body));
+      const result = methode === 'getMe' ? { username: 'm241_bot', first_name: 'M241' } : methode === 'getChat' ? { id: -100777, title: 'Équipe M241', type: 'channel' } : { message_id: 1 };
+      return new Response(JSON.stringify({ ok: true, result }), { status: 200 });
+    }) as typeof fetch;
+    try {
+      const enregistre = await appel('PUT', '/notifications/admin/telegram', {
+        cle: CLE_SERVICE,
+        corps: { chat_id: '@equipe_m241', actif: true, evenements: ['boost_a_valider'], modifie_par: 'Testeur' }
+      });
+      assert.equal(enregistre.status, 200);
+      assert.equal(enregistre.json.telegram.config.canal_nom, 'Équipe M241');
+      assert.equal(enregistre.json.telegram.verification.bot.username, 'm241_bot');
+
+      assert.equal((await appel('POST', '/notifications/admin/telegram/test', { cle: CLE_SERVICE })).status, 200);
+      assert.match(envois[0].text, /Test des notifications Marché 241/);
+
+      const nonCoche = await appel('POST', '/notifications/admin/evenement', { cle: CLE_SERVICE, corps: { evenement: 'versement_effectue', titre: 'Versement effectué' } });
+      assert.equal(nonCoche.json.envoye, false);
+      const coche = await appel('POST', '/notifications/admin/evenement', { cle: CLE_SERVICE, corps: { evenement: 'boost_a_valider', titre: 'Boost <à> valider', lignes: ['Chez Awa'] } });
+      assert.equal(coche.json.envoye, true);
+      assert.equal(envois[1].chat_id, '@equipe_m241');
+      assert.match(envois[1].text, /<b>Boost &lt;à&gt; valider<\/b>\nChez Awa/);
+    } finally {
+      globalThis.fetch = fetchReel;
+      delete process.env.TELEGRAM_BOT_TOKEN;
+      await appel('PUT', '/notifications/admin/telegram', { cle: CLE_SERVICE, corps: { chat_id: null, actif: false, evenements: [] } });
+    }
   });
 
   test('liste vendeur par boutique', async () => {

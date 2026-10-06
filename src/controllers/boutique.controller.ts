@@ -7,6 +7,7 @@ import { CreateBoutiqueData, Boutique, StatutBoutique } from '../lib/database-ty
 import { logger } from '../utils/logger';
 import { EmailService } from '../services/email.service';
 import { doitEnregistrerLaVue, getClientIp } from '../utils/view-tracking';
+import { notifier } from '../services/telegram.service';
 
 export class BoutiqueController {
   /**
@@ -216,6 +217,11 @@ export class BoutiqueController {
       }
 
       const nouvelleBoutique = await BoutiqueModel.createBoutique(boutiqueData);
+      void notifier('boutique_creee', {
+        titre: 'Nouvelle boutique créée',
+        lignes: [nouvelleBoutique.nom, `Lien : marche241.ga/${nouvelleBoutique.slug}`],
+        lien: '/boutiques'
+      });
 
       res.status(201).json({
         success: true,

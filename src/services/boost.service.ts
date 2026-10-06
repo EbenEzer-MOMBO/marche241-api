@@ -10,6 +10,8 @@ import {
 } from '../models/boost.model';
 import { Boost, BoostEvenement, BoostParametres, CiblageBoost, ObjectifBoost, TypeCibleBoost } from '../lib/database-types';
 import { budgetParJour, devisDepuisTotal, estTotalDansBornes, formaterFcfa } from '../lib/boost/devis';
+import { notifier } from './telegram.service';
+import { EvenementNotification } from '../config/notifications.config';
 import { calculerCloture, fraisEncaissement, remboursementIntegral } from '../lib/boost/reliquat';
 import { ajouterUtmBoost, estDestinationMarche241 } from '../lib/boost/utm';
 import { dateIso } from '../lib/boost/planning';
@@ -42,6 +44,20 @@ export class BoostErreur extends Error {
 }
 
 const introuvable = () => new BoostErreur('Boost introuvable', 404, 'BOOST_INTROUVABLE');
+
+const LIBELLES_OBJECTIF: Record<string, string> = { trafic: 'Visites', whatsapp: 'Messages WhatsApp', notoriete: 'Visibilité' };
+
+/** Notification Telegram de l'équipe sur un boost (sans attente : n'interrompt jamais le flux). */
+function notifierBoost(evenement: EvenementNotification, boost: Boost, titre: string, lignes: Array<string | null> = []): void {
+  void (async () => {
+    const boutique = await BoutiqueModel.getBoutiqueById(boost.boutique_id).catch(() => null);
+    await notifier(evenement, {
+      titre,
+      lignes: [`Boutique : ${boutique?.nom ?? `#${boost.boutique_id}`}`, `Boost #${boost.id} · ${boost.titre || boost.nom}`, ...lignes],
+      lien: `/boosts/${boost.id}`
+    });
+  })().catch(() => undefined);
+}
 
 const frontendUrl = () => (process.env.FRONTEND_URL || 'https://marche241.ga').replace(/\/$/, '');
 
@@ -309,6 +325,10 @@ export class BoostService {
     if (boost) {
       await BoostEvenementModel.creer(boostId, 'paiement_confirme', 'systeme', { transaction_id: transactionId, montant });
       logger.info(`[BoostService] Paiement confirmé pour le boost #${boostId} (transaction ${transactionId})`);
+      notifierBoost('boost_a_valider', boost, 'Boost payé à valider', [
+        `Payé : ${formaterFcfa(boost.total_fcfa)} · ${boost.duree_jours} jours`,
+        `Objectif : ${LIBELLES_OBJECTIF[boost.objectif] ?? boost.objectif}`
+      ]);
       return;
     }
     const actuel = await BoostModel.getById(boostId);
@@ -324,6 +344,7 @@ export class BoostService {
       });
       await BoostEvenementModel.creer(boostId, 'paiement_en_double', 'systeme', { transaction_id: transactionId, montant });
       logger.warn(`[BoostService] Paiement en double pour le boost #${boostId} (transaction ${transactionId})`);
+      notifierBoost('boost_a_rembourser', actuel, 'Paiement en double à rembourser', [`Montant : ${formaterFcfa(montant)}`]);
     }
   }
 
@@ -392,6 +413,7 @@ export class BoostService {
         valide_par: valideur
       });
       await BoostEvenementModel.creer(boost.id, 'erreur_publication', 'meta', { message });
+      notifierBoost('boost_erreur_meta', boost, 'Publication Meta en échec', [`Erreur : ${message}`]);
       return { boost: resultat ?? boost, erreur: message };
     }
   }
@@ -408,6 +430,10 @@ export class BoostService {
     });
     if (!resultat) throw new BoostErreur("Ce boost n'est pas en attente de validation", 409, 'BOOST_NON_VALIDABLE');
     await BoostEvenementModel.creer(boost.id, 'refuse', 'admin', { note, valide_par: valideur });
+    notifierBoost('boost_a_rembourser', resultat, 'Boost refusé : remboursement à faire', [
+      `À rembourser : ${formaterFcfa(resultat.montant_a_rembourser_fcfa)}`,
+      `Motif : ${note} (${valideur})`
+    ]);
     return resultat;
   }
 
@@ -453,6 +479,15 @@ export class BoostService {
     });
     if (!resultat) throw new BoostErreur('Statut modifié entre-temps', 409, 'BOOST_NON_DIFFUSE');
     await BoostEvenementModel.creer(boost.id, vers === 'rejete_meta' ? 'rejete_meta' : 'termine', acteur, { ...cloture, motif: motif ?? undefined });
+    const remboursement = cloture.montant_a_rembourser_fcfa > 0 ? `À rembourser : ${formaterFcfa(cloture.montant_a_rembourser_fcfa)}` : null;
+    if (vers === 'rejete_meta') {
+      notifierBoost('boost_rejete_meta', resultat, 'Publicité rejetée par Meta', [`Motif : ${motif ?? 'non précisé'}`, remboursement]);
+    } else if (remboursement) {
+      notifierBoost('boost_a_rembourser', resultat, 'Boost terminé : reliquat à rembourser', [
+        `Dépensé : ${formaterFcfa(cloture.depense_fcfa)} sur ${formaterFcfa(boost.budget_media_fcfa)}`,
+        remboursement
+      ]);
+    }
     return resultat;
   }
 
