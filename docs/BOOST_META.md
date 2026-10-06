@@ -57,7 +57,7 @@ Les requêtes de transactions qui joignent `commandes` excluent naturellement le
 - **Publication** : la campagne, l'ensemble de publicités et la publicité sont créés en `PAUSED`. Ils ne passent en `ACTIVE` qu'après le verrou du statut `actif` en base. Si l'activation échoue, le boost repasse en `erreur` avec les identifiants Meta conservés (la republication réactive la même campagne).
   - Budget `lifetime` exprimé dans la devise du compte publicitaire.
   - `advantage_audience: 0`.
-  - Villes et centres d'intérêt résolus via `search` (`adgeolocation`, `adinterest`).
+  - Villes et centres d'intérêt : identifiants Meta **figés** et vérifiés dans `src/config/ciblage-boost.config.ts` (aucune recherche à la publication). L'estimation d'audience (`reachestimate`) utilise exactement le même ciblage. Les intérêts sont regroupés par thème (`groupes_interets` dans `GET /boosts/parametres`).
 - **Synchronisation** (`GET /cron/boosts/sync` et node-cron toutes les 3 h) :
   - insights jour par jour (`time_increment=1`) depuis la date de début ;
   - lecture du statut effectif de la publicité : `DISAPPROVED` entraîne `rejete_meta` ;

@@ -52,8 +52,8 @@ export async function estimerAudience(ciblage: CiblageBoost): Promise<Estimation
   const config = await configEstimation();
   if (!config) return { min: null, max: null, disponible: false };
   try {
-    // Les villes et intérêts ne sont pas résolus ici (coût en appels) : estimation au niveau pays/âge/sexe/langue.
-    const spec = construireTargeting(ciblage, [], []);
+    // Même ciblage que la publication (villes et intérêts compris), sans l'option Advantage+.
+    const spec = construireTargeting(ciblage);
     delete spec.targeting_automation;
     const json = await metaGraphGet<{ data?: unknown }>(
       `act_${config.adAccountId}/reachestimate`,

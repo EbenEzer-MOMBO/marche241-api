@@ -106,14 +106,17 @@ test('correspondance des objectifs', () => {
   assert.equal(objectifMeta('notoriete').objective, 'OUTCOME_AWARENESS');
 });
 
-test('targeting : villes prioritaires sur pays, un seul sexe, intérêts', () => {
-  const t = construireTargeting(input.ciblage, ['k1'], ['i1']);
-  assert.deepEqual(t.geo_locations, { cities: [{ key: 'k1', radius: 25, distance_unit: 'kilometer' }] });
+test('targeting : villes et intérêts traduits en identifiants Meta figés, un seul sexe', () => {
+  const t = construireTargeting({ ...input.ciblage, interets: ['mode', 'animes', 'inconnu'] });
+  assert.deepEqual(t.geo_locations, { cities: [{ key: '800232', radius: 25, distance_unit: 'kilometer' }] });
   assert.deepEqual(t.genders, [2]);
   assert.deepEqual(t.locales, [6]);
-  assert.deepEqual(t.flexible_spec, [{ interests: [{ id: 'i1' }] }]);
+  assert.deepEqual(t.flexible_spec, [
+    { interests: ['6003348604581', '6003446154680', '6003266266843', '6003143359761', '6002891048622'].map((id) => ({ id })) }
+  ]);
   assert.deepEqual(t.targeting_automation, { advantage_audience: 0 });
-  const sansVille = construireTargeting({ ...input.ciblage, sexes: ['homme', 'femme'], pays: [] }, [], []);
+  const sansVille = construireTargeting({ ...input.ciblage, villes: [], interets: [], sexes: ['homme', 'femme'], pays: [] });
+  assert.equal(sansVille.flexible_spec, undefined);
   assert.deepEqual(sansVille.geo_locations, { countries: ['GA'] });
   assert.equal(sansVille.genders, undefined);
 });
@@ -142,8 +145,9 @@ test('publication réelle : création en PAUSED sans activation, budget en XAF',
   assert.equal(adset.lifetime_budget, '25000');
   assert.equal(adset.destination_type, 'WEBSITE');
   assert.equal(adset.promoted_object, undefined);
-  assert.deepEqual(JSON.parse(adset.targeting).geo_locations.cities[0].key, 'geo_Libreville');
-  assert.deepEqual(JSON.parse(adset.targeting).flexible_spec, [{ interests: [{ id: 'int_Fashion' }] }]);
+  assert.equal(JSON.parse(adset.targeting).geo_locations.cities[0].key, '800232');
+  assert.equal(JSON.parse(adset.targeting).flexible_spec[0].interests.length, 3);
+  assert.equal(appels.filter((a) => a.path === 'search').length, 0, 'aucune recherche à la publication');
   const creative = JSON.parse(posts[2].body.creative);
   assert.equal(creative.object_story_spec.page_id, 'page_1');
   assert.equal(creative.object_story_spec.link_data.link, input.urlDestination);
