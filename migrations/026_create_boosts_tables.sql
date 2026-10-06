@@ -6,6 +6,54 @@
 -- Idempotente.
 
 -- ============================================
+-- 0. Archivage de l'ancien schéma boost (branche cursor/boosts-*, ex-migrations 019/020)
+-- ============================================
+-- La base principale contient déjà des tables boosts / boost_evenements / boost_stats incompatibles
+-- (colonnes forfait_code, prix_vendeur_fcfa…, statuts en_attente_revue, rejete…). Rien n'est supprimé :
+-- les objets sont renommés en *_v0 pour que le nouveau schéma puisse être créé. La FK
+-- transactions.boost_id est recréée vers la nouvelle table en 027.
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'boosts' AND column_name = 'forfait_code'
+    ) THEN
+        IF EXISTS (SELECT 1 FROM transactions WHERE boost_id IS NOT NULL) THEN
+            RAISE EXCEPTION 'Migration 026 : des transactions référencent l''ancien schéma boost, reprise manuelle nécessaire';
+        END IF;
+
+        ALTER TABLE transactions DROP CONSTRAINT IF EXISTS transactions_boost_id_fkey;
+
+        ALTER TABLE IF EXISTS boost_stats RENAME TO boost_stats_v0;
+        ALTER TABLE IF EXISTS boost_evenements RENAME TO boost_evenements_v0;
+        ALTER TABLE boosts RENAME TO boosts_v0;
+
+        ALTER INDEX IF EXISTS boosts_pkey RENAME TO boosts_v0_pkey;
+        ALTER INDEX IF EXISTS boost_evenements_pkey RENAME TO boost_evenements_v0_pkey;
+        ALTER INDEX IF EXISTS boost_stats_pkey RENAME TO boost_stats_v0_pkey;
+        ALTER INDEX IF EXISTS idx_boosts_boutique_id RENAME TO idx_boosts_v0_boutique_id;
+        ALTER INDEX IF EXISTS idx_boosts_vendeur_id RENAME TO idx_boosts_v0_vendeur_id;
+        ALTER INDEX IF EXISTS idx_boosts_statut RENAME TO idx_boosts_v0_statut;
+        ALTER INDEX IF EXISTS idx_boost_evenements_boost_id RENAME TO idx_boost_evenements_v0_boost_id;
+        ALTER INDEX IF EXISTS idx_boost_stats_boost_id RENAME TO idx_boost_stats_v0_boost_id;
+
+        ALTER SEQUENCE IF EXISTS boosts_id_seq RENAME TO boosts_v0_id_seq;
+        ALTER SEQUENCE IF EXISTS boost_evenements_id_seq RENAME TO boost_evenements_v0_id_seq;
+        ALTER SEQUENCE IF EXISTS boost_stats_id_seq RENAME TO boost_stats_v0_id_seq;
+
+        IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'statut_boost') THEN
+            ALTER TYPE statut_boost RENAME TO statut_boost_v0;
+        END IF;
+        IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'type_boost') THEN
+            ALTER TYPE type_boost RENAME TO type_boost_v0;
+        END IF;
+
+        RAISE NOTICE 'Migration 026 : ancien schéma boost archivé (boosts_v0, boost_evenements_v0, boost_stats_v0)';
+    END IF;
+END $$;
+
+-- ============================================
 -- 1. Types énumérés
 -- ============================================
 

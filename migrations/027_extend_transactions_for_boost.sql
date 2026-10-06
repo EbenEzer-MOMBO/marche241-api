@@ -18,6 +18,15 @@ END $$;
 
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS boost_id INTEGER NULL REFERENCES boosts(id);
 
+-- Si la colonne existait déjà (ancien schéma boost archivé par 026), sa FK a été retirée : la recréer vers boosts.
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'transactions_boost_id_fkey') THEN
+        ALTER TABLE transactions
+            ADD CONSTRAINT transactions_boost_id_fkey FOREIGN KEY (boost_id) REFERENCES boosts(id);
+    END IF;
+END $$;
+
 CREATE INDEX IF NOT EXISTS idx_transactions_boost_id ON transactions(boost_id) WHERE boost_id IS NOT NULL;
 
 COMMENT ON COLUMN transactions.boost_id IS 'Boost publicitaire payé par cette transaction (type_paiement = boost) ; NULL pour une transaction de commande';
