@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { VendeurController } from '../controllers/vendeur.controller';
 import { PasskeyController } from '../controllers/passkey.controller';
+import { GuideController } from '../controllers/guide.controller';
+import { guideParamSchema, guideStatutSchema } from '../utils/validation.schemas.guide';
 import { auth, isAdmin, isSelfVendeur } from '../middlewares/auth.middleware';
 import { validate, validateParams, validateQuery } from '../middlewares/validation.middleware';
 import { validateTurnstile } from '../middlewares/captcha.middleware';
@@ -509,5 +511,44 @@ router.post('/verification', registrationLimiter, validate(verificationCodeSchem
  * @access  Private (vendeur authentifié)
  */
 router.patch('/me/ping', auth, VendeurController.ping);
+
+/**
+ * @swagger
+ * /api/v1/vendeurs/me/guides:
+ *   get:
+ *     summary: Visites guidées terminées ou passées par le vendeur connecté
+ *     tags: [Vendeurs]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: "{ success, guides: { publicite: { statut: 'termine' | 'ignore', date_modification } } } — un guide absent n'a pas encore été vu"
+ *       401:
+ *         description: Non authentifié
+ * /api/v1/vendeurs/me/guides/{guide}:
+ *   put:
+ *     summary: Enregistrer l'issue d'une visite guidée (une visite terminée ne redevient pas « passée »)
+ *     tags: [Vendeurs]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - { in: path, name: guide, required: true, schema: { type: string, enum: [publicite] } }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [statut]
+ *             properties:
+ *               statut: { type: string, enum: [termine, ignore] }
+ *     responses:
+ *       200:
+ *         description: "{ success, guide }"
+ *       400:
+ *         description: VALIDATION_ERROR (visite inconnue ou statut invalide)
+ */
+router.get('/me/guides', auth, GuideController.lister);
+router.put('/me/guides/:guide', auth, validateParams(guideParamSchema), validate(guideStatutSchema), GuideController.enregistrer);
 
 export default router;

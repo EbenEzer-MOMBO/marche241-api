@@ -14,7 +14,7 @@ npm run build    # tsc + copie de src/public → dist/  — à lancer pour véri
 npm start        # node dist/index.js
 ```
 
-- Pas de suite de tests : `npm test` échoue volontairement. Les scripts `test-*.ts` à la racine sont des scripts manuels (`npx ts-node test-xxx.ts`) qui frappent une vraie base — ne pas les lancer sans accord.
+- `npm test` : tests unitaires `node:test` via `tsx` (`src/**/*.test.ts`, sans base ni réseau). Le test d'intégration du boost (`src/services/boost.integration.test.ts`) ne s'exécute que si `BOOST_IT_DATABASE_URL` vise une base Postgres **locale** jetable (cf. `docs/BOOST_META.md`). Les scripts `test-*.ts` à la racine sont des scripts manuels (`npx ts-node test-xxx.ts`) qui frappent une vraie base — ne pas les lancer sans accord.
 - Vérification minimale après modification : `npx tsc --noEmit`.
 - Swagger : `http://localhost:3001/api/docs` (JSON : `/api/docs.json`).
 

@@ -10,7 +10,28 @@ import { WhatsAppService } from '../services/whatsapp.service';
 import { PushService } from '../services/push.service';
 import { BilletService } from '../services/billet.service';
 import { BilletModel } from '../models/billet.model';
+import { BoostModel } from '../models/boost.model';
+import { BoostService } from '../services/boost.service';
 import { logger } from '../utils/logger';
+import { notifier } from '../services/telegram.service';
+import { formaterFcfa } from '../lib/boost/devis';
+import { BoutiqueModel } from '../models/boutique.model';
+
+/** Notification Telegram de l'équipe pour une commande payée (sans attente : n'interrompt jamais le flux). */
+function notifierEquipeCommande(commande: Commande, montantPaye: number, systeme: string | null | undefined): void {
+  void (async () => {
+    const boutique = await BoutiqueModel.getBoutiqueById(commande.boutique_id).catch(() => null);
+    await notifier('commande_payee', {
+      titre: `Commande ${commande.numero_commande} payée`,
+      lignes: [
+        `Boutique : ${boutique?.nom ?? `#${commande.boutique_id}`}`,
+        `Payé : ${formaterFcfa(montantPaye)}${montantPaye < commande.total ? ` sur ${formaterFcfa(commande.total)}` : ''}${systeme ? ` (${systeme})` : ''}`,
+        `Client : ${commande.client_nom}`
+      ],
+      lien: '/commandes'
+    });
+  })().catch(() => undefined);
+}
 
 export class PaiementController {
   private static ebillingTokenCache: { value: string; expiresAt: number } | null = null;
@@ -46,6 +67,22 @@ export class PaiementController {
     commandePrechargee?: Awaited<ReturnType<typeof CommandeModel.getCommandeById>> | null
   ): Promise<{ isValid: boolean, message?: string, commande?: Awaited<ReturnType<typeof CommandeModel.getCommandeById>> }> {
     try {
+      // Transaction de boost publicitaire : le montant doit être le total figé à la soumission
+      if (transaction.boost_id) {
+        const boost = await BoostModel.getById(transaction.boost_id);
+        if (!boost) {
+          return { isValid: false, message: `Boost ${transaction.boost_id} non trouvé` };
+        }
+        if (Math.abs(boost.total_fcfa - transaction.montant) > 1) {
+          logger.error(`[PaiementController] Montant boost incorrect: ${transaction.montant} au lieu de ${boost.total_fcfa}`);
+          return {
+            isValid: false,
+            message: `Montant de la transaction (${transaction.montant} FCFA) non conforme au montant du boost (${boost.total_fcfa} FCFA)`
+          };
+        }
+        return { isValid: true };
+      }
+
       const commandeId = transaction.commande_id;
       if (!commandeId) {
         return { isValid: true };
@@ -284,22 +321,10 @@ export class PaiementController {
           reference_operateur: billId
         });
 
-        const cardRedirectBase = process.env.EBILLING_CARD_REDIRECT_BASE || 'https://staging.billing-easy.net/';
-        const cardOperator = process.env.EBILLING_CARD_OPERATOR || 'ORABANK_NG';
-
-        const returnWithBill = new URL(return_url);
-        returnWithBill.searchParams.set('bill_id', billId);
-
-        const redirectUrl = new URL(cardRedirectBase);
-        redirectUrl.searchParams.set('invoice', billId);
-        redirectUrl.searchParams.set('operator', cardOperator);
-        redirectUrl.searchParams.set('redirect', '1');
-        redirectUrl.searchParams.set('redirect_url', returnWithBill.toString());
-
         res.status(200).json({
           success: true,
           redirect: true,
-          url: redirectUrl.toString(),
+          url: PaiementController.urlRedirectionCarte(billId, return_url),
           bill_id: billId,
           message: 'Redirection vers la plateforme de paiement Visa...'
         });
@@ -381,7 +406,26 @@ export class PaiementController {
    * @private
    * @returns Jeton d'accès
    */
-  private static async getAccessToken(): Promise<string> {
+  /**
+   * URL de la page de paiement carte eBilling ; `bill_id` est ajouté à l'URL de retour.
+   */
+  static urlRedirectionCarte(billId: string, returnUrl: string): string {
+    const cardRedirectBase = process.env.EBILLING_CARD_REDIRECT_BASE || 'https://staging.billing-easy.net/';
+    const cardOperator = process.env.EBILLING_CARD_OPERATOR || 'ORABANK_NG';
+
+    const returnWithBill = new URL(returnUrl);
+    returnWithBill.searchParams.set('bill_id', billId);
+
+    const redirectUrl = new URL(cardRedirectBase);
+    redirectUrl.searchParams.set('invoice', billId);
+    redirectUrl.searchParams.set('operator', cardOperator);
+    redirectUrl.searchParams.set('redirect', '1');
+    redirectUrl.searchParams.set('redirect_url', returnWithBill.toString());
+
+    return redirectUrl.toString();
+  }
+
+  static async getAccessToken(): Promise<string> {
     try {
       const cached = PaiementController.ebillingTokenCache;
       if (cached && Date.now() < cached.expiresAt) {
@@ -426,7 +470,7 @@ export class PaiementController {
    * @param accessToken Jeton d'accès
    * @returns Réponse de l'API
    */
-  private static async creerFacture(paymentData: any, accessToken: string): Promise<any> {
+  static async creerFacture(paymentData: any, accessToken: string): Promise<any> {
     try {
       const paymentUrl = process.env.EBILLING_CREATE_INVOICE_URL || "https://staging.billing-easy.net/shap/api/v1/merchant/create-invoice";
 
@@ -460,7 +504,7 @@ export class PaiementController {
    * @param accessToken Jeton d'accès
    * @returns Réponse de l'API
    */
-  private static async envoyerUSSDPush(ussdData: any, accessToken: string): Promise<any> {
+  static async envoyerUSSDPush(ussdData: any, accessToken: string): Promise<any> {
     try {
       const ussdPushUrl = process.env.EBILLING_SEND_USSD_PUSH_URL || "https://staging.billing-easy.net/shap/api/v1/merchant/send-ussd-push";
 
@@ -597,6 +641,15 @@ export class PaiementController {
 
         await TransactionModel.updateTransaction(transaction.id, updateData);
 
+        // Paiement à l'acte d'un boost publicitaire : passage en file de validation (pas de notification de commande)
+        if (transaction.boost_id) {
+          try {
+            await BoostService.confirmerPaiement(transaction.boost_id, transaction.id, transaction.montant);
+          } catch (boostError: any) {
+            logger.error(`[PaiementController] Confirmation du boost ${transaction.boost_id}:`, boostError.message);
+          }
+        }
+
         if (transaction.commande_id && commande) {
           const montantPaye = await CommandeModel.getMontantPaye(transaction.commande_id);
 
@@ -646,6 +699,7 @@ export class PaiementController {
               logger.error('[PaiementController] Émission des billets:', billetError.message);
             }
             await this.sendConfirmationNotifications(transaction.commande_id, montantPaye, billetsUrl);
+            notifierEquipeCommande(commande, montantPaye, paymentSystemName);
           }
         }
 
@@ -758,7 +812,8 @@ export class PaiementController {
             (transaction as any).commande?.client_telephone ||
             transaction.numero_telephone;
 
-          if (phone) {
+          // Le message d'échec WhatsApp concerne une commande : pas d'envoi pour un boost
+          if (phone && !transaction.boost_id) {
             try {
               const messageId = await WhatsAppService.notifyPaymentFailed(phone);
               if (messageId) {
@@ -775,6 +830,15 @@ export class PaiementController {
           logger.info(
             `[PaiementController] Réconciliation: TX ${transaction.id} en échec (bill ${billId}, state=${billState})`
           );
+          void notifier('paiement_echoue', {
+            titre: transaction.boost_id ? 'Paiement de boost non abouti' : 'Paiement de commande non abouti',
+            lignes: [
+              `Montant : ${formaterFcfa(transaction.montant)}`,
+              transaction.boost_id ? `Boost #${transaction.boost_id}` : `Commande #${transaction.commande_id}`,
+              `Facture eBilling ${billId} restée « ${billState} » après ${timeoutMinutes} min`
+            ],
+            lien: transaction.boost_id ? `/boosts/${transaction.boost_id}` : '/transactions'
+          });
           continue;
         }
 

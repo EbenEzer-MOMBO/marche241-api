@@ -15,6 +15,8 @@ import cronRoutes from './cron.routes';
 import politiqueRoutes from './politique.routes';
 import emailRoutes from './email.routes';
 import billetRoutes from './billet.routes';
+import boostRoutes from './boost.routes';
+import notificationRoutes from './notification.routes';
 import { CronController } from '../controllers/cron.controller';
 import { requireCronSecret } from '../middlewares/cron-auth.middleware';
 
@@ -67,6 +69,12 @@ router.use(`${apiPrefix}/emails`, emailRoutes);
 
 // Consultation publique des billets événement (jeton)
 router.use(`${apiPrefix}/billets`, billetRoutes);
+
+// Boost publicitaire Meta Ads (vendeur JWT + back-office x-service-key)
+router.use(`${apiPrefix}/boosts`, boostRoutes);
+
+// Notifications Telegram de l'équipe (back-office)
+router.use(`${apiPrefix}/notifications`, notificationRoutes);
 
 // Routes pour les tâches cron
 router.use(`${apiPrefix}/cron`, cronRoutes);

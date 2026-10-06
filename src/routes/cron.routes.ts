@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { CronController } from '../controllers/cron.controller';
 import { auth, isAdmin } from '../middlewares/auth.middleware';
 import { requireCronSecret } from '../middlewares/cron-auth.middleware';
+import { BoostController } from '../controllers/boost.controller';
 
 const router = Router();
 
@@ -20,5 +21,6 @@ router.get('/expirer-transactions/execute', requireCronSecret, CronController.ex
 router.get('/nettoyer-vues', requireCronSecret, CronController.executeNettoyerVues);
 router.get('/nettoyer-vues-mois', requireCronSecret, CronController.executeNettoyerVuesMoisEnCours);
 router.get('/annuler-commandes-orphelines', requireCronSecret, CronController.executeAnnulerCommandesOrphelines);
+router.get('/boosts/sync', requireCronSecret, BoostController.synchroniser);
 
 export default router;

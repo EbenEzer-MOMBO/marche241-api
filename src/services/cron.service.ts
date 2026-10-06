@@ -25,7 +25,33 @@ export class CronService {
     // Tâche pour annuler les commandes orphelines
     this.scheduleAnnulerCommandesOrphelines();
 
+    // Synchronisation des boosts Meta (insights, revue Meta, clôture)
+    this.scheduleSyncBoosts();
+
     console.log('[CronService] Tâches planifiées initialisées avec succès');
+  }
+
+  /**
+   * Synchronise les boosts publicitaires en diffusion toutes les 3 heures (à la 20e minute).
+   * Équivalent du cron /api/cron/meta-sync de boost_meta.
+   */
+  static scheduleSyncBoosts(): void {
+    const jobName = 'sync-boosts-meta';
+
+    const task = cron.schedule('20 */3 * * *', async () => {
+      try {
+        const { BoostService } = await import('./boost.service');
+        const result = await BoostService.synchroniserTous();
+        console.log(
+          `[CronService] Synchro boosts : ${result.examines} examiné(s), ${result.termines} terminé(s), ${result.rejetes} rejeté(s) par Meta, ${result.erreurs} erreur(s)`
+        );
+      } catch (error) {
+        console.error('[CronService] Erreur lors de la synchro des boosts:', error);
+      }
+    });
+
+    this.jobs.set(jobName, task);
+    console.log(`[CronService] Tâche planifiée: ${jobName} - Toutes les 3 heures`);
   }
 
   /**

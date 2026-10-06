@@ -36,7 +36,8 @@ const connectionString = buildConnectionString(rawConnectionString);
  */
 export const pool = new Pool({
   connectionString,
-  ssl: { rejectUnauthorized: true },
+  // DATABASE_SSL=false uniquement pour une base Postgres locale de test (tests d'intégration)
+  ssl: process.env.DATABASE_SSL === 'false' ? false : { rejectUnauthorized: true },
   max: Number(process.env.DATABASE_POOL_MAX || 10),
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 10000
