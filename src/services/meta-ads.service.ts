@@ -1,7 +1,7 @@
 import { randomBytes } from 'crypto';
 import { MetaGraphError, metaGraphGet, metaGraphPost, META_GRAPH_VERSION } from '../lib/meta/graph';
 import { fenetrePublication } from '../lib/boost/planning';
-import { interetParCode, nomVille } from '../config/ciblage-boost.config';
+import { clesMetaVilles, idsMetaInterets } from '../config/ciblage-boost.config';
 import { CiblageBoost, ObjectifBoost } from '../lib/database-types';
 import { logger } from '../utils/logger';
 import {
@@ -22,7 +22,7 @@ import {
  *   connexion incomplète bloque la publication (409 META_NON_CONFIGURE) au lieu de simuler en silence ;
  * - insights jour par jour (`time_increment=1`) sur toute la période (boost_meta ne lisait que « today ») ;
  * - lecture du statut effectif de la publicité (revue Meta : DISAPPROVED…) ;
- * - intérêts résolus par recherche (`adinterest`) plutôt que par IDs en dur.
+ * - villes et intérêts traduits en identifiants Meta figés et vérifiés (config/ciblage-boost.config).
  */
 
 export { estModeSimule } from './meta-connexion.service';
@@ -77,11 +77,12 @@ export function objectifMeta(objectif: ObjectifBoost) {
   }
 }
 
+/** Ciblage Meta d'un boost : utilisé à l'identique pour la publication et l'estimation d'audience. */
 export function construireTargeting(
-  ciblage: Pick<CiblageBoost, 'pays' | 'age_min' | 'age_max' | 'sexes' | 'langues'>,
-  clesVilles: string[],
-  idsInterets: string[]
+  ciblage: Pick<CiblageBoost, 'pays' | 'villes' | 'age_min' | 'age_max' | 'sexes' | 'langues' | 'interets'>
 ): Record<string, unknown> {
+  const clesVilles = clesMetaVilles(ciblage.villes ?? []);
+  const idsInterets = idsMetaInterets(ciblage.interets ?? []);
   const pays = ciblage.pays?.length ? ciblage.pays : ['GA'];
   const targeting: Record<string, unknown> = {
     geo_locations: clesVilles.length
@@ -116,47 +117,6 @@ export async function deviseCompte(config?: MetaConfig): Promise<string> {
   if (!c.adAccountId || !c.accessToken) return 'XAF';
   const json = await metaGraphGet<{ currency?: string }>(`act_${c.adAccountId}`, { fields: 'currency' }, c.accessToken, optionsGraph(c));
   return String(json.currency ?? 'USD').toUpperCase();
-}
-
-async function resoudreVilles(cles: string[], config: MetaConfig): Promise<string[]> {
-  const resolues: string[] = [];
-  for (const cle of cles) {
-    try {
-      const json = await metaGraphGet<{ data?: Array<{ key?: string; country_code?: string }> }>(
-        'search',
-        { type: 'adgeolocation', location_types: ['city'], q: nomVille(cle), country_code: 'GA' },
-        config.accessToken,
-        optionsGraph(config)
-      );
-      const match = json.data?.find((row) => row.key && (row.country_code === 'GA' || !row.country_code));
-      resolues.push(match?.key ? String(match.key) : cle);
-    } catch {
-      resolues.push(cle);
-    }
-  }
-  return resolues;
-}
-
-async function resoudreInterets(codes: string[], config: MetaConfig): Promise<string[]> {
-  const ids: string[] = [];
-  for (const code of codes) {
-    const interet = interetParCode(code);
-    if (!interet) continue;
-    try {
-      const json = await metaGraphGet<{ data?: Array<{ id?: string; name?: string }> }>(
-        'search',
-        { type: 'adinterest', q: interet.requete, limit: 1, locale: 'fr_FR' },
-        config.accessToken,
-        optionsGraph(config)
-      );
-      const id = json.data?.[0]?.id;
-      if (id) ids.push(String(id));
-      else logger.warn(`[MetaAds] Intérêt introuvable chez Meta : ${code}`);
-    } catch (err: any) {
-      logger.warn(`[MetaAds] Résolution de l'intérêt ${code} impossible : ${err?.message}`);
-    }
-  }
-  return ids;
 }
 
 export interface PublicationInput {
@@ -225,11 +185,6 @@ export async function publierBoost(input: PublicationInput): Promise<Publication
   );
   if (!campaignId) throw new MetaGraphError('Campagne Meta sans identifiant', 'campaigns');
 
-  const [villes, interets] = await Promise.all([
-    resoudreVilles(input.ciblage.villes ?? [], config),
-    resoudreInterets(input.ciblage.interets ?? [], config)
-  ]);
-
   const adSetBody: Record<string, unknown> = {
     name: `${input.nom} — ensemble`,
     campaign_id: campaignId,
@@ -238,7 +193,7 @@ export async function publierBoost(input: PublicationInput): Promise<Publication
     bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
     lifetime_budget: fcfaVersMontantMineur(input.budgetMediaFcfa, devise, input.fxXafParUsd),
     ...fenetre,
-    targeting: construireTargeting(input.ciblage, villes, interets),
+    targeting: construireTargeting(input.ciblage),
     status: 'PAUSED'
   };
   if (input.objectif === 'whatsapp') {

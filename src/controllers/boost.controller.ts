@@ -12,6 +12,7 @@ import { LIBELLES_STATUT_BOOST } from '../lib/boost/transitions';
 import { Boost } from '../lib/database-types';
 import {
   DUREES_BOOST,
+  GROUPES_INTERETS,
   INTERETS_CIBLAGE,
   LANGUES_CIBLAGE,
   PAYS_CIBLAGE,
@@ -84,9 +85,10 @@ export class BoostController {
           types: { plateforme: false, meta: true },
           durees: DUREES_BOOST,
           pays: PAYS_CIBLAGE,
-          villes: VILLES_GABON,
+          villes: VILLES_GABON.map(({ cle, nom }) => ({ cle, nom })),
           langues: LANGUES_CIBLAGE,
-          interets: INTERETS_CIBLAGE.map(({ code, nom }) => ({ code, nom })),
+          interets: INTERETS_CIBLAGE.map(({ code, nom, groupe }) => ({ code, nom, groupe })),
+          groupes_interets: GROUPES_INTERETS,
           statuts: LIBELLES_STATUT_BOOST,
           mode_simule: estModeSimule()
         }
