@@ -16,6 +16,11 @@ import {
  * boost_parametres, et transactions de type 'boost').
  */
 
+export type BoostListeVendeur = Boost & {
+  produit_nom: string | null;
+  totaux: { impressions: number; clics: number; messages: number };
+};
+
 /** Colonnes modifiables via `mettreAJour` / `creer` (noms interpolés : liste blanche obligatoire). */
 const COLONNES_AUTORISEES = [
   'type_cible',
@@ -120,9 +125,23 @@ export class BoostModel {
     return rows[0] ?? null;
   }
 
-  static async listerParBoutique(boutiqueId: number): Promise<Boost[]> {
-    const { rows } = await query<Boost>(
-      `SELECT bo.* FROM boosts bo WHERE bo.boutique_id = $1 ORDER BY bo.date_creation DESC`,
+  /** Liste vendeur : chaque boost avec le nom du produit promu et ses totaux de diffusion. */
+  static async listerParBoutique(boutiqueId: number): Promise<BoostListeVendeur[]> {
+    const { rows } = await query<BoostListeVendeur>(
+      `SELECT bo.*, pr.nom AS produit_nom,
+              json_build_object(
+                'impressions', COALESCE(st.impressions, 0),
+                'clics', COALESCE(st.clics, 0),
+                'messages', COALESCE(st.messages, 0)
+              ) AS totaux
+       FROM boosts bo
+       LEFT JOIN produits pr ON pr.id = bo.produit_id
+       LEFT JOIN LATERAL (
+         SELECT SUM(impressions)::int AS impressions, SUM(clics)::int AS clics, SUM(messages)::int AS messages
+         FROM boost_insights_jour WHERE boost_id = bo.id
+       ) st ON TRUE
+       WHERE bo.boutique_id = $1
+       ORDER BY bo.date_modification DESC`,
       [boutiqueId]
     );
     return rows;

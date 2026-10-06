@@ -385,6 +385,11 @@ describe('Boost Meta — intégration HTTP (Postgres local, dry-run)', { skip: i
     const r = await appel('GET', `/boosts/boutique/${ids.boutique}`, { jeton: jetonVendeur });
     assert.equal(r.status, 200);
     assert.equal(r.json.boosts.length, 3);
+    // Détails rapides : produit promu et totaux de diffusion (insights cumulés)
+    const parProduit = r.json.boosts.find((b: any) => b.type_cible === 'produit');
+    assert.equal(parProduit.produit_nom, 'Robe wax');
+    const diffuse = r.json.boosts.find((b: any) => b.id === boostId);
+    assert.deepEqual(diffuse.totaux, { impressions: 50_000, clics: 240, messages: 0 });
     assert.equal((await appel('GET', `/boosts/boutique/${ids.boutique}`, { jeton: jetonAutreVendeur })).status, 403);
   });
 });
