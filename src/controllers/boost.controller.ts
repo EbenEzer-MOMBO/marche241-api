@@ -6,7 +6,7 @@ import { estimerAudience, estimerImpressionsJour } from '../services/meta-estima
 import { santeMeta, estModeSimule } from '../services/meta-ads.service';
 import { decouvrir, enregistrerChoix, MetaConnexionErreur, verifier } from '../services/meta-connexion.service';
 import { MetaGraphError } from '../lib/meta/graph';
-import { budgetParJour, devisDepuisTotal } from '../lib/boost/devis';
+import { budgetParJour, devisDepuisTotal, estTotalDansBornes, formaterFcfa } from '../lib/boost/devis';
 import { fraisEncaissement } from '../lib/boost/reliquat';
 import { LIBELLES_STATUT_BOOST } from '../lib/boost/transitions';
 import { Boost } from '../lib/database-types';
@@ -113,6 +113,16 @@ export class BoostController {
     try {
       const { total_fcfa, duree_jours } = corps(req);
       const p = await BoostParametresModel.lire();
+      if (!estTotalDansBornes(total_fcfa, p.total_min_fcfa, p.total_max_fcfa)) {
+        const message = `Le montant doit être compris entre ${formaterFcfa(p.total_min_fcfa)} et ${formaterFcfa(p.total_max_fcfa)}`;
+        res.status(400).json({
+          success: false,
+          message,
+          code: 'VALIDATION_ERROR',
+          errors: [{ field: 'total_fcfa', code: 'BOOST_CHAMP_INVALIDE', message }]
+        });
+        return;
+      }
       const devis = devisDepuisTotal(total_fcfa, p.commission_bps, p.commission_min_fcfa, p.tva_bps);
       res.json({
         success: true,

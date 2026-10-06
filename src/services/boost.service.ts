@@ -9,7 +9,7 @@ import {
   DonneesBoost
 } from '../models/boost.model';
 import { Boost, BoostEvenement, BoostParametres, CiblageBoost, ObjectifBoost, TypeCibleBoost } from '../lib/database-types';
-import { budgetParJour, devisDepuisTotal, estTotalDansBornes } from '../lib/boost/devis';
+import { budgetParJour, devisDepuisTotal, estTotalDansBornes, formaterFcfa } from '../lib/boost/devis';
 import { calculerCloture, fraisEncaissement, remboursementIntegral } from '../lib/boost/reliquat';
 import { ajouterUtmBoost, estDestinationMarche241 } from '../lib/boost/utm';
 import { dateIso } from '../lib/boost/planning';
@@ -182,7 +182,7 @@ export class BoostService {
       erreurs.push({ field: 'url_destination', message: 'Lien de destination requis' });
     }
     if (!estTotalDansBornes(boost.total_fcfa, parametres.total_min_fcfa, parametres.total_max_fcfa)) {
-      erreurs.push({ field: 'total_fcfa', message: `Le montant doit être compris entre ${parametres.total_min_fcfa} et ${parametres.total_max_fcfa} FCFA` });
+      erreurs.push({ field: 'total_fcfa', message: `Le montant doit être compris entre ${formaterFcfa(parametres.total_min_fcfa)} et ${formaterFcfa(parametres.total_max_fcfa)}` });
     }
     if (boost.duree_jours < parametres.duree_min_jours || boost.duree_jours > parametres.duree_max_jours) {
       erreurs.push({ field: 'duree_jours', message: `La durée doit être comprise entre ${parametres.duree_min_jours} et ${parametres.duree_max_jours} jours` });
@@ -194,7 +194,7 @@ export class BoostService {
         if (parJour < parametres.budget_jour_min_fcfa) {
           erreurs.push({
             field: 'duree_jours',
-            message: `Budget publicitaire trop faible pour ${boost.duree_jours} jours (${parJour} FCFA/jour, minimum ${parametres.budget_jour_min_fcfa}) : augmentez le montant ou réduisez la durée`
+            message: `Budget publicitaire trop faible pour ${boost.duree_jours} jours (${formaterFcfa(parJour)} par jour, minimum ${formaterFcfa(parametres.budget_jour_min_fcfa)}) : augmentez le montant ou réduisez la durée`
           });
         }
       } catch (err: any) {
