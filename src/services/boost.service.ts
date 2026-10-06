@@ -17,6 +17,7 @@ import { ajouterUtmBoost, estDestinationMarche241 } from '../lib/boost/utm';
 import { dateIso } from '../lib/boost/planning';
 import { estConformiteComplete } from '../config/conformite-boost.config';
 import {
+  activerPublication,
   changerStatutCampagne,
   depenseVersFcfa,
   deviseCompte,
@@ -47,6 +48,9 @@ const introuvable = () => new BoostErreur('Boost introuvable', 404, 'BOOST_INTRO
 
 const LIBELLES_OBJECTIF: Record<string, string> = { trafic: 'Visites', whatsapp: 'Messages WhatsApp', notoriete: 'Visibilité' };
 
+/** Statuts atteints seulement après qu'un paiement a déjà été pris en compte. */
+const STATUTS_APRES_PAIEMENT = new Set(['en_attente_validation', 'refuse', 'actif', 'en_pause', 'termine', 'rejete_meta', 'erreur']);
+
 /** Notification Telegram de l'équipe sur un boost (sans attente : n'interrompt jamais le flux). */
 function notifierBoost(evenement: EvenementNotification, boost: Boost, titre: string, lignes: Array<string | null> = []): void {
   void (async () => {
@@ -66,6 +70,8 @@ const EVENEMENTS_VENDEUR = new Set([
   'creation',
   'soumission',
   'paiement_confirme',
+  'paiement_en_double',
+  'paiement_hors_file',
   'publie',
   'refuse',
   'rejete_meta',
@@ -321,6 +327,8 @@ export class BoostService {
    * un second paiement confirmé pour le même boost est signalé et ajouté au montant à rembourser.
    */
   static async confirmerPaiement(boostId: number, transactionId: number, montant: number): Promise<void> {
+    if (await BoostEvenementModel.paiementDejaTraite(boostId, transactionId)) return;
+
     const boost = await BoostModel.changerStatut(boostId, ['en_attente_paiement'], 'en_attente_validation', { date_paiement: new Date() });
     if (boost) {
       await BoostEvenementModel.creer(boostId, 'paiement_confirme', 'systeme', { transaction_id: transactionId, montant });
@@ -336,16 +344,26 @@ export class BoostService {
       logger.error(`[BoostService] confirmerPaiement : boost #${boostId} introuvable (transaction ${transactionId})`);
       return;
     }
-    if ((await BoostTransactionModel.compterPayees(boostId)) > 1) {
-      await BoostModel.mettreAJour(boostId, {
-        statut_remboursement: 'a_rembourser',
-        montant_a_rembourser_fcfa: actuel.montant_a_rembourser_fcfa + montant,
-        note_remboursement: `Paiement en double (transaction ${transactionId})`
-      });
-      await BoostEvenementModel.creer(boostId, 'paiement_en_double', 'systeme', { transaction_id: transactionId, montant });
-      logger.warn(`[BoostService] Paiement en double pour le boost #${boostId} (transaction ${transactionId})`);
-      notifierBoost('boost_a_rembourser', actuel, 'Paiement en double à rembourser', [`Montant : ${formaterFcfa(montant)}`]);
-    }
+    // Le premier paiement a déjà fait passer le boost en file (ou plus loin) : un second poll
+    // de la même transaction est ignoré. Tout autre paiement confirmé est à rembourser,
+    // y compris celui qui arrive après un retour en brouillon.
+    const dejaPrisEnCompte = STATUTS_APRES_PAIEMENT.has(actuel.statut) && (await BoostTransactionModel.compterPayees(boostId)) <= 1;
+    if (dejaPrisEnCompte) return;
+
+    const horsFile = !STATUTS_APRES_PAIEMENT.has(actuel.statut);
+    const type = horsFile ? 'paiement_hors_file' : 'paiement_en_double';
+    const note = horsFile
+      ? `Paiement confirmé alors que le boost est « ${actuel.statut} » (transaction ${transactionId})`
+      : `Paiement en double (transaction ${transactionId})`;
+    const credite = await BoostEvenementModel.crediterRemboursementPaiement(
+      boostId, transactionId, montant, type, note, actuel.statut
+    );
+    if (!credite) return;
+    logger.warn(`[BoostService] Paiement ${horsFile ? 'hors file' : 'en double'} pour le boost #${boostId} (transaction ${transactionId})`);
+    notifierBoost('boost_a_rembourser', actuel, horsFile ? 'Paiement hors file à rembourser' : 'Paiement en double à rembourser', [
+      `Montant : ${formaterFcfa(montant)}`,
+      horsFile ? `Statut du boost : ${actuel.statut}` : null
+    ]);
   }
 
   /** Validation par l'équipe Marché 241 puis publication sur Meta. */
@@ -369,21 +387,30 @@ export class BoostService {
     }
 
     try {
-      const boutique = await BoutiqueModel.getBoutiqueById(boost.boutique_id);
-      const publication = await publierBoost({
-        nom: `M241 · boost_${boost.id} · ${boutique?.slug ?? boost.boutique_id}`,
-        objectif: boost.objectif,
-        budgetMediaFcfa: boost.budget_media_fcfa,
-        dureeJours: boost.duree_jours,
-        ciblage: boost.ciblage,
-        urlDestination: boost.url_destination,
-        whatsappE164: boost.whatsapp_e164,
-        texte: boost.texte_principal ?? '',
-        titre: boost.titre ?? boost.nom,
-        description: boost.description,
-        imageUrl: boost.image_url ?? '',
-        fxXafParUsd: parametres.fx_xaf_par_usd
-      });
+      const dejaCree = Boolean(boost.meta_campaign_id && boost.meta_adset_id && boost.meta_ad_id);
+      const publication = dejaCree
+        ? {
+            dryRun: boost.dry_run,
+            campaignId: boost.meta_campaign_id as string,
+            adSetId: boost.meta_adset_id as string,
+            adId: boost.meta_ad_id as string,
+            dateDebut: boost.date_debut ? new Date(boost.date_debut) : new Date(),
+            dateFin: boost.date_fin ? new Date(boost.date_fin) : new Date()
+          }
+        : await publierBoost({
+            nom: `M241 · boost_${boost.id} · ${(await BoutiqueModel.getBoutiqueById(boost.boutique_id))?.slug ?? boost.boutique_id}`,
+            objectif: boost.objectif,
+            budgetMediaFcfa: boost.budget_media_fcfa,
+            dureeJours: boost.duree_jours,
+            ciblage: boost.ciblage,
+            urlDestination: boost.url_destination,
+            whatsappE164: boost.whatsapp_e164,
+            texte: boost.texte_principal ?? '',
+            titre: boost.titre ?? boost.nom,
+            description: boost.description,
+            imageUrl: boost.image_url ?? '',
+            fxXafParUsd: parametres.fx_xaf_par_usd
+          });
       const resultat = await BoostModel.changerStatut(boost.id, ['en_attente_validation', 'erreur'], 'actif', {
         meta_campaign_id: publication.campaignId,
         meta_adset_id: publication.adSetId,
@@ -396,7 +423,26 @@ export class BoostService {
         valide_par: valideur,
         date_validation: new Date()
       });
-      if (!resultat) throw new BoostErreur('Statut modifié entre-temps', 409, 'BOOST_NON_VALIDABLE');
+      if (!resultat) {
+        logger.error(
+          `[BoostService] Boost #${boost.id} non verrouillé après création Meta ${publication.campaignId} (laissé en pause)`
+        );
+        throw new BoostErreur('Statut modifié entre-temps', 409, 'BOOST_NON_VALIDABLE');
+      }
+      try {
+        await activerPublication(publication);
+      } catch (activation: any) {
+        const message = activation?.message ?? 'Activation Meta impossible';
+        logger.error(`[BoostService] Activation Meta du boost #${boost.id} en échec : ${message}`);
+        const enErreur = await BoostModel.changerStatut(boost.id, ['actif'], 'erreur', {
+          meta_derniere_erreur: message,
+          conformite,
+          valide_par: valideur
+        });
+        await BoostEvenementModel.creer(boost.id, 'erreur_publication', 'meta', { message, etape: 'activation' });
+        notifierBoost('boost_erreur_meta', boost, 'Activation Meta en échec', [`Erreur : ${message}`]);
+        return { boost: enErreur ?? resultat, erreur: message };
+      }
       await BoostEvenementModel.creer(boost.id, 'publie', 'admin', {
         valide_par: valideur,
         dry_run: publication.dryRun,
@@ -441,7 +487,14 @@ export class BoostService {
     if (boost.statut !== 'actif' || !boost.meta_campaign_id) throw new BoostErreur("Ce boost n'est pas en diffusion", 409, 'BOOST_NON_DIFFUSE');
     await changerStatutCampagne(boost.meta_campaign_id, 'PAUSED');
     const resultat = await BoostModel.changerStatut(boost.id, ['actif'], 'en_pause');
-    if (!resultat) throw new BoostErreur('Statut modifié entre-temps', 409, 'BOOST_NON_DIFFUSE');
+    if (!resultat) {
+      try {
+        await changerStatutCampagne(boost.meta_campaign_id, 'ACTIVE');
+      } catch (err: any) {
+        logger.error(`[BoostService] Reprise Meta après pause non enregistrée du boost #${boost.id} : ${err?.message}`);
+      }
+      throw new BoostErreur('Statut modifié entre-temps', 409, 'BOOST_NON_DIFFUSE');
+    }
     await BoostEvenementModel.creer(boost.id, 'pause', acteur);
     return resultat;
   }
@@ -453,7 +506,14 @@ export class BoostService {
     }
     await changerStatutCampagne(boost.meta_campaign_id, 'ACTIVE');
     const resultat = await BoostModel.changerStatut(boost.id, ['en_pause'], 'actif');
-    if (!resultat) throw new BoostErreur('Statut modifié entre-temps', 409, 'BOOST_NON_DIFFUSE');
+    if (!resultat) {
+      try {
+        await changerStatutCampagne(boost.meta_campaign_id, 'PAUSED');
+      } catch (err: any) {
+        logger.error(`[BoostService] Pause Meta après reprise non enregistrée du boost #${boost.id} : ${err?.message}`);
+      }
+      throw new BoostErreur('Statut modifié entre-temps', 409, 'BOOST_NON_DIFFUSE');
+    }
     await BoostEvenementModel.creer(boost.id, 'reprise', acteur);
     return resultat;
   }

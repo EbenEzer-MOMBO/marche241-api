@@ -9,6 +9,7 @@ import {
   normaliserStatutEffectif,
   objectifMeta,
   parserInsights,
+  activerPublication,
   publierBoost,
   PublicationInput
 } from './meta-ads.service';
@@ -126,13 +127,13 @@ test('mode simulé : aucun appel réseau, identifiants dry_*', async () => {
   assert.equal(appels.length, 0);
 });
 
-test('publication réelle : ordre des appels, PAUSED puis ACTIVE, budget en XAF', async () => {
+test('publication réelle : création en PAUSED sans activation, budget en XAF', async () => {
   configurerMetaReel();
   installerFetch('XAF');
   const r = await publierBoost(input);
   assert.equal(r.dryRun, false);
   const posts = appels.filter((a) => a.method === 'POST');
-  assert.deepEqual(posts.map((a) => a.path), ['act_999/campaigns', 'act_999/adsets', 'act_999/ads', r.campaignId, r.adSetId, r.adId]);
+  assert.deepEqual(posts.map((a) => a.path), ['act_999/campaigns', 'act_999/adsets', 'act_999/ads']);
   assert.equal(posts[0].body.status, 'PAUSED');
   assert.equal(posts[0].body.objective, 'OUTCOME_TRAFFIC');
   assert.equal(posts[0].body.access_token, 'jeton-test');
@@ -147,7 +148,16 @@ test('publication réelle : ordre des appels, PAUSED puis ACTIVE, budget en XAF'
   assert.equal(creative.object_story_spec.page_id, 'page_1');
   assert.equal(creative.object_story_spec.link_data.link, input.urlDestination);
   assert.equal(creative.object_story_spec.link_data.call_to_action.type, 'SHOP_NOW');
-  for (const p of posts.slice(3)) assert.equal(p.body.status, 'ACTIVE');
+  assert.ok(posts.every((p) => p.body.status !== 'ACTIVE'));
+});
+
+test('activation : campagne, ensemble et publicité passent en ACTIVE', async () => {
+  configurerMetaReel();
+  installerFetch('XAF');
+  await activerPublication({ campaignId: 'c1', adSetId: 's1', adId: 'a1' });
+  const posts = appels.filter((a) => a.method === 'POST');
+  assert.deepEqual(posts.map((a) => a.path), ['c1', 's1', 'a1']);
+  for (const p of posts) assert.equal(p.body.status, 'ACTIVE');
 });
 
 test('publication WhatsApp : lien wa.me et promoted_object page', async () => {

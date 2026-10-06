@@ -256,6 +256,56 @@ export class BoostEvenementModel {
     );
   }
 
+  /**
+   * Ajoute le montant au remboursement et journalise la transaction, une seule fois.
+   * L'insert conditionnel et la mise à jour partagent la même requête (pas de double crédit).
+   */
+  static async crediterRemboursementPaiement(
+    boostId: number,
+    transactionId: number,
+    montant: number,
+    type: 'paiement_en_double' | 'paiement_hors_file',
+    note: string,
+    statut: string
+  ): Promise<boolean> {
+    const { rows } = await query<{ id: number }>(
+      `WITH ins AS (
+         INSERT INTO boost_evenements (boost_id, type_evenement, acteur, donnees)
+         SELECT $1, $2, 'systeme', $3::jsonb
+         WHERE NOT EXISTS (
+           SELECT 1 FROM boost_evenements
+           WHERE boost_id = $1
+             AND type_evenement IN ('paiement_confirme', 'paiement_en_double', 'paiement_hors_file')
+             AND donnees->>'transaction_id' = $4
+         )
+         RETURNING id
+       )
+       UPDATE boosts SET
+         statut_remboursement = 'a_rembourser'::statut_remboursement_boost,
+         montant_a_rembourser_fcfa = montant_a_rembourser_fcfa + $5,
+         note_remboursement = $6,
+         date_modification = NOW()
+       WHERE id = $1 AND EXISTS (SELECT 1 FROM ins)
+       RETURNING id`,
+      [boostId, type, JSON.stringify({ transaction_id: transactionId, montant, statut }), String(transactionId), montant, note]
+    );
+    return rows.length > 0;
+  }
+
+  /** Vrai si cette transaction a déjà produit un événement de confirmation ou de remboursement. */
+  static async paiementDejaTraite(boostId: number, transactionId: number): Promise<boolean> {
+    const { rows } = await query<{ existe: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM boost_evenements
+         WHERE boost_id = $1
+           AND type_evenement IN ('paiement_confirme', 'paiement_en_double', 'paiement_hors_file')
+           AND donnees->>'transaction_id' = $2
+       ) AS existe`,
+      [boostId, String(transactionId)]
+    );
+    return rows[0]?.existe === true;
+  }
+
   static async lister(boostId: number): Promise<BoostEvenement[]> {
     const { rows } = await query<BoostEvenement>(
       `SELECT * FROM boost_evenements WHERE boost_id = $1 ORDER BY date_creation DESC, id DESC`,

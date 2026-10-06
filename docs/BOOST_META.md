@@ -42,7 +42,7 @@ Les valeurs par défaut sont dans la table `boost_parametres` et se modifient da
 2. `POST /boosts/:id/paiement` crée la facture eBilling avec le montant côté serveur, crée la transaction (`type_paiement = 'boost'`, `boost_id`, `commande_id` NULL), puis lance le push USSD. En mode `carte`, l'API renvoie l'URL de paiement par carte.
 3. Le front interroge `GET /paiements/verification/:bill_id`, le flux existant. Quand la transaction est payée, `BoostService.confirmerPaiement()` fait passer le boost en `en_attente_validation`.
    - Le montant est vérifié par rapport à `boosts.total_fcfa`.
-   - La confirmation est idempotente : un paiement en double est ajouté au montant à rembourser.
+   - La confirmation est idempotente (un même `transaction_id` n'est traité qu'une fois). Un paiement en double, ou confirmé alors que le boost n'est plus en attente de paiement (retour en brouillon), est ajouté au montant à rembourser.
 
 Les requêtes de transactions qui joignent `commandes` excluent naturellement les paiements de boost. Dans le back-office, les versements et le chiffre d'affaires du tableau de bord les excluent aussi.
 
@@ -54,7 +54,7 @@ Les requêtes de transactions qui joignent `commandes` excluent naturellement le
   - la vérification (`debug_token`, compte, Page) enregistre en base la validité du jeton, ses permissions, la devise, le fuseau et le statut du compte. Elle est relancée à chaque passage du cron de synchro (hors mode simulé) ;
   - chaque appel Graph porte `appsecret_proof` ; la version de Graph est figée dans le code (`META_GRAPH_VERSION`, `src/lib/meta/graph.ts`).
 - `META_DRY_RUN` est activé par défaut : la publication renvoie des identifiants `dry_*` sans appel à Meta. Hors mode simulé, une connexion incomplète (secret absent, compte ou Page non choisi, jeton invalide, permission `ads_management` absente, compte non actif) **bloque l'approbation** avec `409 META_NON_CONFIGURE` au lieu de simuler en silence. Les estimations se replient alors sur la fourchette CPM.
-- **Publication** : la campagne, l'ensemble de publicités et la publicité sont créés en `PAUSED`, puis activés tous les trois.
+- **Publication** : la campagne, l'ensemble de publicités et la publicité sont créés en `PAUSED`. Ils ne passent en `ACTIVE` qu'après le verrou du statut `actif` en base. Si l'activation échoue, le boost repasse en `erreur` avec les identifiants Meta conservés (la republication réactive la même campagne).
   - Budget `lifetime` exprimé dans la devise du compte publicitaire.
   - `advantage_audience: 0`.
   - Villes et centres d'intérêt résolus via `search` (`adgeolocation`, `adinterest`).

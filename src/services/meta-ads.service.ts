@@ -183,7 +183,11 @@ export interface PublicationResult {
   dateFin: Date;
 }
 
-/** Crée campagne → ad set → ad en PAUSED, puis active les trois (cf. FIX_ADMIN_APPROVE_META de boost_meta). */
+/**
+ * Crée campagne, ensemble et publicité en PAUSED, sans les activer.
+ * L'activation (`activerPublication`) n'a lieu qu'après le verrou de statut en base :
+ * un échec de transition laisse la campagne en pause, donc sans dépense.
+ */
 export async function publierBoost(input: PublicationInput): Promise<PublicationResult> {
   const fenetre = fenetrePublication(input.dureeJours);
   const dateDebut = new Date(fenetre.start_time);
@@ -276,11 +280,18 @@ export async function publierBoost(input: PublicationInput): Promise<Publication
   );
   if (!adId) throw new MetaGraphError('Publicité Meta sans identifiant', 'ads');
 
-  await metaGraphPost(campaignId, { status: 'ACTIVE' }, token, opts);
-  await metaGraphPost(adSetId, { status: 'ACTIVE' }, token, opts);
-  await metaGraphPost(adId, { status: 'ACTIVE' }, token, opts);
-
   return { dryRun: false, campaignId, adSetId, adId, dateDebut, dateFin };
+}
+
+/** Passe campagne, ensemble et publicité en ACTIVE. Sans effet en mode simulé. */
+export async function activerPublication(ids: { campaignId: string; adSetId: string; adId: string }): Promise<void> {
+  if (estModeSimule() || ids.campaignId.startsWith('dry_')) return;
+  const config = await chargerMetaConfig();
+  const opts = optionsGraph(config);
+  const token = config.accessToken;
+  await metaGraphPost(ids.campaignId, { status: 'ACTIVE' }, token, opts);
+  await metaGraphPost(ids.adSetId, { status: 'ACTIVE' }, token, opts);
+  await metaGraphPost(ids.adId, { status: 'ACTIVE' }, token, opts);
 }
 
 export async function changerStatutCampagne(metaCampaignId: string, statut: 'ACTIVE' | 'PAUSED'): Promise<{ dryRun: boolean }> {
