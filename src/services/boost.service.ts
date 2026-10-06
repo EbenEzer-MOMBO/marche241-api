@@ -33,7 +33,7 @@ import { logger } from '../utils/logger';
 /**
  * Orchestration métier du boost publicitaire Meta (port du cycle de boost_meta, adapté au paiement à l'acte).
  * Cycle : brouillon → en_attente_paiement → en_attente_validation → actif ⇄ en_pause → termine
- * (sorties : refuse, rejete_meta, erreur). Cf. PLAN_BOOST_META.md §2.
+ * (sorties : refuse, rejete_meta, erreur). Cf. docs/BOOST_META.md.
  */
 
 export class BoostErreur extends Error {

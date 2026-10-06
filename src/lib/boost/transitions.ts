@@ -1,6 +1,6 @@
 import { StatutBoost } from '../database-types';
 
-/** Transitions de statut autorisées pour un boost (cf. PLAN_BOOST_META.md §2). */
+/** Transitions de statut autorisées pour un boost (cf. docs/BOOST_META.md). */
 export const TRANSITIONS_BOOST: Record<StatutBoost, StatutBoost[]> = {
   brouillon: ['en_attente_paiement'],
   en_attente_paiement: ['en_attente_validation', 'brouillon'],
