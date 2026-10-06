@@ -638,3 +638,25 @@ export interface BoostParametres {
   budget_jour_min_fcfa: number;
   kill_switch: boolean;
 }
+
+// Table meta_connexion (ligne unique, migration 028) : connexion Meta Ads découverte et choisie dans
+// le back-office. Aucun secret (jeton et secret d'app restent dans l'environnement de l'API).
+export interface MetaConnexion {
+  id: 1;
+  ad_account_id: string | null; // sans préfixe act_
+  ad_account_nom: string | null;
+  devise: string | null;
+  fuseau: string | null;
+  statut_compte: number | null; // account_status Meta : 1 = actif
+  page_id: string | null;
+  page_nom: string | null;
+  instagram_id: string | null;
+  instagram_nom: string | null;
+  jeton_valide: boolean | null;
+  jeton_permissions: string[];
+  jeton_expire_le: Date | null;
+  verifie_le: Date | null;
+  message_erreur: string | null;
+  modifie_par: string | null;
+  date_modification: Date;
+}

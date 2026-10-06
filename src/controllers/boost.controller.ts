@@ -4,6 +4,8 @@ import { BoutiqueModel } from '../models/boutique.model';
 import { BoostErreur, BoostService } from '../services/boost.service';
 import { estimerAudience, estimerImpressionsJour } from '../services/meta-estimation.service';
 import { santeMeta, estModeSimule } from '../services/meta-ads.service';
+import { decouvrir, enregistrerChoix, MetaConnexionErreur, verifier } from '../services/meta-connexion.service';
+import { MetaGraphError } from '../lib/meta/graph';
 import { budgetParJour, devisDepuisTotal } from '../lib/boost/devis';
 import { LIBELLES_STATUT_BOOST } from '../lib/boost/transitions';
 import { Boost } from '../lib/database-types';
@@ -22,6 +24,14 @@ const params = (req: Request) => (req as any).validatedParams ?? req.params;
 const requete = (req: Request) => (req as any).validatedQuery ?? req.query;
 
 function repondreErreur(res: Response, err: unknown, contexte: string): void {
+  if (err instanceof MetaConnexionErreur) {
+    res.status(err.statusHttp).json({ success: false, message: err.message, code: err.code, ...(err.errors ? { errors: err.errors } : {}) });
+    return;
+  }
+  if (err instanceof MetaGraphError) {
+    res.status(502).json({ success: false, message: `Meta : ${err.message}`, code: 'META_ERREUR' });
+    return;
+  }
   if (err instanceof BoostErreur) {
     res.status(err.statusHttp).json({
       success: false,
@@ -398,6 +408,33 @@ export class BoostController {
       res.json({ success: true, sante: await santeMeta() });
     } catch (err) {
       repondreErreur(res, err, "la vérification de l'état Meta");
+    }
+  }
+
+  static async decouverteMeta(_req: Request, res: Response): Promise<void> {
+    try {
+      res.json({ success: true, decouverte: await decouvrir() });
+    } catch (err) {
+      repondreErreur(res, err, 'la découverte des comptes Meta');
+    }
+  }
+
+  static async connexionMeta(req: Request, res: Response): Promise<void> {
+    try {
+      const { ad_account_id, page_id, modifie_par } = corps(req);
+      await enregistrerChoix({ ad_account_id, page_id, modifie_par });
+      res.json({ success: true, sante: await santeMeta() });
+    } catch (err) {
+      repondreErreur(res, err, "l'enregistrement de la connexion Meta");
+    }
+  }
+
+  static async verifierMeta(_req: Request, res: Response): Promise<void> {
+    try {
+      await verifier();
+      res.json({ success: true, sante: await santeMeta() });
+    } catch (err) {
+      repondreErreur(res, err, 'la vérification de la connexion Meta');
     }
   }
 

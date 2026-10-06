@@ -18,11 +18,13 @@ import {
   changerStatutCampagne,
   depenseVersFcfa,
   deviseCompte,
+  exigerConnexionPrete,
   lireInsights,
   lireStatutPublicite,
   objectifMeta,
   publierBoost
 } from './meta-ads.service';
+import { estModeSimule, MetaConnexionErreur, verifierSiNecessaire } from './meta-connexion.service';
 import { PaiementController } from '../controllers/paiement.controller';
 import { logger } from '../utils/logger';
 
@@ -334,6 +336,15 @@ export class BoostService {
     if (boost.statut !== 'en_attente_validation' && boost.statut !== 'erreur') {
       throw new BoostErreur("Ce boost n'est pas en attente de validation", 409, 'BOOST_NON_VALIDABLE');
     }
+    // Hors mode simulé, une connexion Meta incomplète bloque l'approbation sans toucher au boost.
+    if (!estModeSimule()) {
+      try {
+        await exigerConnexionPrete();
+      } catch (err) {
+        if (err instanceof MetaConnexionErreur) throw new BoostErreur(err.message, err.statusHttp, err.code);
+        throw err;
+      }
+    }
 
     try {
       const boutique = await BoutiqueModel.getBoutiqueById(boost.boutique_id);
@@ -494,6 +505,7 @@ export class BoostService {
   }
 
   static async synchroniserTous(): Promise<{ examines: number; termines: number; rejetes: number; erreurs: number }> {
+    await verifierSiNecessaire();
     const boosts = await BoostModel.listerEnDiffusion();
     let termines = 0;
     let rejetes = 0;

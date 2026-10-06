@@ -51,7 +51,7 @@ describe('Boost Meta — intégration HTTP (Postgres local, dry-run)', { skip: i
     sql = new Client({ connectionString: URL_BASE_TEST });
     await sql.connect();
     await sql.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
-    for (const fichier of ['tests/boost/schema-minimal.sql', 'migrations/026_create_boosts_tables.sql', 'migrations/027_extend_transactions_for_boost.sql']) {
+    for (const fichier of ['tests/boost/schema-minimal.sql', 'migrations/026_create_boosts_tables.sql', 'migrations/027_extend_transactions_for_boost.sql', 'migrations/028_create_meta_connexion.sql', 'migrations/028_create_meta_connexion.sql']) {
       await sql.query(fs.readFileSync(path.join(RACINE, fichier), 'utf8'));
     }
     const v1 = await sql.query(`INSERT INTO vendeurs (telephone, nom, email) VALUES ('24177000001', 'Awa', 'awa@test.ga') RETURNING id`);
@@ -79,6 +79,10 @@ describe('Boost Meta — intégration HTTP (Postgres local, dry-run)', { skip: i
       ADMIN_SERVICE_KEY: CLE_SERVICE,
       CRON_SECRET_KEY: CLE_CRON,
       META_DRY_RUN: 'true',
+      // Jeton factice sans META_APP_ID / META_APP_SECRET : connexion volontairement incomplète
+      META_ACCESS_TOKEN: 'jeton-secret-integration',
+      META_APP_ID: '',
+      META_APP_SECRET: '',
       FRONTEND_URL: 'https://marche241.ga',
       ALLOWED_ADMIN_IDS: '',
       // Stockage R2 factice (requis à l'import, jamais appelé par le boost)
@@ -247,7 +251,38 @@ describe('Boost Meta — intégration HTTP (Postgres local, dry-run)', { skip: i
     assert.equal(s.json.stats.en_attente_validation, 1);
     const sante = await appel('GET', '/boosts/admin/meta/sante', { cle: CLE_SERVICE });
     assert.equal(sante.json.sante.dry_run, true);
-    assert.equal(JSON.stringify(sante.json).includes('jeton'), false);
+    assert.equal(sante.json.sante.ok, false);
+    assert.equal(sante.json.sante.secrets.access_token, true);
+    assert.match(sante.json.sante.raisons.join('|'), /META_APP_ID, META_APP_SECRET/);
+    assert.equal(JSON.stringify(sante.json).includes('jeton-secret-integration'), false, 'aucun secret renvoyé');
+  });
+
+  test('connexion Meta : découverte et choix refusés sans secrets, vérification enregistrée', async () => {
+    assert.equal((await appel('GET', '/boosts/admin/meta/decouverte', { jeton: jetonVendeur })).status, 403);
+    const d = await appel('GET', '/boosts/admin/meta/decouverte', { cle: CLE_SERVICE });
+    assert.equal(d.status, 409);
+    assert.equal(d.json.code, 'META_SECRETS_MANQUANTS');
+    const invalide = await appel('PUT', '/boosts/admin/meta/connexion', { cle: CLE_SERVICE, corps: { ad_account_id: 'abc', page_id: '' } });
+    assert.equal(invalide.status, 400);
+    assert.equal(invalide.json.code, 'VALIDATION_ERROR');
+    const v = await appel('POST', '/boosts/admin/meta/verifier', { cle: CLE_SERVICE });
+    assert.equal(v.status, 200);
+    assert.ok(v.json.sante.connexion.verifie_le);
+    assert.match(v.json.sante.connexion.message_erreur, /META_APP_ID/);
+  });
+
+  test('approbation refusée hors mode simulé si Meta n’est pas configuré (boost intact)', async () => {
+    process.env.META_DRY_RUN = 'false';
+    try {
+      const r = await appel('POST', `/boosts/admin/${boostId}/approuver`, { cle: CLE_SERVICE, corps: { conformite: ['interdit', 'allegations', 'ciblage', 'visuel'] } });
+      assert.equal(r.status, 409);
+      assert.equal(r.json.code, 'META_NON_CONFIGURE');
+      assert.match(r.json.message, /Aucun compte publicitaire/);
+    } finally {
+      process.env.META_DRY_RUN = 'true';
+    }
+    const d = await appel('GET', `/boosts/admin/${boostId}`, { cle: CLE_SERVICE });
+    assert.equal(d.json.boost.statut, 'en_attente_validation');
   });
 
   test('approbation : checklist, kill switch puis publication simulée', async () => {

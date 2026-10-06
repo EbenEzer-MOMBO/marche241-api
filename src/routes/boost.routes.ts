@@ -8,6 +8,7 @@ import {
   approuverBoostSchema,
   boostIdParamSchema,
   boutiqueIdParamSchema,
+  connexionMetaSchema,
   creerBoostSchema,
   devisSchema,
   estimationAudienceSchema,
@@ -112,13 +113,51 @@ router.put('/admin/parametres', ...admin, validate(parametresBoostSchema), Boost
  * @swagger
  * /boosts/admin/meta/sante:
  *   get:
- *     summary: État de la connexion Meta (compte pub, Page, mode simulé) — aucun secret renvoyé
+ *     summary: État de la connexion Meta (choix enregistré, dernière vérification, raisons de blocage) — aucun secret, aucun appel Meta
+ *     tags: [Boosts]
+ *     security: [{ serviceKey: [] }]
+ *     responses:
+ *       200: { description: "{ success, sante: { ok, raisons[], dry_run, graph_version, secrets, connexion } }" }
+ * /boosts/admin/meta/decouverte:
+ *   get:
+ *     summary: Comptes publicitaires et Pages accessibles avec le jeton Meta (suggestion si un seul choix)
+ *     tags: [Boosts]
+ *     security: [{ serviceKey: [] }]
+ *     responses:
+ *       200: { description: "{ success, decouverte: { comptes[], pages[], suggestion } }" }
+ *       409: { description: META_SECRETS_MANQUANTS }
+ *       502: { description: Erreur Meta (message lisible) }
+ * /boosts/admin/meta/connexion:
+ *   put:
+ *     summary: Choisir le compte publicitaire et la Page (Instagram déduit de la Page), puis vérifier auprès de Meta
+ *     tags: [Boosts]
+ *     security: [{ serviceKey: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [ad_account_id, page_id]
+ *             properties:
+ *               ad_account_id: { type: string, example: "act_1234567890" }
+ *               page_id: { type: string, example: "1234567890" }
+ *               modifie_par: { type: string }
+ *     responses:
+ *       200: { description: "{ success, sante }" }
+ *       400: { description: VALIDATION_ERROR (compte ou Page inaccessible avec le jeton) }
+ * /boosts/admin/meta/verifier:
+ *   post:
+ *     summary: Revérifier la connexion (jeton, permissions, compte, devise, Page, Instagram)
  *     tags: [Boosts]
  *     security: [{ serviceKey: [] }]
  *     responses:
  *       200: { description: "{ success, sante }" }
  */
 router.get('/admin/meta/sante', ...admin, BoostController.santeMeta);
+router.get('/admin/meta/decouverte', ...admin, BoostController.decouverteMeta);
+router.put('/admin/meta/connexion', ...admin, validate(connexionMetaSchema), BoostController.connexionMeta);
+router.post('/admin/meta/verifier', ...admin, BoostController.verifierMeta);
 
 /**
  * @swagger

@@ -47,8 +47,12 @@ Les requêtes de transactions qui joignent `commandes` excluent naturellement le
 
 ## Meta (`src/services/meta-ads.service.ts`)
 
-- La configuration vient des variables d'environnement `META_ACCESS_TOKEN` (system user), `META_AD_ACCOUNT_ID`, `META_PAGE_ID`, `META_INSTAGRAM_ID` et `META_GRAPH_VERSION`.
-- `META_DRY_RUN` est activé par défaut. En mode simulé, ou si la configuration est incomplète, la publication renvoie des identifiants `dry_*` et ne fait aucun appel à Meta.
+- **Connexion centralisée** (`src/services/meta-connexion.service.ts`, table `meta_connexion`, migration 028) :
+  - l'environnement ne contient que les secrets `META_APP_ID`, `META_APP_SECRET`, `META_ACCESS_TOKEN` (jeton permanent d'un utilisateur système) et le garde-fou `META_DRY_RUN` ;
+  - le compte publicitaire et la Page sont découverts (`me/adaccounts`, `me/accounts`) puis choisis dans le back-office ; le compte Instagram est déduit de la Page ;
+  - la vérification (`debug_token`, compte, Page) enregistre en base la validité du jeton, ses permissions, la devise, le fuseau et le statut du compte. Elle est relancée à chaque passage du cron de synchro (hors mode simulé) ;
+  - chaque appel Graph porte `appsecret_proof` ; la version de Graph est figée dans le code (`META_GRAPH_VERSION`, `src/lib/meta/graph.ts`).
+- `META_DRY_RUN` est activé par défaut : la publication renvoie des identifiants `dry_*` sans appel à Meta. Hors mode simulé, une connexion incomplète (secret absent, compte ou Page non choisi, jeton invalide, permission `ads_management` absente, compte non actif) **bloque l'approbation** avec `409 META_NON_CONFIGURE` au lieu de simuler en silence. Les estimations se replient alors sur la fourchette CPM.
 - **Publication** : la campagne, l'ensemble de publicités et la publicité sont créés en `PAUSED`, puis activés tous les trois.
   - Budget `lifetime` exprimé dans la devise du compte publicitaire.
   - `advantage_audience: 0`.
@@ -64,7 +68,7 @@ Les requêtes de transactions qui joignent `commandes` excluent naturellement le
 | Accès | Routes |
 |---|---|
 | Vendeur (JWT, propriétaire de la boutique) | `GET /boosts/parametres`, `GET /boosts/prefill`, `POST /boosts/devis`, `POST /boosts/estimation/{audience,impressions}`, `GET /boosts/boutique/:boutiqueId`, `POST /boosts`, `GET\|PUT\|DELETE /boosts/:id`, `POST /boosts/:id/{soumettre,annuler-soumission,paiement,pause,reprendre}` |
-| Back-office (`x-service-key` seule, sans JWT) | `GET /boosts/admin`, `GET /boosts/admin/stats`, `GET /boosts/admin/:id`, `POST /boosts/admin/:id/{approuver,refuser,pause,reprendre,cloturer,rembourse}`, `GET\|PUT /boosts/admin/parametres`, `GET /boosts/admin/meta/sante` |
+| Back-office (`x-service-key` seule, sans JWT) | `GET /boosts/admin`, `GET /boosts/admin/stats`, `GET /boosts/admin/:id`, `POST /boosts/admin/:id/{approuver,refuser,pause,reprendre,cloturer,rembourse}`, `GET\|PUT /boosts/admin/parametres`, `GET /boosts/admin/meta/{sante,decouverte}`, `PUT /boosts/admin/meta/connexion`, `POST /boosts/admin/meta/verifier` |
 | Cron (`CRON_SECRET_KEY`) | `GET /cron/boosts/sync` |
 
 Le détail des routes est dans Swagger (`/api/docs`, tag `Boosts`).
@@ -78,10 +82,11 @@ Le détail des routes est dans Swagger (`/api/docs`, tag `Boosts`).
   BOOST_IT_DATABASE_URL=postgres://postgres@localhost:5432/base_de_test npx tsx --test src/services/boost.integration.test.ts
   ```
 
-  Le schéma est réinitialisé à chaque exécution : `tests/boost/schema-minimal.sql` puis les migrations 026 et 027. `DATABASE_SSL=false` est positionné automatiquement.
+  Le schéma est réinitialisé à chaque exécution : `tests/boost/schema-minimal.sql` puis les migrations 026, 027 et 028 (028 appliquée deux fois pour vérifier l'idempotence). `DATABASE_SSL=false` est positionné automatiquement.
 
 ## Mise en production
 
-1. Appliquer `026_create_boosts_tables.sql` puis `027_extend_transactions_for_boost.sql`, d'abord sur une branche Neon.
-2. Renseigner les variables `META_*` et garder `META_DRY_RUN=true` jusqu'au premier test réel avec le plus petit pack.
-3. Back-office : exécuter `php artisan db:seed --class=PermissionsSeeder` pour ajouter les permissions `boosts.view`, `boosts.manage` et `boosts.settings`.
+1. Appliquer `026_create_boosts_tables.sql`, `027_extend_transactions_for_boost.sql` puis `028_create_meta_connexion.sql`, d'abord sur une branche Neon.
+2. Renseigner `META_APP_ID`, `META_APP_SECRET` et `META_ACCESS_TOKEN`, garder `META_DRY_RUN=true`, puis choisir le compte publicitaire et la Page dans le back-office (Boosts → Paramètres → Connexion Meta) et vérifier que l'état est « prêt ».
+3. Passer `META_DRY_RUN=false` seulement pour le premier test réel avec le plus petit pack.
+4. Back-office : exécuter `php artisan db:seed --class=PermissionsSeeder` pour ajouter les permissions `boosts.view`, `boosts.manage` et `boosts.settings`.

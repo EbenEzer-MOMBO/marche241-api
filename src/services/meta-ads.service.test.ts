@@ -10,12 +10,11 @@ import {
   objectifMeta,
   parserInsights,
   publierBoost,
-  PublicationInput,
-  viderCacheDevise
+  PublicationInput
 } from './meta-ads.service';
+import { definirMetaConfigPourTests } from './meta-connexion.service';
+import { MetaConnexion } from '../lib/database-types';
 
-const ENV_META = ['META_DRY_RUN', 'META_ACCESS_TOKEN', 'META_AD_ACCOUNT_ID', 'META_PAGE_ID', 'META_INSTAGRAM_ID', 'META_GRAPH_VERSION'];
-const envInitial: Record<string, string | undefined> = {};
 const fetchInitial = globalThis.fetch;
 
 type Appel = { method: string; path: string; body: Record<string, string>; query: Record<string, string> };
@@ -52,26 +51,43 @@ const input: PublicationInput = {
   fxXafParUsd: 600
 };
 
+/** Connexion vérifiée et prête (ligne meta_connexion simulée). */
+const connexionPrete: MetaConnexion = {
+  id: 1,
+  ad_account_id: '999',
+  ad_account_nom: 'Compte test',
+  devise: 'XAF',
+  fuseau: 'Africa/Libreville',
+  statut_compte: 1,
+  page_id: 'page_1',
+  page_nom: 'Page test',
+  instagram_id: null,
+  instagram_nom: null,
+  jeton_valide: true,
+  jeton_permissions: ['ads_management', 'pages_read_engagement'],
+  jeton_expire_le: null,
+  verifie_le: new Date(),
+  message_erreur: null,
+  modifie_par: null,
+  date_modification: new Date()
+};
+
 beforeEach(() => {
-  for (const k of ENV_META) envInitial[k] = process.env[k];
   appels = [];
-  viderCacheDevise();
 });
 
 afterEach(() => {
-  for (const k of ENV_META) {
-    if (envInitial[k] === undefined) delete process.env[k];
-    else process.env[k] = envInitial[k];
-  }
+  definirMetaConfigPourTests(null);
   globalThis.fetch = fetchInitial;
 });
 
-function configurerMetaReel() {
-  process.env.META_DRY_RUN = 'false';
-  process.env.META_ACCESS_TOKEN = 'jeton-test';
-  process.env.META_AD_ACCOUNT_ID = 'act_999';
-  process.env.META_PAGE_ID = 'page_1';
-  process.env.META_GRAPH_VERSION = 'v21.0';
+function configurerMetaReel(devise = 'XAF') {
+  definirMetaConfigPourTests({
+    dryRun: false,
+    appSecret: 'secret-test',
+    devise,
+    connexion: { ...connexionPrete, devise }
+  });
 }
 
 test('conversions de devise', () => {
@@ -102,7 +118,7 @@ test('targeting : villes prioritaires sur pays, un seul sexe, intérêts', () =>
 });
 
 test('mode simulé : aucun appel réseau, identifiants dry_*', async () => {
-  process.env.META_DRY_RUN = 'true';
+  definirMetaConfigPourTests({ dryRun: true });
   installerFetch();
   const r = await publierBoost(input);
   assert.equal(r.dryRun, true);
@@ -120,6 +136,7 @@ test('publication réelle : ordre des appels, PAUSED puis ACTIVE, budget en XAF'
   assert.equal(posts[0].body.status, 'PAUSED');
   assert.equal(posts[0].body.objective, 'OUTCOME_TRAFFIC');
   assert.equal(posts[0].body.access_token, 'jeton-test');
+  assert.match(posts[0].body.appsecret_proof, /^[0-9a-f]{64}$/);
   const adset = posts[1].body;
   assert.equal(adset.lifetime_budget, '25000');
   assert.equal(adset.destination_type, 'WEBSITE');
@@ -134,7 +151,7 @@ test('publication réelle : ordre des appels, PAUSED puis ACTIVE, budget en XAF'
 });
 
 test('publication WhatsApp : lien wa.me et promoted_object page', async () => {
-  configurerMetaReel();
+  configurerMetaReel('USD');
   installerFetch('USD');
   await publierBoost({ ...input, objectif: 'whatsapp', whatsappE164: '+241 77 00 00 00', urlDestination: null });
   const posts = appels.filter((a) => a.method === 'POST');
@@ -196,4 +213,11 @@ test('statut effectif de la publicité', async () => {
 test('parserInsights ignore les lignes sans date', () => {
   assert.deepEqual(parserInsights([{ spend: '1' }]), []);
   assert.deepEqual(parserInsights(undefined), []);
+});
+
+test('hors mode simulé, une connexion incomplète bloque la publication (pas de simulation silencieuse)', async () => {
+  definirMetaConfigPourTests({ dryRun: false, appSecret: 'secret-test', pageId: '', connexion: { ...connexionPrete, page_id: null } });
+  installerFetch();
+  await assert.rejects(() => publierBoost(input), (err: any) => err.code === 'META_NON_CONFIGURE' && err.statusHttp === 409);
+  assert.equal(appels.length, 0);
 });

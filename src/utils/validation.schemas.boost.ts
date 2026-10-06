@@ -178,3 +178,16 @@ export const parametresBoostSchema = Joi.object({
   budget_jour_min_fcfa: Joi.number().integer().min(0),
   kill_switch: Joi.boolean()
 }).min(1).messages({ 'object.min': 'Aucun paramètre à modifier' });
+
+const idMeta = (libelle: string) =>
+  Joi.string().trim().pattern(/^(act_)?\d{3,30}$/).required().messages({
+    'any.required': `${libelle} est obligatoire`,
+    'string.empty': `${libelle} est obligatoire`,
+    'string.pattern.base': `${libelle} est invalide`
+  });
+
+export const connexionMetaSchema = Joi.object({
+  ad_account_id: idMeta('Le compte publicitaire'),
+  page_id: idMeta('La Page Facebook'),
+  modifie_par: valideur
+});
