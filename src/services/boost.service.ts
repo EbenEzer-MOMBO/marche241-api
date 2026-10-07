@@ -97,6 +97,9 @@ export interface DonneesBrouillon {
   image_url?: string | null;
 }
 
+/** Âge maximal des statistiques affichées avant un rafraîchissement à la demande (15 min). */
+const DELAI_FRAICHEUR_MS = 15 * 60 * 1000;
+
 export interface DemandePaiement {
   mode: 'mobile' | 'carte';
   operateur?: 'airtelmoney' | 'moovmoney';
@@ -609,6 +612,24 @@ export class BoostService {
       return 'termine';
     }
     return 'ok';
+  }
+
+  /**
+   * Rafraîchit les statistiques à l'ouverture du détail quand la dernière synchro date de plus de
+   * `DELAI_FRAICHEUR_MS` (la tâche planifiée ne passe qu'une fois par heure). Une erreur Meta ne bloque
+   * jamais l'affichage : le boost est alors renvoyé tel quel.
+   */
+  static async rafraichirSiPerime(boost: Boost): Promise<Boost> {
+    if (!boost.meta_campaign_id || (boost.statut !== 'actif' && boost.statut !== 'en_pause')) return boost;
+    const derniere = boost.date_derniere_synchro ? new Date(boost.date_derniere_synchro).getTime() : 0;
+    if (Date.now() - derniere < DELAI_FRAICHEUR_MS) return boost;
+    try {
+      await BoostService.synchroniser(boost);
+      return (await BoostModel.getById(boost.id)) ?? boost;
+    } catch (err: any) {
+      logger.warn(`[BoostService] Rafraîchissement du boost #${boost.id} impossible : ${err?.message}`);
+      return boost;
+    }
   }
 
   static async synchroniserTous(): Promise<{ examines: number; termines: number; rejetes: number; erreurs: number }> {

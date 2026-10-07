@@ -58,7 +58,7 @@ Les requêtes de transactions qui joignent `commandes` excluent naturellement le
   - Budget `lifetime` exprimé dans la devise du compte publicitaire.
   - `advantage_audience: 0`.
   - Villes et centres d'intérêt : identifiants Meta **figés** et vérifiés dans `src/config/ciblage-boost.config.ts` (aucune recherche à la publication). L'estimation d'audience (`reachestimate`) utilise exactement le même ciblage. Les intérêts sont regroupés par thème (`groupes_interets` dans `GET /boosts/parametres`).
-- **Synchronisation** (`GET /cron/boosts/sync` et node-cron toutes les 3 h) :
+- **Synchronisation** (`GET /cron/boosts/sync` et node-cron toutes les heures, à la 20e minute ; le détail vendeur/admin rafraîchit aussi les stats datant de plus de 15 min) :
   - insights jour par jour (`time_increment=1`) depuis la date de début ;
   - lecture du statut effectif de la publicité : `DISAPPROVED` entraîne `rejete_meta` ;
   - clôture automatique à la date de fin ou quand le budget est épuisé.

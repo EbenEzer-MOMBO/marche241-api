@@ -32,13 +32,13 @@ export class CronService {
   }
 
   /**
-   * Synchronise les boosts publicitaires en diffusion toutes les 3 heures (à la 20e minute).
+   * Synchronise les boosts publicitaires en diffusion toutes les heures (à la 20e minute).
    * Équivalent du cron /api/cron/meta-sync de boost_meta.
    */
   static scheduleSyncBoosts(): void {
     const jobName = 'sync-boosts-meta';
 
-    const task = cron.schedule('20 */3 * * *', async () => {
+    const task = cron.schedule('20 * * * *', async () => {
       try {
         const { BoostService } = await import('./boost.service');
         const result = await BoostService.synchroniserTous();
@@ -51,7 +51,7 @@ export class CronService {
     });
 
     this.jobs.set(jobName, task);
-    console.log(`[CronService] Tâche planifiée: ${jobName} - Toutes les 3 heures`);
+    console.log(`[CronService] Tâche planifiée: ${jobName} - Toutes les heures`);
   }
 
   /**
