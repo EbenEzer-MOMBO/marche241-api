@@ -13,8 +13,13 @@ const corps = (req: Request) => (req as any).validatedBody ?? req.body;
 const params = (req: Request) => (req as any).validatedParams ?? req.params;
 const requete = (req: Request) => (req as any).validatedQuery ?? req.query;
 
-/** Robots et aperçus de liens : jamais comptés comme affichages ou clics. */
-const AGENTS_ROBOTS = /bot|crawler|spider|slurp|preview|facebookexternalhit|whatsapp|headless|lighthouse|curl|wget/i;
+/**
+ * Robots et aperçus de liens : jamais comptés comme affichages ou clics.
+ * Le navigateur intégré WhatsApp contient « WhatsApp » dans un User-Agent Mozilla :
+ * seul l'aperçu de lien (`WhatsApp/2.x` en tête) est exclu.
+ */
+const AGENTS_ROBOTS = /bot|crawler|spider|slurp|preview|facebookexternalhit|headless|lighthouse|curl|wget/i;
+const APERCU_WHATSAPP = /^WhatsApp\//i;
 
 /** Spécifications des visuels, communiquées au vendeur et au back-office. */
 export const FORMATS_VISUEL = {
@@ -60,7 +65,8 @@ async function chargerBoutique(boutiqueId: number, res: Response): Promise<Bouti
 
 /** Une interaction est comptée hors robots, admins, vendeur annonceur et IP locales/privées. */
 function doitCompter(req: Request, publicite?: Publicite | null): boolean {
-  if (AGENTS_ROBOTS.test(String(req.headers['user-agent'] ?? ''))) return false;
+  const agent = String(req.headers['user-agent'] ?? '');
+  if (AGENTS_ROBOTS.test(agent) || APERCU_WHATSAPP.test(agent.trim())) return false;
   return doitEnregistrerLaVue(req, publicite?.vendeur_id ?? undefined);
 }
 
