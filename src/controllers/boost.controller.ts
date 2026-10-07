@@ -208,7 +208,7 @@ export class BoostController {
     try {
       const boost = await chargerBoostAutorise(req, res);
       if (!boost) return;
-      res.json({ success: true, ...(await BoostService.detail(boost, true)) });
+      res.json({ success: true, ...(await BoostService.detail(await BoostService.rafraichirSiPerime(boost), true)) });
     } catch (err) {
       repondreErreur(res, err, 'la récupération du boost');
     }
@@ -323,7 +323,7 @@ export class BoostController {
         res.status(404).json({ success: false, message: 'Boost introuvable', code: 'BOOST_INTROUVABLE' });
         return;
       }
-      res.json({ success: true, ...(await BoostService.detail(boost, false)), conformite_items: CONFORMITE_BOOST });
+      res.json({ success: true, ...(await BoostService.detail(await BoostService.rafraichirSiPerime(boost), false)), conformite_items: CONFORMITE_BOOST });
     } catch (err) {
       repondreErreur(res, err, 'la récupération du boost');
     }
