@@ -55,3 +55,13 @@ lib/database-types.ts   types du schéma — COPIE DE RÉFÉRENCE (cf. ../CLAUDE
 - Route ou champ modifié → Grep dans `../marche241_v2/src/lib/services` et `../marche241_admin/app/Services/MarketplaceApi.php`.
 - Nouvelle origine front → `CORS_ORIGIN`, `FRONTEND_URL`, `WEBAUTHN_ORIGIN` / `WEBAUTHN_RP_ID`.
 - Nouvelle table lue par l'admin → l'ajouter à `MarketplaceDatabase::TABLES` côté admin.
+
+## Exécution des plans (résumé)
+
+Plan validé → 3 étapes obligatoires (détail dans `../CLAUDE.md`, section « Exécution des plans ») :
+
+1. **Lancement avec Ralph si disponible** : `/ralph-loop "<plan + critères de fin, tests et vérifs visuelles inclus>" --max-iterations 20 --completion-promise "PLAN TERMINE"`. Toujours fixer `--max-iterations` ; n'émettre la promesse que si tout est fait et vérifié. Sans Ralph : exécution pas à pas, en le signalant.
+2. **Tests** : `npx tsc --noEmit` (+ `npm run build`) ; appeler les endpoints modifiés sur l'API locale (port 3001) et vérifier le format `{ success, ... }`. Un échec bloque la suite.
+3. **Vérifications visuelles** : si le changement est visible côté front ou admin, ouvrir les écrans consommateurs dans le navigateur intégré (desktop + mobile 375 px, console sans erreur) et joindre des captures.
+
+Le compte rendu final liste ce qui a été testé, vérifié visuellement, et ce qui n'a pas pu l'être (avec la raison).
