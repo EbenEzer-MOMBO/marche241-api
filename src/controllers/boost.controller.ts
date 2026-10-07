@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { BoostModel, BoostParametresModel } from '../models/boost.model';
+import { PubliciteParametresModel } from '../models/publicite.model';
 import { BoutiqueModel } from '../models/boutique.model';
 import { BoostErreur, BoostService } from '../services/boost.service';
 import { estimerAudience, estimerImpressionsJour } from '../services/meta-estimation.service';
@@ -68,6 +69,8 @@ export class BoostController {
   static async getParametres(_req: Request, res: Response): Promise<void> {
     try {
       const parametres = await BoostParametresModel.lire();
+      // Carte « Mise en avant sur Marché 241 » : ouverte depuis le back-office (paramètres des bannières)
+      const pub = await PubliciteParametresModel.lire();
       res.json({
         success: true,
         parametres: {
@@ -82,7 +85,7 @@ export class BoostController {
           budget_jour_min_fcfa: parametres.budget_jour_min_fcfa,
           packs: parametres.packs,
           kill_switch: parametres.kill_switch,
-          types: { plateforme: false, meta: true },
+          types: { plateforme: pub.plateforme_active && !pub.kill_switch, meta: true },
           durees: DUREES_BOOST,
           pays: PAYS_CIBLAGE,
           villes: VILLES_GABON.map(({ cle, nom }) => ({ cle, nom })),

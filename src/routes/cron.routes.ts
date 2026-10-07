@@ -3,6 +3,7 @@ import { CronController } from '../controllers/cron.controller';
 import { auth, isAdmin } from '../middlewares/auth.middleware';
 import { requireCronSecret } from '../middlewares/cron-auth.middleware';
 import { BoostController } from '../controllers/boost.controller';
+import { PubliciteController } from '../controllers/publicite.controller';
 
 const router = Router();
 
@@ -22,5 +23,6 @@ router.get('/nettoyer-vues', requireCronSecret, CronController.executeNettoyerVu
 router.get('/nettoyer-vues-mois', requireCronSecret, CronController.executeNettoyerVuesMoisEnCours);
 router.get('/annuler-commandes-orphelines', requireCronSecret, CronController.executeAnnulerCommandesOrphelines);
 router.get('/boosts/sync', requireCronSecret, BoostController.synchroniser);
+router.get('/publicites/statuts', requireCronSecret, PubliciteController.rafraichirStatuts);
 
 export default router;

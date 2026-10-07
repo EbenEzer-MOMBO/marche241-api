@@ -245,7 +245,7 @@ router.post('/admin/:id/rembourse', ...admin, validateParams(boostIdParamSchema)
  *     tags: [Boosts]
  *     security: [{ bearerAuth: [] }]
  *     responses:
- *       200: { description: "{ success, parametres } — parametres.types = { plateforme: false, meta: true }" }
+ *       200: { description: "{ success, parametres } — parametres.types = { plateforme (ouverture des bannières aux vendeurs), meta: true }" }
  */
 router.get('/parametres', auth, BoostController.getParametres);
 

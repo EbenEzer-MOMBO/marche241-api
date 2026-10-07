@@ -10,7 +10,7 @@ export type StatutProduit = 'actif' | 'inactif' | 'brouillon' | 'en_attente_vali
 export type StatutCommande = 'en_attente' | 'confirmee' | 'en_preparation' | 'expedie' | 'livree' | 'annulee' | 'remboursee';
 export type StatutPaiement = 'en_attente' | 'partiellement_paye' | 'paye' | 'echec' | 'rembourse';
 export type MethodePaiement = 'mobile_money' | 'airtel_money' | 'moov_money' | 'carte_bancaire' | 'especes' | 'virement';
-export type TypePaiement = 'paiement_complet' | 'acompte' | 'frais_livraison' | 'solde_apres_livraison' | 'complement' | 'boost';
+export type TypePaiement = 'paiement_complet' | 'acompte' | 'frais_livraison' | 'solde_apres_livraison' | 'complement' | 'boost' | 'publicite';
 export type StatutAvis = 'en_attente' | 'approuve' | 'rejete';
 
 // Interface pour les dimensions
@@ -249,8 +249,9 @@ export interface Billet {
 // Table transactions
 export interface Transaction {
   id: number;
-  commande_id: number; // NULL en base pour une transaction de boost (boost_id renseigné)
+  commande_id: number; // NULL en base pour une transaction de boost ou de publicité (boost_id / publicite_id renseigné)
   boost_id?: number | null; // Boost publicitaire payé (type_paiement = 'boost')
+  publicite_id?: number | null; // Publicité interne payée (type_paiement = 'publicite')
   reference_transaction: string; // Référence unique de la transaction
   montant: number; // Montant en centimes
   methode_paiement: MethodePaiement;
@@ -671,4 +672,153 @@ export interface MetaConnexion {
   message_erreur: string | null;
   modifie_par: string | null;
   date_modification: Date;
+}
+
+// ============================================
+// Publicité interne (bannières sponsorisées, migrations 032/033)
+// ============================================
+
+export type FormulePublicite = 'categorie' | 'accueil' | 'premium';
+export type StatutPublicite =
+  | 'brouillon'
+  | 'en_attente_paiement'
+  | 'en_attente_validation'
+  | 'refusee'
+  | 'programmee'
+  | 'active'
+  | 'terminee'
+  | 'annulee';
+export type TypeAnnonceurPublicite = 'vendeur' | 'externe';
+export type CreneauPublicite = 'accueil' | 'pages' | 'categorie';
+export type TypeInteractionPublicite = 'affichage' | 'clic';
+export type ModePaiementPublicite = 'ebilling' | 'hors_plateforme' | 'offert';
+export type CibleTypePublicite = 'boutique' | 'produit';
+/** Page publique où une bannière est diffusée (mesure des affichages et des clics). */
+export type PagePublicite = 'accueil' | 'produits' | 'categorie' | 'evenements' | 'boutiques' | 'autre';
+
+// Table publicites
+export interface Publicite {
+  id: number;
+  type_annonceur: TypeAnnonceurPublicite;
+  boutique_id: number | null;
+  vendeur_id: number | null;
+  annonceur_nom: string;
+  annonceur_contact: string | null;
+
+  formule: FormulePublicite;
+  categorie_id: number | null;
+  statut: StatutPublicite;
+
+  semaine_debut: string | null; // AAAA-MM-JJ (lundi)
+  nb_semaines: number;
+  semaines_offertes: number;
+  date_debut: Date | null;
+  date_fin: Date | null;
+
+  image_url: string | null;
+  image_mobile_url: string | null;
+  texte_alternatif: string | null;
+  cible_type: CibleTypePublicite | null;
+  produit_id: number | null;
+  url_destination: string | null;
+
+  prix_semaine_fcfa: number;
+  remise_fcfa: number;
+  frais_encaissement_fcfa: number; // frais eBilling non remboursables (inclus dans total_fcfa)
+  total_fcfa: number;
+  mode_paiement: ModePaiementPublicite;
+  reference_paiement_externe: string | null;
+
+  note_revue: string | null;
+  valide_par: string | null;
+  date_validation: Date | null;
+  publication_reseaux_faite: boolean;
+
+  statut_remboursement: StatutRemboursementBoost;
+  montant_a_rembourser_fcfa: number;
+  date_remboursement: Date | null;
+  note_remboursement: string | null;
+
+  date_soumission: Date | null;
+  date_paiement: Date | null;
+  date_cloture: Date | null;
+  date_creation: Date;
+  date_modification: Date;
+
+  // Relations
+  boutique?: Pick<Boutique, 'id' | 'nom' | 'slug' | 'logo'> | null;
+  categorie?: { id: number; nom: string; slug: string } | null;
+  produit_nom?: string | null;
+}
+
+// Table publicite_reservations
+export interface PubliciteReservation {
+  id: number;
+  publicite_id: number;
+  creneau: CreneauPublicite;
+  categorie_id: number | null;
+  semaine: string; // AAAA-MM-JJ (lundi)
+  date_creation: Date;
+}
+
+// Table publicite_interactions
+export interface PubliciteInteraction {
+  id: number;
+  publicite_id: number;
+  type: TypeInteractionPublicite;
+  page: PagePublicite;
+  ip_hash: string | null;
+  date_creation: Date;
+}
+
+// Table publicite_evenements
+export interface PubliciteEvenement {
+  id: number;
+  publicite_id: number;
+  type_evenement: string;
+  acteur: 'vendeur' | 'admin' | 'systeme';
+  donnees: Record<string, unknown> | null;
+  date_creation: Date;
+}
+
+// Table publicite_parametres (clé/valeur), une fois typée
+export interface PubliciteParametres {
+  tarifs: Record<FormulePublicite, number>; // prix d'une semaine en FCFA
+  remise_4_pour_3: boolean; // 4 semaines consécutives = prix de 3
+  semaines_max: number; // durée maximale d'une réservation
+  semaines_avance_max: number; // horizon de réservation (en semaines)
+  garantie_affichages: Record<FormulePublicite, number>; // seuil hebdomadaire sous lequel une semaine peut être offerte
+  eligibilite: 'verifiees' | 'toutes'; // boutiques autorisées à acheter
+  frais_encaissement_bps: number;
+  delai_paiement_minutes: number; // durée de blocage des semaines pendant le paiement
+  plateforme_active: boolean; // ouvre l'offre aux vendeurs (carte du dashboard)
+  kill_switch: boolean; // coupe la diffusion et les nouvelles réservations
+}
+
+/** Statistiques d'une publicité (affichages comptés côté navigateur, clics via la redirection). */
+export interface StatsPublicite {
+  affichages: number;
+  visiteurs_uniques: number;
+  clics: number;
+  taux_clic: number; // en %, 2 décimales
+  par_jour: Array<{ date: string; affichages: number; clics: number }>;
+  par_page: Array<{ page: PagePublicite; affichages: number; clics: number }>;
+}
+
+/** Disponibilité d'une semaine pour une formule. */
+export interface DisponibiliteSemaine {
+  semaine: string; // AAAA-MM-JJ (lundi)
+  libre: boolean;
+}
+
+/** Bannière telle que servie aux pages publiques. */
+export interface BannierePubliciteDiffusee {
+  id: number;
+  formule: FormulePublicite;
+  creneau: CreneauPublicite;
+  type_annonceur: TypeAnnonceurPublicite; // externe : lien ouvert dans un nouvel onglet
+  image_url: string;
+  image_mobile_url: string | null;
+  texte_alternatif: string;
+  annonceur_nom: string;
 }
