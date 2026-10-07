@@ -12,6 +12,8 @@ import { BilletService } from '../services/billet.service';
 import { BilletModel } from '../models/billet.model';
 import { BoostModel } from '../models/boost.model';
 import { BoostService } from '../services/boost.service';
+import { PubliciteModel } from '../models/publicite.model';
+import { PubliciteService } from '../services/publicite.service';
 import { logger } from '../utils/logger';
 import { notifier } from '../services/telegram.service';
 import { formaterFcfa } from '../lib/boost/devis';
@@ -78,6 +80,22 @@ export class PaiementController {
           return {
             isValid: false,
             message: `Montant de la transaction (${transaction.montant} FCFA) non conforme au montant du boost (${boost.total_fcfa} FCFA)`
+          };
+        }
+        return { isValid: true };
+      }
+
+      // Transaction de publicité interne : même contrôle sur le total figé à la soumission
+      if (transaction.publicite_id) {
+        const publicite = await PubliciteModel.getById(transaction.publicite_id);
+        if (!publicite) {
+          return { isValid: false, message: `Publicité ${transaction.publicite_id} non trouvée` };
+        }
+        if (Math.abs(publicite.total_fcfa - transaction.montant) > 1) {
+          logger.error(`[PaiementController] Montant publicité incorrect: ${transaction.montant} au lieu de ${publicite.total_fcfa}`);
+          return {
+            isValid: false,
+            message: `Montant de la transaction (${transaction.montant} FCFA) non conforme au montant de la publicité (${publicite.total_fcfa} FCFA)`
           };
         }
         return { isValid: true };
@@ -652,6 +670,15 @@ export class PaiementController {
           }
         }
 
+        // Paiement à l'acte d'une bannière sponsorisée : passage en file de validation
+        if (transaction.publicite_id) {
+          try {
+            await PubliciteService.confirmerPaiement(transaction.publicite_id, transaction.id, transaction.montant);
+          } catch (publiciteError: any) {
+            logger.error(`[PaiementController] Confirmation de la publicité ${transaction.publicite_id}:`, publiciteError.message);
+          }
+        }
+
         if (transaction.commande_id && commande) {
           const montantPaye = await CommandeModel.getMontantPaye(transaction.commande_id);
 
@@ -815,7 +842,7 @@ export class PaiementController {
             transaction.numero_telephone;
 
           // Le message d'échec WhatsApp concerne une commande : pas d'envoi pour un boost
-          if (phone && !transaction.boost_id) {
+          if (phone && !transaction.boost_id && !transaction.publicite_id) {
             try {
               const messageId = await WhatsAppService.notifyPaymentFailed(phone);
               if (messageId) {
@@ -833,13 +860,25 @@ export class PaiementController {
             `[PaiementController] Réconciliation: TX ${transaction.id} en échec (bill ${billId}, state=${billState})`
           );
           void notifier('paiement_echoue', {
-            titre: transaction.boost_id ? 'Paiement de boost non abouti' : 'Paiement de commande non abouti',
+            titre: transaction.boost_id
+              ? 'Paiement de boost non abouti'
+              : transaction.publicite_id
+                ? 'Paiement de bannière non abouti'
+                : 'Paiement de commande non abouti',
             lignes: [
               `Montant : ${formaterFcfa(transaction.montant)}`,
-              transaction.boost_id ? `Boost #${transaction.boost_id}` : `Commande #${transaction.commande_id}`,
+              transaction.boost_id
+                ? `Boost #${transaction.boost_id}`
+                : transaction.publicite_id
+                  ? `Bannière #${transaction.publicite_id}`
+                  : `Commande #${transaction.commande_id}`,
               `Facture eBilling ${billId} restée « ${billState} » après ${timeoutMinutes} min`
             ],
-            lien: transaction.boost_id ? `/boosts/${transaction.boost_id}` : '/transactions'
+            lien: transaction.boost_id
+              ? `/boosts/${transaction.boost_id}`
+              : transaction.publicite_id
+                ? `/publicites/${transaction.publicite_id}`
+                : '/transactions'
           });
           continue;
         }

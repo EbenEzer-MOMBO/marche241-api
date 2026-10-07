@@ -28,6 +28,9 @@ export class CronService {
     // Synchronisation des boosts Meta (insights, revue Meta, clôture)
     this.scheduleSyncBoosts();
 
+    // Publicité interne : début/fin de diffusion, libération des semaines non payées
+    this.scheduleStatutsPublicites();
+
     console.log('[CronService] Tâches planifiées initialisées avec succès');
   }
 
@@ -47,6 +50,28 @@ export class CronService {
         );
       } catch (error) {
         console.error('[CronService] Erreur lors de la synchro des boosts:', error);
+      }
+    });
+
+    this.jobs.set(jobName, task);
+    console.log(`[CronService] Tâche planifiée: ${jobName} - Toutes les heures`);
+  }
+
+  /**
+   * Fait avancer les bannières sponsorisées (programmée → active → terminée) et libère les semaines
+   * bloquées par un paiement non abouti. Toutes les heures (5e minute) ; la diffusion publique se fie
+   * de toute façon aux dates de la période.
+   */
+  static scheduleStatutsPublicites(): void {
+    const jobName = 'statuts-publicites';
+
+    const task = cron.schedule('5 * * * *', async () => {
+      try {
+        const { PubliciteService } = await import('./publicite.service');
+        const r = await PubliciteService.rafraichirStatuts();
+        console.log(`[CronService] Publicités : ${r.demarrees} démarrée(s), ${r.terminees} terminée(s), ${r.liberees} libérée(s)`);
+      } catch (error) {
+        console.error('[CronService] Erreur lors du rafraîchissement des publicités:', error);
       }
     });
 
@@ -285,6 +310,9 @@ export class CronService {
       );
 
       const count = Number(rows[0]?.count) || 0;
+      // Interactions des bannières sponsorisées : conservées 180 jours (bilans)
+      const { PubliciteInteractionModel } = await import('../models/publicite.model');
+      await PubliciteInteractionModel.nettoyer(180);
       console.log(`[CronService] ${count} vue(s) supprimée(s) (plus de ${joursRetention} jours)`);
 
       return { count };

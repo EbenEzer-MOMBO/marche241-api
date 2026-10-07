@@ -6,6 +6,7 @@
 
 export const GROUPES_NOTIFICATION = [
   { code: 'boosts', nom: 'Boosts publicitaires' },
+  { code: 'publicites', nom: 'Bannières sponsorisées' },
   { code: 'commandes', nom: 'Commandes & paiements' },
   { code: 'versements', nom: 'Versements' },
   { code: 'vendeurs', nom: 'Vendeurs & boutiques' }
@@ -18,6 +19,9 @@ export const EVENEMENTS_NOTIFICATION = [
   { code: 'boost_erreur_meta', groupe: 'boosts', nom: 'Erreur de publication Meta', emoji: '⚠️' },
   { code: 'boost_rejete_meta', groupe: 'boosts', nom: 'Publicité rejetée par Meta', emoji: '⛔' },
   { code: 'boost_a_rembourser', groupe: 'boosts', nom: 'Remboursement de boost à faire', emoji: '💸' },
+  { code: 'publicite_a_valider', groupe: 'publicites', nom: 'Bannière payée à valider', emoji: '🖼️' },
+  { code: 'publicite_a_rembourser', groupe: 'publicites', nom: 'Remboursement de bannière à faire', emoji: '💸' },
+  { code: 'publicite_sous_garantie', groupe: 'publicites', nom: 'Bannière sous le seuil d\'affichages garanti', emoji: '📉' },
   { code: 'commande_payee', groupe: 'commandes', nom: 'Nouvelle commande payée', emoji: '🛒' },
   { code: 'paiement_echoue', groupe: 'commandes', nom: 'Paiement échoué', emoji: '❌' },
   { code: 'versement_effectue', groupe: 'versements', nom: 'Versement effectué', emoji: '✅' },
