@@ -74,7 +74,11 @@ router.use(`${apiPrefix}/billets`, billetRoutes);
 // Boost publicitaire Meta Ads (vendeur JWT + back-office x-service-key)
 router.use(`${apiPrefix}/boosts`, boostRoutes);
 
-// Publicité interne : bannières sponsorisées (public, vendeur JWT, back-office x-service-key)
+// Publicité interne : bannières sponsorisées (public, vendeur JWT, back-office x-service-key).
+// Chemin public /mises-en-avant : les bloqueurs de pub (Liste FR : règle « /publicites/* ») bloquent
+// toute URL contenant /publicites/ dans le navigateur. /publicites reste servi pour les appels serveur
+// (back-office) et la compatibilité.
+router.use(`${apiPrefix}/mises-en-avant`, publiciteRoutes);
 router.use(`${apiPrefix}/publicites`, publiciteRoutes);
 
 // Notifications Telegram de l'équipe (back-office)

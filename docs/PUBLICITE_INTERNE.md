@@ -43,7 +43,9 @@ terminee → programmee/active : uniquement via « offrir une semaine » (garant
 - Non comptés : robots, back-office, vendeur annonceur, IP privées/locales, rafales (même empreinte d'IP < 60 s). L'IP n'est jamais stockée : empreinte SHA-256 salée (`ip_hash`).
 - Interactions conservées 180 jours (nettoyées avec les vues, cron mensuel).
 
-## Routes (`/api/v1/publicites`)
+## Routes (`/api/v1/mises-en-avant`, alias `/api/v1/publicites`)
+
+⚠️ Depuis un navigateur, toujours utiliser **`/mises-en-avant`** : la liste de filtres **Liste FR** (uBlock Origin, AdBlock) contient la règle `/publicites/*`, qui bloque toute URL contenant `/publicites/` (requêtes, visuels, pages). L'alias `/publicites` reste servi pour les appels serveur à serveur (back-office). Les visuels sont téléversés dans le dossier R2 `mises-en-avant/`.
 
 | Accès | Méthode et chemin |
 |---|---|
