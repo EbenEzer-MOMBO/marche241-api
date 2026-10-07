@@ -816,6 +816,7 @@ export interface BannierePubliciteDiffusee {
   id: number;
   formule: FormulePublicite;
   creneau: CreneauPublicite;
+  type_annonceur: TypeAnnonceurPublicite; // externe : lien ouvert dans un nouvel onglet
   image_url: string;
   image_mobile_url: string | null;
   texte_alternatif: string;

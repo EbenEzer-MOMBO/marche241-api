@@ -379,7 +379,7 @@ export class PubliciteReservationModel {
   ): Promise<BannierePubliciteDiffusee[]> {
     if (!creneaux.length) return [];
     const { rows } = await query<BannierePubliciteDiffusee>(
-      `SELECT p.id, p.formule, r.creneau, p.image_url, p.image_mobile_url,
+      `SELECT p.id, p.formule, r.creneau, p.type_annonceur, p.image_url, p.image_mobile_url,
               COALESCE(NULLIF(p.texte_alternatif, ''), p.annonceur_nom) AS texte_alternatif, p.annonceur_nom
        FROM publicite_reservations r
        JOIN publicites p ON p.id = r.publicite_id
