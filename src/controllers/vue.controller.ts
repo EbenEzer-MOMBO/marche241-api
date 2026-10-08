@@ -21,6 +21,7 @@ export class VueController {
       const entiteId = Number(req.body.entite_id);
       const referrer = typeof req.body.referrer === 'string' ? req.body.referrer : undefined;
       const utmSource = typeof req.body.utm_source === 'string' ? req.body.utm_source : undefined;
+      const fuseau = typeof req.body.fuseau === 'string' && req.body.fuseau ? req.body.fuseau : undefined;
 
       const proprietaire = await proprietaireDeLEntite(typeEntite, entiteId);
       if (!proprietaire) {
@@ -40,15 +41,13 @@ export class VueController {
 
       const source = detecterSource(referrer, utmSource);
       const appareil = detecterAppareil(userAgent);
-      const enregistree = await VueModel.enregistrerVue(
-        typeEntite,
-        entiteId,
-        getClientIp(req),
+      const enregistree = await VueModel.enregistrerVue(typeEntite, entiteId, getClientIp(req), {
         userAgent,
-        referrer,
+        referer: referrer,
         source,
-        appareil
-      );
+        appareil,
+        fuseau
+      });
 
       res.status(202).json({ success: true, enregistree });
     } catch (error: any) {

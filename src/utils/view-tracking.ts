@@ -1,4 +1,6 @@
 import { Request } from 'express';
+import { paysDepuisFuseau, paysPossiblesDuFuseau } from '../config/fuseaux-pays.config';
+import { CODE_PAYS_VPN } from './ip-proxy';
 
 const PREVIEW_HEADER = 'x-boutique-preview';
 const SKIP_TRACKING_HEADER = 'x-skip-view-tracking';
@@ -154,6 +156,60 @@ export function detecterSource(referrer?: string, utmSource?: string): SourceVue
   }
 
   return 'autre';
+}
+
+export interface LocalisationVue {
+  pays: string | null;
+  ville: string | null;
+  pays_ip: string | null;
+  via_vpn: boolean | null;
+}
+
+/**
+ * Le pays vient du fuseau du navigateur (non modifié par un VPN), à défaut de
+ * l'IP. Un écart entre les deux signale un VPN : la ville de l'IP, celle du
+ * serveur VPN, est alors écartée.
+ */
+export function resoudreLocalisation(
+  geoIp: { pays: string | null; ville: string | null },
+  fuseau?: string | null
+): LocalisationVue {
+  const ipEstProxy = geoIp.pays === CODE_PAYS_VPN;
+
+  // Fuseau partagé (ex. Africa/Lagos) : il confirme ou infirme le pays de l'IP
+  const paysPossibles = paysPossiblesDuFuseau(fuseau);
+  if (paysPossibles) {
+    if (!geoIp.pays) {
+      return { pays: null, ville: null, pays_ip: null, via_vpn: null };
+    }
+    const coherent = !ipEstProxy && paysPossibles.includes(geoIp.pays);
+    return {
+      pays: coherent ? geoIp.pays : null,
+      ville: coherent ? geoIp.ville : null,
+      pays_ip: geoIp.pays,
+      via_vpn: !coherent
+    };
+  }
+
+  const paysFuseau = paysDepuisFuseau(fuseau);
+
+  let viaVpn: boolean | null;
+  if (ipEstProxy) {
+    viaVpn = true;
+  } else if (paysFuseau && geoIp.pays) {
+    viaVpn = geoIp.pays !== paysFuseau;
+  } else if (!paysFuseau && !geoIp.pays) {
+    viaVpn = null;
+  } else {
+    viaVpn = false;
+  }
+
+  return {
+    pays: paysFuseau ?? (ipEstProxy ? null : geoIp.pays),
+    ville: viaVpn ? null : geoIp.ville,
+    pays_ip: geoIp.pays,
+    via_vpn: viaVpn
+  };
 }
 
 /**

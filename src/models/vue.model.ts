@@ -1,7 +1,7 @@
 import geoip from 'geoip-lite';
 import { query } from '../config/database';
 import { logger } from '../utils/logger';
-import { normaliserIp } from '../utils/view-tracking';
+import { LocalisationVue, normaliserIp, resoudreLocalisation } from '../utils/view-tracking';
 import { CODE_PAYS_VPN, estIpProxyOuCdn } from '../utils/ip-proxy';
 
 export type TypeEntiteVue = 'boutique' | 'produit';
@@ -68,6 +68,29 @@ function resoudreGeoIp(ipAddress: string): { pays: string | null; ville: string 
   }
 }
 
+export interface OptionsVue {
+  userAgent?: string;
+  referer?: string;
+  source?: string;
+  appareil?: string;
+  fuseau?: string;
+}
+
+/** Paramètres $4 à $12, dans l'ordre de enregistrer_vue et de l'INSERT direct. */
+function parametresVue(options: OptionsVue, loc: LocalisationVue): unknown[] {
+  return [
+    options.userAgent || null,
+    options.referer || null,
+    loc.pays,
+    loc.ville,
+    options.source || null,
+    options.appareil || null,
+    options.fuseau || null,
+    loc.pays_ip,
+    loc.via_vpn
+  ];
+}
+
 export class VueModel {
   private static readonly TABLE_NAME = 'vues_tracking';
 
@@ -79,17 +102,14 @@ export class VueModel {
     typeEntite: TypeEntiteVue,
     entiteId: number,
     ipAddress: string,
-    userAgent?: string,
-    referer?: string,
-    source?: string,
-    appareil?: string
+    options: OptionsVue = {}
   ): Promise<boolean> {
     try {
-      const { pays, ville } = resoudreGeoIp(ipAddress);
+      const loc = resoudreLocalisation(resoudreGeoIp(ipAddress), options.fuseau);
 
       const { rows } = await query<{ enregistrer_vue: boolean }>(
-        `SELECT enregistrer_vue($1::type_entite_vue, $2, $3, $4, $5, $6, $7, $8, $9) AS enregistrer_vue`,
-        [typeEntite, entiteId, ipAddress, userAgent || null, referer || null, pays, ville, source || null, appareil || null]
+        `SELECT enregistrer_vue($1::type_entite_vue, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) AS enregistrer_vue`,
+        [typeEntite, entiteId, ipAddress, ...parametresVue(options, loc)]
       );
 
       logger.debug(`[VueModel] Nouvelle vue enregistrée: ${rows[0]?.enregistrer_vue}`);
@@ -99,7 +119,7 @@ export class VueModel {
       logger.error('[VueModel] Erreur lors de l\'appel de enregistrer_vue:', error);
 
       // Fallback: essayer d'insérer directement
-      return this.enregistrerVueDirecte(typeEntite, entiteId, ipAddress, userAgent, referer, source, appareil);
+      return this.enregistrerVueDirecte(typeEntite, entiteId, ipAddress, options);
     }
   }
 
@@ -110,20 +130,18 @@ export class VueModel {
     typeEntite: TypeEntiteVue,
     entiteId: number,
     ipAddress: string,
-    userAgent?: string,
-    referer?: string,
-    source?: string,
-    appareil?: string
+    options: OptionsVue
   ): Promise<boolean> {
     logger.debug('[VueModel] Tentative d\'enregistrement direct de la vue');
 
     try {
-      const { pays, ville } = resoudreGeoIp(ipAddress);
+      const loc = resoudreLocalisation(resoudreGeoIp(ipAddress), options.fuseau);
 
       // Une seule vue par entité et par IP sur la journée en cours
       const { rows } = await query<{ id: number }>(
-        `INSERT INTO ${this.TABLE_NAME} (type_entite, entite_id, ip_address, user_agent, referer, pays, ville, source, appareil)
-         SELECT $1::type_entite_vue, $2::integer, $3::varchar, $4::text, $5::text, $6::varchar, $7::varchar, $8::varchar, $9::varchar
+        `INSERT INTO ${this.TABLE_NAME} (type_entite, entite_id, ip_address, user_agent, referer, pays, ville, source, appareil, fuseau, pays_ip, via_vpn)
+         SELECT $1::type_entite_vue, $2::integer, $3::varchar, $4::text, $5::text, $6::varchar, $7::varchar, $8::varchar, $9::varchar,
+                $10::varchar, $11::varchar, $12::boolean
          WHERE NOT EXISTS (
            SELECT 1 FROM ${this.TABLE_NAME}
            WHERE type_entite = $1::type_entite_vue
@@ -133,7 +151,7 @@ export class VueModel {
              AND date_vue < CURRENT_DATE + INTERVAL '1 day'
          )
          RETURNING id`,
-        [typeEntite, entiteId, ipAddress, userAgent || null, referer || null, pays, ville, source || null, appareil || null]
+        [typeEntite, entiteId, ipAddress, ...parametresVue(options, loc)]
       );
 
       if (rows.length === 0) {

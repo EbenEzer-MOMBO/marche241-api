@@ -10,5 +10,9 @@ export const enregistrerVueSchema = Joi.object({
     'any.required': 'L\'identifiant de l\'entité est obligatoire'
   }),
   referrer: Joi.string().allow(null, '').max(2000),
-  utm_source: Joi.string().allow(null, '').max(100)
+  utm_source: Joi.string().allow(null, '').max(100),
+  fuseau: Joi.string().allow(null, '').max(64).pattern(/^[A-Za-z_]+(\/[A-Za-z0-9_+-]+){0,2}$/).messages({
+    'string.max': 'Le fuseau horaire ne doit pas dépasser {#limit} caractères',
+    'string.pattern.base': 'Le fuseau horaire doit être un identifiant IANA (ex. Africa/Libreville)'
+  })
 });
