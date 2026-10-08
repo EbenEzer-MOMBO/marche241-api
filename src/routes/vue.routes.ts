@@ -27,6 +27,10 @@ const router = Router();
  *               entite_id: { type: integer }
  *               referrer: { type: string }
  *               utm_source: { type: string, example: whatsapp }
+ *               fuseau:
+ *                 type: string
+ *                 example: Africa/Libreville
+ *                 description: Fuseau horaire du navigateur, source du pays (non modifié par un VPN)
  *     responses:
  *       202: { description: "{ success: true, enregistree: boolean }" }
  *       400: { description: VALIDATION_ERROR }

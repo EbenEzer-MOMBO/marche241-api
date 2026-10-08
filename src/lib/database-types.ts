@@ -14,7 +14,7 @@ export type TypePaiement = 'paiement_complet' | 'acompte' | 'frais_livraison' | 
 export type StatutAvis = 'en_attente' | 'approuve' | 'rejete';
 export type SourceVue = 'whatsapp' | 'facebook' | 'instagram' | 'tiktok' | 'google' | 'direct' | 'interne' | 'autre';
 export type AppareilVue = 'android' | 'ios' | 'desktop' | 'autre';
-export type DimensionAudience = 'pays' | 'ville' | 'source' | 'appareil';
+export type DimensionAudience = 'pays' | 'ville' | 'source' | 'appareil' | 'vpn';
 
 export interface StatistiqueVuesJour {
   jour: string;
