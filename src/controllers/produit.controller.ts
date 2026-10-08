@@ -3,7 +3,6 @@ import { ProduitModel } from '../models/produit.model';
 import { VueModel } from '../models/vue.model';
 import { BoutiqueModel } from '../models/boutique.model';
 import { logger } from '../utils/logger';
-import { doitEnregistrerLaVue, getClientIp } from '../utils/view-tracking';
 import { FiltresListeProduits } from '../models/produit.model';
 import { BilletModel } from '../models/billet.model';
 import { VendeurModel } from '../models/vendeur.model';
@@ -131,24 +130,6 @@ function estProprietaireDuProduit(req: Request, produit: any): boolean {
   return !!(req.vendeur && produit.boutique && produit.boutique.vendeur_id === req.vendeur.id);
 }
 
-function vendeurIdDuProduit(produit: { boutique?: { vendeur_id?: number } }): number | undefined {
-  return produit.boutique?.vendeur_id;
-}
-
-function enregistrerVueProduit(req: Request, produit: { id: number }): void {
-  const clientIp = getClientIp(req);
-  const userAgent = req.headers['user-agent'] || undefined;
-  const referer = req.headers['referer'] || undefined;
-
-  VueModel.enregistrerVue('produit', produit.id, clientIp, userAgent, referer)
-    .then((nouvelleVue) => {
-      if (nouvelleVue) {
-        logger.debug(`[ProduitController] Nouvelle vue enregistrée pour produit ${produit.id}`);
-      }
-    })
-    .catch((err) => logger.error('[ProduitController] Erreur tracking vue produit:', err));
-}
-
 export class ProduitController {
   /**
    * Récupère tous les produits avec pagination
@@ -210,10 +191,6 @@ export class ProduitController {
         return;
       }
 
-      if (doitEnregistrerLaVue(req, vendeurIdDuProduit(produit))) {
-        enregistrerVueProduit(req, produit);
-      }
-
       res.status(200).json({
         success: true,
         produit
@@ -242,10 +219,6 @@ export class ProduitController {
           message: 'Produit non trouvé'
         });
         return;
-      }
-
-      if (doitEnregistrerLaVue(req, vendeurIdDuProduit(produit))) {
-        enregistrerVueProduit(req, produit);
       }
 
       res.status(200).json({

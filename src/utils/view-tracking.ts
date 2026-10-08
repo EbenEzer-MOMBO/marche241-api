@@ -88,13 +88,81 @@ export function estRequeteSansTracking(req: Request): boolean {
   return req.query.track === '0' || headerEstActif(req, SKIP_TRACKING_HEADER);
 }
 
+const ROBOT =
+  /bot|crawl|spider|facebookexternalhit|whatsapp\/|slurp|lighthouse|headless/i;
+
+export function estRobot(userAgent?: string): boolean {
+  if (!userAgent || !userAgent.trim()) {
+    return true;
+  }
+
+  const brut = userAgent.trim().toLowerCase();
+  if (brut === 'node' || brut.startsWith('node/') || brut.startsWith('curl') || brut.startsWith('axios')) {
+    return true;
+  }
+
+  return ROBOT.test(userAgent);
+}
+
+export function detecterAppareil(userAgent?: string): 'android' | 'ios' | 'desktop' | 'autre' {
+  const ua = (userAgent || '').toLowerCase();
+  if (/android/.test(ua)) {
+    return 'android';
+  }
+  if (/iphone|ipad|ipod/.test(ua)) {
+    return 'ios';
+  }
+  if (/windows|macintosh|mac os|linux|cros/.test(ua)) {
+    return 'desktop';
+  }
+  return 'autre';
+}
+
+const SOURCES = ['whatsapp', 'facebook', 'instagram', 'tiktok', 'google', 'direct', 'interne', 'autre'] as const;
+
+export type SourceVueDetectee = (typeof SOURCES)[number];
+
+export function detecterSource(referrer?: string, utmSource?: string): SourceVueDetectee {
+  const utm = (utmSource || '').trim().toLowerCase();
+  if (utm) {
+    const connue = SOURCES.find((source) => source === utm);
+    return connue ?? 'autre';
+  }
+
+  const ref = (referrer || '').trim().toLowerCase();
+  if (!ref) {
+    return 'direct';
+  }
+
+  if (ref.includes('marche241')) {
+    return 'interne';
+  }
+  if (ref.includes('whatsapp') || ref.includes('wa.me')) {
+    return 'whatsapp';
+  }
+  if (ref.includes('facebook.') || ref.includes('fb.com') || ref.includes('fb.me')) {
+    return 'facebook';
+  }
+  if (ref.includes('instagram.')) {
+    return 'instagram';
+  }
+  if (ref.includes('tiktok.')) {
+    return 'tiktok';
+  }
+  if (ref.includes('google.')) {
+    return 'google';
+  }
+
+  return 'autre';
+}
+
 /**
  * Une visite ne doit pas être comptée si c'est une prévisualisation, un fetch
- * interne (layout/métadonnées), un admin plateforme, le vendeur propriétaire,
- * ou une IP locale/privée (dev, SSR localhost).
+ * interne (layout/métadonnées), un robot, un admin plateforme, le vendeur
+ * propriétaire, ou une IP locale/privée (dev, SSR localhost).
  */
 export function doitEnregistrerLaVue(req: Request, proprietaireVendeurId?: number): boolean {
-  if (estRequeteSansTracking(req) || estRequetePreview(req)) {
+  if (estRequeteSansTracking(req) || estRequetePreview(req) || estRobot(req.headers['user-agent'])) {
     return false;
   }
 

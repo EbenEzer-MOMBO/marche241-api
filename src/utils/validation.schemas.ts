@@ -1,4 +1,14 @@
 import Joi from 'joi';
+import { normaliserVille } from '../config/villes-gabon.config';
+
+const villeSaisie = Joi.string().allow(null, '').max(100).custom((valeur) => {
+  if (valeur == null || valeur === '') {
+    return valeur;
+  }
+  return normaliserVille(valeur);
+}).messages({
+  'string.max': 'La ville ne doit pas dépasser {#limit} caractères'
+});
 
 // Pays supportés par le sélecteur téléphone (voir marche241_v2/src/components/ui/PhoneNumberInput.tsx)
 // Chaque entrée : indicatif international + nombre exact de chiffres locaux attendus
@@ -34,9 +44,7 @@ export const createVendeurSchema = Joi.object({
   email: Joi.string().email().allow(null, '').messages({
     'string.email': 'L\'adresse email doit être valide'
   }),
-  ville: Joi.string().allow(null, '').max(100).messages({
-    'string.max': 'La ville ne doit pas dépasser {#limit} caractères'
-  })
+  ville: villeSaisie
 });
 
 export const updateVendeurSchema = Joi.object({
@@ -47,9 +55,7 @@ export const updateVendeurSchema = Joi.object({
   email: Joi.string().email().allow(null, '').messages({
     'string.email': 'L\'adresse email doit être valide'
   }),
-  ville: Joi.string().allow(null, '').max(100).messages({
-    'string.max': 'La ville ne doit pas dépasser {#limit} caractères'
-  }),
+  ville: villeSaisie,
   photo_profil: Joi.string().allow(null, '').max(255).messages({
     'string.max': 'L\'URL de la photo de profil ne doit pas dépasser {#limit} caractères'
   }),
@@ -141,6 +147,7 @@ export const createBoutiqueSchema = Joi.object({
   telephone: Joi.string().allow(null, '').pattern(PHONE_PATTERN).messages({
     'string.pattern.base': PHONE_MESSAGE
   }),
+  ville: villeSaisie,
   payment_restriction_mode: Joi.string().valid('complet_uniquement', 'livraison_uniquement', 'les_deux', 'acompte_50').default('les_deux').messages({
     'any.only': 'Le mode de restriction de paiement doit être complet_uniquement, livraison_uniquement, les_deux ou acompte_50'
   })
@@ -177,6 +184,7 @@ export const updateBoutiqueSchema = Joi.object({
   telephone: Joi.string().allow(null, '').pattern(PHONE_PATTERN).messages({
     'string.pattern.base': PHONE_MESSAGE
   }),
+  ville: villeSaisie,
   payment_restriction_mode: Joi.string().valid('complet_uniquement', 'livraison_uniquement', 'les_deux', 'acompte_50').messages({
     'any.only': 'Le mode de restriction de paiement doit être complet_uniquement, livraison_uniquement, les_deux ou acompte_50'
   })

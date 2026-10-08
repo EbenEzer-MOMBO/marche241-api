@@ -80,15 +80,16 @@ export class VueModel {
     entiteId: number,
     ipAddress: string,
     userAgent?: string,
-    referer?: string
+    referer?: string,
+    source?: string,
+    appareil?: string
   ): Promise<boolean> {
     try {
       const { pays, ville } = resoudreGeoIp(ipAddress);
 
-      // Appeler la fonction SQL pour enregistrer la vue
       const { rows } = await query<{ enregistrer_vue: boolean }>(
-        `SELECT enregistrer_vue($1::type_entite_vue, $2, $3, $4, $5, $6, $7) AS enregistrer_vue`,
-        [typeEntite, entiteId, ipAddress, userAgent || null, referer || null, pays, ville]
+        `SELECT enregistrer_vue($1::type_entite_vue, $2, $3, $4, $5, $6, $7, $8, $9) AS enregistrer_vue`,
+        [typeEntite, entiteId, ipAddress, userAgent || null, referer || null, pays, ville, source || null, appareil || null]
       );
 
       logger.debug(`[VueModel] Nouvelle vue enregistrée: ${rows[0]?.enregistrer_vue}`);
@@ -98,7 +99,7 @@ export class VueModel {
       logger.error('[VueModel] Erreur lors de l\'appel de enregistrer_vue:', error);
 
       // Fallback: essayer d'insérer directement
-      return this.enregistrerVueDirecte(typeEntite, entiteId, ipAddress, userAgent, referer);
+      return this.enregistrerVueDirecte(typeEntite, entiteId, ipAddress, userAgent, referer, source, appareil);
     }
   }
 
@@ -110,7 +111,9 @@ export class VueModel {
     entiteId: number,
     ipAddress: string,
     userAgent?: string,
-    referer?: string
+    referer?: string,
+    source?: string,
+    appareil?: string
   ): Promise<boolean> {
     logger.debug('[VueModel] Tentative d\'enregistrement direct de la vue');
 
@@ -119,8 +122,8 @@ export class VueModel {
 
       // Une seule vue par entité et par IP sur la journée en cours
       const { rows } = await query<{ id: number }>(
-        `INSERT INTO ${this.TABLE_NAME} (type_entite, entite_id, ip_address, user_agent, referer, pays, ville)
-         SELECT $1::type_entite_vue, $2::integer, $3::varchar, $4::text, $5::text, $6::varchar, $7::varchar
+        `INSERT INTO ${this.TABLE_NAME} (type_entite, entite_id, ip_address, user_agent, referer, pays, ville, source, appareil)
+         SELECT $1::type_entite_vue, $2::integer, $3::varchar, $4::text, $5::text, $6::varchar, $7::varchar, $8::varchar, $9::varchar
          WHERE NOT EXISTS (
            SELECT 1 FROM ${this.TABLE_NAME}
            WHERE type_entite = $1::type_entite_vue
@@ -130,7 +133,7 @@ export class VueModel {
              AND date_vue < CURRENT_DATE + INTERVAL '1 day'
          )
          RETURNING id`,
-        [typeEntite, entiteId, ipAddress, userAgent || null, referer || null, pays, ville]
+        [typeEntite, entiteId, ipAddress, userAgent || null, referer || null, pays, ville, source || null, appareil || null]
       );
 
       if (rows.length === 0) {

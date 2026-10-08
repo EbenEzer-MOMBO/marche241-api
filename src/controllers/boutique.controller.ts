@@ -1,13 +1,13 @@
 import { Request, Response } from 'express';
 import { BoutiqueModel } from '../models/boutique.model';
-import { ProduitModel } from '../models/produit.model';
 import { VueModel } from '../models/vue.model';
+import { ProduitModel } from '../models/produit.model';
 import { VendeurModel } from '../models/vendeur.model';
 import { CreateBoutiqueData, Boutique, StatutBoutique } from '../lib/database-types';
 import { logger } from '../utils/logger';
 import { EmailService } from '../services/email.service';
-import { doitEnregistrerLaVue, getClientIp } from '../utils/view-tracking';
 import { notifier } from '../services/telegram.service';
+import { normaliserVille } from '../config/villes-gabon.config';
 
 export class BoutiqueController {
   /**
@@ -70,17 +70,6 @@ export class BoutiqueController {
       }
 
 
-      // Enregistrer la vue (en arrière-plan, ne pas bloquer la réponse), sauf si c'est
-      // le vendeur propriétaire qui prévisualise sa propre boutique
-      if (doitEnregistrerLaVue(req, boutique.vendeur_id)) {
-        const clientIp = getClientIp(req);
-        const userAgent = req.headers['user-agent'] || undefined;
-        const referer = req.headers['referer'] || undefined;
-
-        VueModel.enregistrerVue('boutique', boutique.id, clientIp, userAgent, referer)
-          .catch(err => logger.error('[BoutiqueController] Erreur tracking vue:', err));
-      }
-
       res.status(200).json({
         success: true,
         boutique
@@ -118,17 +107,6 @@ export class BoutiqueController {
           message: 'Boutique non trouvée'
         });
         return;
-      }
-
-      // Enregistrer la vue (en arrière-plan), sauf si c'est le vendeur propriétaire
-      // qui prévisualise sa propre boutique
-      if (doitEnregistrerLaVue(req, boutique.vendeur_id)) {
-        const clientIp = getClientIp(req);
-        const userAgent = req.headers['user-agent'] || undefined;
-        const referer = req.headers['referer'] || undefined;
-
-        VueModel.enregistrerVue('boutique', boutique.id, clientIp, userAgent, referer)
-          .catch(err => logger.error('[BoutiqueController] Erreur tracking vue:', err));
       }
 
       res.status(200).json({
@@ -179,8 +157,12 @@ export class BoutiqueController {
    */
   static async createBoutique(req: Request, res: Response): Promise<void> {
     try {
-      const boutiqueData: CreateBoutiqueData = req.body;
-      
+      const boutiqueData: CreateBoutiqueData & { ville?: string } = req.body;
+      // Le schéma Joi normalise la ville dans validatedBody, mais ce contrôleur lit req.body
+      if (typeof boutiqueData.ville === 'string') {
+        boutiqueData.ville = normaliserVille(boutiqueData.ville) ?? boutiqueData.ville;
+      }
+
       
       // Récupérer le vendeur_id depuis le token JWT si authentifié
       if (req.user && req.user.id) {
@@ -246,7 +228,10 @@ export class BoutiqueController {
     try {
       const id = parseInt(req.params.id);
       const boutiqueData: Partial<Boutique> = req.body;
-      
+      if (typeof boutiqueData.ville === 'string') {
+        boutiqueData.ville = normaliserVille(boutiqueData.ville) ?? boutiqueData.ville;
+      }
+
       if (isNaN(id)) {
         res.status(400).json({
           success: false,

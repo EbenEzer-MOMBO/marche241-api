@@ -20,6 +20,7 @@ export class CronService {
     this.scheduleExpirerTransactions();
 
     // Tâche pour nettoyer les anciennes vues
+    this.scheduleAgregerStatistiques();
     this.scheduleNettoyerAnciennesVues();
 
     // Tâche pour annuler les commandes orphelines
@@ -272,15 +273,55 @@ export class CronService {
   }
 
   /**
-   * Planifie la tâche pour nettoyer les anciennes vues
-   * S'exécute tous les premiers du mois à 3h du matin
+   * Agrège les vues de la veille et des trois jours précédents (idempotent).
+   * 00:15, fuseau Africa/Libreville.
+   */
+  static scheduleAgregerStatistiques(): void {
+    const jobName = 'agreger-statistiques';
+
+    const task = cron.schedule('15 0 * * *', async () => {
+      console.log('[CronService] Début de la tâche: agréger les statistiques');
+      try {
+        const jours = await this.agregerStatistiquesRecentes();
+        console.log(`[CronService] Agrégation terminée: ${jours.lignes} ligne(s)`);
+      } catch (error) {
+        console.error('[CronService] Erreur lors de l\'agrégation:', error);
+      }
+    }, { timezone: 'Africa/Libreville' });
+
+    this.jobs.set(jobName, task);
+    console.log(`[CronService] Tâche planifiée: ${jobName} - chaque jour à 00:15 (Libreville)`);
+  }
+
+  static async agregerStatistiquesRecentes(): Promise<{ jours: string[]; lignes: number }> {
+    const { rows } = await query<{ jour: string }>(
+      `SELECT to_char(d, 'YYYY-MM-DD') AS jour
+       FROM generate_series(
+         (NOW() AT TIME ZONE 'Africa/Libreville')::date - 4,
+         (NOW() AT TIME ZONE 'Africa/Libreville')::date - 1,
+         INTERVAL '1 day'
+       ) AS d`
+    );
+
+    let lignes = 0;
+    for (const row of rows) {
+      const { rows: compte } = await query<{ agreger_statistiques_jour: number }>(
+        `SELECT agreger_statistiques_jour($1::date) AS agreger_statistiques_jour`,
+        [row.jour]
+      );
+      lignes += Number(compte[0]?.agreger_statistiques_jour) || 0;
+    }
+
+    return { jours: rows.map((row) => row.jour), lignes };
+  }
+
+  /**
+   * Planifie le nettoyage des vues de plus de 90 jours, après l'agrégation.
    */
   static scheduleNettoyerAnciennesVues(): void {
     const jobName = 'nettoyer-anciennes-vues';
 
-    // Planifier l'exécution le 1er de chaque mois à 3h00
-    // Format cron: '0 3 1 * *' = le 1er de chaque mois à 3h00
-    const task = cron.schedule('0 3 1 * *', async () => {
+    const task = cron.schedule('45 0 * * *', async () => {
       console.log('[CronService] Début de la tâche: nettoyer les anciennes vues');
 
       try {
@@ -289,17 +330,17 @@ export class CronService {
       } catch (error) {
         console.error('[CronService] Erreur lors de la tâche:', error);
       }
-    });
+    }, { timezone: 'Africa/Libreville' });
 
     this.jobs.set(jobName, task);
-    console.log(`[CronService] Tâche planifiée: ${jobName} - Le 1er de chaque mois à 3h00`);
+    console.log(`[CronService] Tâche planifiée: ${jobName} - chaque jour à 00:45 (Libreville), conservation 90 jours`);
   }
 
   /**
    * Nettoie les vues plus anciennes que X jours
-   * @param joursRetention Nombre de jours à conserver (défaut: 30)
+   * @param joursRetention Nombre de jours à conserver (défaut: 90)
    */
-  static async nettoyerAnciennesVues(joursRetention: number = 30): Promise<{ count: number }> {
+  static async nettoyerAnciennesVues(joursRetention: number = 90): Promise<{ count: number }> {
     try {
       console.log(`[CronService] Nettoyage des vues de plus de ${joursRetention} jours`);
 
@@ -328,27 +369,14 @@ export class CronService {
    */
   static async nettoyerVuesHorsMoisEnCours(): Promise<{ count: number; mois_conserve: string }> {
     try {
-      // Le 1er jour du mois est calculé par la base : le faire côté
-      // application décalerait la borne du fuseau horaire du serveur
       const { rows: bornes } = await query<{ mois_conserve: string }>(
-        `SELECT to_char(date_trunc('month', NOW()), 'YYYY-MM') AS mois_conserve`
+        `SELECT to_char(NOW() AT TIME ZONE 'Africa/Libreville', 'YYYY-MM') AS mois_conserve`
       );
       const moisConserve = bornes[0].mois_conserve;
-
-      console.log(`[CronService] Conservation des vues du mois: ${moisConserve}`);
-
-      // Supprimer toutes les vues antérieures au 1er jour du mois en cours.
-      // Le comptage porte sur les lignes réellement supprimées, plutôt que
-      // sur un dénombrement préalable qui pourrait diverger.
-      const { rows } = await query<{ id: number }>(
-        `DELETE FROM vues_tracking WHERE date_vue < date_trunc('month', NOW()) RETURNING id`
-      );
-
-      const nombreSupprimes = rows.length;
-      console.log(`[CronService] ${nombreSupprimes} vue(s) supprimée(s) (antérieures à ${moisConserve})`);
-
-      return { 
-        count: nombreSupprimes,
+      console.log(`[CronService] Rétention 90 jours (mois courant ${moisConserve}, historique conservé)`);
+      const result = await this.nettoyerAnciennesVues(90);
+      return {
+        count: result.count,
         mois_conserve: moisConserve
       };
     } catch (error) {
@@ -361,7 +389,7 @@ export class CronService {
    * Exécute manuellement la tâche de nettoyage des anciennes vues
    * @param joursRetention Nombre de jours à conserver (défaut: 30)
    */
-  static async executeNettoyerAnciennesVuesManually(joursRetention: number = 30): Promise<{ count: number }> {
+  static async executeNettoyerAnciennesVuesManually(joursRetention: number = 90): Promise<{ count: number }> {
     console.log(`[CronService] Exécution manuelle: nettoyer les vues de plus de ${joursRetention} jours`);
     return await this.nettoyerAnciennesVues(joursRetention);
   }
