@@ -1,12 +1,11 @@
 import { Request, Response } from 'express';
 import { BoutiqueModel } from '../models/boutique.model';
-import { ProduitModel } from '../models/produit.model';
 import { VueModel } from '../models/vue.model';
+import { ProduitModel } from '../models/produit.model';
 import { VendeurModel } from '../models/vendeur.model';
 import { CreateBoutiqueData, Boutique, StatutBoutique } from '../lib/database-types';
 import { logger } from '../utils/logger';
 import { EmailService } from '../services/email.service';
-import { doitEnregistrerLaVue, getClientIp } from '../utils/view-tracking';
 import { notifier } from '../services/telegram.service';
 
 export class BoutiqueController {
@@ -70,17 +69,6 @@ export class BoutiqueController {
       }
 
 
-      // Enregistrer la vue (en arrière-plan, ne pas bloquer la réponse), sauf si c'est
-      // le vendeur propriétaire qui prévisualise sa propre boutique
-      if (doitEnregistrerLaVue(req, boutique.vendeur_id)) {
-        const clientIp = getClientIp(req);
-        const userAgent = req.headers['user-agent'] || undefined;
-        const referer = req.headers['referer'] || undefined;
-
-        VueModel.enregistrerVue('boutique', boutique.id, clientIp, userAgent, referer)
-          .catch(err => logger.error('[BoutiqueController] Erreur tracking vue:', err));
-      }
-
       res.status(200).json({
         success: true,
         boutique
@@ -118,17 +106,6 @@ export class BoutiqueController {
           message: 'Boutique non trouvée'
         });
         return;
-      }
-
-      // Enregistrer la vue (en arrière-plan), sauf si c'est le vendeur propriétaire
-      // qui prévisualise sa propre boutique
-      if (doitEnregistrerLaVue(req, boutique.vendeur_id)) {
-        const clientIp = getClientIp(req);
-        const userAgent = req.headers['user-agent'] || undefined;
-        const referer = req.headers['referer'] || undefined;
-
-        VueModel.enregistrerVue('boutique', boutique.id, clientIp, userAgent, referer)
-          .catch(err => logger.error('[BoutiqueController] Erreur tracking vue:', err));
       }
 
       res.status(200).json({

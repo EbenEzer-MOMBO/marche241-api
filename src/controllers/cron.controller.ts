@@ -211,6 +211,26 @@ export class CronController {
         });
       }
 
+      const taskAggStart = Date.now();
+      try {
+        console.log('[CronController] Agrégation des statistiques d\'audience');
+        const result = await CronService.agregerStatistiquesRecentes();
+        results.push({
+          task: 'agreger_statistiques',
+          success: true,
+          result,
+          duration: Date.now() - taskAggStart
+        });
+      } catch (error: any) {
+        console.error('[CronController] Erreur agrégation statistiques:', error.message);
+        results.push({
+          task: 'agreger_statistiques',
+          success: false,
+          error: error.message,
+          duration: Date.now() - taskAggStart
+        });
+      }
+
       // Tâche 2: Nettoyer les anciennes vues (> 90 jours)
       const task2Start = Date.now();
       try {
@@ -371,10 +391,29 @@ export class CronController {
    * - jours: Nombre de jours à conserver (défaut: 30)
    * - key: Clé secrète pour sécuriser l'accès (optionnel)
    */
+  static async executeAgregerStatistiques(_req: Request, res: Response): Promise<void> {
+    try {
+      const result = await CronService.agregerStatistiquesRecentes();
+      res.status(200).json({
+        success: true,
+        message: 'Statistiques agrégées',
+        ...result,
+        executed_at: new Date().toISOString()
+      });
+    } catch (error: any) {
+      console.error('[CronController] Erreur agrégation:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erreur lors de l\'agrégation des statistiques',
+        error: error.message
+      });
+    }
+  }
+
   static async executeNettoyerVues(req: Request, res: Response): Promise<void> {
     try {
       // Authentification gérée par requireCronSecret sur la route
-      const joursRetention = parseInt(req.query.jours as string) || 30;
+      const joursRetention = parseInt(req.query.jours as string) || 90;
       
       console.log(`[CronController] Exécution manuelle: nettoyage des vues de plus de ${joursRetention} jours`);
 
@@ -417,7 +456,7 @@ export class CronController {
         message: `${result.count} vue(s) supprimée(s) avec succès`,
         count: result.count,
         mois_conserve: result.mois_conserve,
-        description: `Toutes les vues antérieures au mois ${result.mois_conserve} ont été supprimées`,
+        description: `Vues de plus de 90 jours supprimées (mois courant ${result.mois_conserve})`,
         executed_at: new Date().toISOString()
       });
     } catch (error: any) {

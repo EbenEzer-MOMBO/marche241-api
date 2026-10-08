@@ -12,6 +12,26 @@ export type StatutPaiement = 'en_attente' | 'partiellement_paye' | 'paye' | 'ech
 export type MethodePaiement = 'mobile_money' | 'airtel_money' | 'moov_money' | 'carte_bancaire' | 'especes' | 'virement';
 export type TypePaiement = 'paiement_complet' | 'acompte' | 'frais_livraison' | 'solde_apres_livraison' | 'complement' | 'boost' | 'publicite';
 export type StatutAvis = 'en_attente' | 'approuve' | 'rejete';
+export type SourceVue = 'whatsapp' | 'facebook' | 'instagram' | 'tiktok' | 'google' | 'direct' | 'interne' | 'autre';
+export type AppareilVue = 'android' | 'ios' | 'desktop' | 'autre';
+export type DimensionAudience = 'pays' | 'ville' | 'source' | 'appareil';
+
+export interface StatistiqueVuesJour {
+  jour: string;
+  type_entite: 'boutique' | 'produit';
+  entite_id: number;
+  boutique_id: number;
+  vues: number;
+  visiteurs: number;
+}
+
+export interface StatistiqueAudienceJour {
+  jour: string;
+  dimension: DimensionAudience;
+  valeur: string;
+  vues: number;
+  visiteurs: number;
+}
 
 // Interface pour les dimensions
 export interface Dimensions {
