@@ -88,11 +88,6 @@ export function estRequeteSansTracking(req: Request): boolean {
   return req.query.track === '0' || headerEstActif(req, SKIP_TRACKING_HEADER);
 }
 
-/**
- * Une visite ne doit pas être comptée si c'est une prévisualisation, un fetch
- * interne (layout/métadonnées), un admin plateforme, le vendeur propriétaire,
- * ou une IP locale/privée (dev, SSR localhost).
- */
 const ROBOT =
   /bot|crawl|spider|facebookexternalhit|whatsapp\/|slurp|lighthouse|headless/i;
 
@@ -161,6 +156,11 @@ export function detecterSource(referrer?: string, utmSource?: string): SourceVue
   return 'autre';
 }
 
+/**
+ * Une visite ne doit pas être comptée si c'est une prévisualisation, un fetch
+ * interne (layout/métadonnées), un robot, un admin plateforme, le vendeur
+ * propriétaire, ou une IP locale/privée (dev, SSR localhost).
+ */
 export function doitEnregistrerLaVue(req: Request, proprietaireVendeurId?: number): boolean {
   if (estRequeteSansTracking(req) || estRequetePreview(req) || estRobot(req.headers['user-agent'])) {
     return false;

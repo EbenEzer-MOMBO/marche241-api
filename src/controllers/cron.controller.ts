@@ -383,13 +383,9 @@ export class CronController {
   }
 
   /**
-   * Exécute manuellement la tâche de nettoyage des anciennes vues
-   * 
-   * GET /api/v1/cron/nettoyer-vues
-   * 
-   * Paramètres query optionnels:
-   * - jours: Nombre de jours à conserver (défaut: 30)
-   * - key: Clé secrète pour sécuriser l'accès (optionnel)
+   * Agrège les vues des 4 derniers jours dans les tables statistiques_*_jour
+   *
+   * GET /api/v1/cron/agreger-statistiques
    */
   static async executeAgregerStatistiques(_req: Request, res: Response): Promise<void> {
     try {
@@ -410,6 +406,14 @@ export class CronController {
     }
   }
 
+  /**
+   * Exécute manuellement la tâche de nettoyage des anciennes vues
+   *
+   * GET /api/v1/cron/nettoyer-vues
+   *
+   * Paramètres query optionnels:
+   * - jours: Nombre de jours à conserver (défaut: 90)
+   */
   static async executeNettoyerVues(req: Request, res: Response): Promise<void> {
     try {
       // Authentification gérée par requireCronSecret sur la route

@@ -7,6 +7,7 @@ import { CreateBoutiqueData, Boutique, StatutBoutique } from '../lib/database-ty
 import { logger } from '../utils/logger';
 import { EmailService } from '../services/email.service';
 import { notifier } from '../services/telegram.service';
+import { normaliserVille } from '../config/villes-gabon.config';
 
 export class BoutiqueController {
   /**
@@ -156,8 +157,12 @@ export class BoutiqueController {
    */
   static async createBoutique(req: Request, res: Response): Promise<void> {
     try {
-      const boutiqueData: CreateBoutiqueData = req.body;
-      
+      const boutiqueData: CreateBoutiqueData & { ville?: string } = req.body;
+      // Le schéma Joi normalise la ville dans validatedBody, mais ce contrôleur lit req.body
+      if (typeof boutiqueData.ville === 'string') {
+        boutiqueData.ville = normaliserVille(boutiqueData.ville) ?? boutiqueData.ville;
+      }
+
       
       // Récupérer le vendeur_id depuis le token JWT si authentifié
       if (req.user && req.user.id) {
@@ -223,7 +228,10 @@ export class BoutiqueController {
     try {
       const id = parseInt(req.params.id);
       const boutiqueData: Partial<Boutique> = req.body;
-      
+      if (typeof boutiqueData.ville === 'string') {
+        boutiqueData.ville = normaliserVille(boutiqueData.ville) ?? boutiqueData.ville;
+      }
+
       if (isNaN(id)) {
         res.status(400).json({
           success: false,
