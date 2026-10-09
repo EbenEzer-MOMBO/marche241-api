@@ -65,3 +65,12 @@ Plan validé → 3 étapes obligatoires (détail dans `../CLAUDE.md`, section «
 3. **Vérifications visuelles** : si le changement est visible côté front ou admin, ouvrir les écrans consommateurs dans le navigateur intégré (desktop + mobile 375 px, console sans erreur) et joindre des captures.
 
 Le compte rendu final liste ce qui a été testé, vérifié visuellement, et ce qui n'a pas pu l'être (avec la raison).
+
+## Cycle de vie d'une PR (résumé)
+
+Détail dans `../CLAUDE.md`, section « Cycle de vie d'une PR » :
+
+1. **Revue automatique** : dès l'ouverture de la PR, lancer `/code-review` (niveau `high` pour paiements, auth, migrations SQL, versements).
+2. **Corrections sur la même branche** : commits sur la branche de la PR (jamais une nouvelle PR), puis tests + lint, push, attente de la CI. Constats écartés listés avec la raison.
+3. **Confirmation du merge** : jamais de fusion sans accord explicite de l'utilisateur dans le chat ; présenter constats, CI et état de fusion. PR liées entre projets : ordre API → front → admin.
+4. **Nettoyage après merge** (automatique, sans redemander) : supprimer la branche sur GitHub et en local (`git checkout main && git pull --ff-only`, puis `git branch -d`, jamais `-D`). Ne jamais supprimer `main`, `dev`, `dev_test` ni une branche portant une autre PR ouverte ; si un worktree utilise la branche, le signaler.
