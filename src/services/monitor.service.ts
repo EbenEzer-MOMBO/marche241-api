@@ -1,4 +1,6 @@
 import axios from 'axios';
+import { autoPingActif } from '../config/cron.config';
+import { logger } from '../utils/logger';
 
 export class MonitorService {
   private static interval: NodeJS.Timeout | null = null;
@@ -6,6 +8,11 @@ export class MonitorService {
   private static startTime: Date = new Date();
 
   static initialize(appUrl: string) {
+    if (!autoPingActif()) {
+      logger.info('[MonitorService] MONITOR_AUTOPING_ACTIVE=false : auto-ping désactivé');
+      return;
+    }
+
     if (process.env.NODE_ENV === 'production') {
       console.log('[MonitorService] Initialisation du service de monitoring...');
       
