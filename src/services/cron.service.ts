@@ -1,6 +1,7 @@
 import cron, { ScheduledTask } from 'node-cron';
 import { query } from '../config/database';
 import { cronInterneActif } from '../config/cron.config';
+import { logger } from '../utils/logger';
 
 /**
  * Service pour gérer les tâches planifiées (cron jobs)
@@ -13,7 +14,7 @@ export class CronService {
    */
   static init(): void {
     if (!cronInterneActif()) {
-      console.log('[CronService] CRON_INTERNE_ACTIVE=false : tâches internes désactivées (pilotage externe via /api/v1/cron/*)');
+      logger.info('[CronService] CRON_INTERNE_ACTIVE=false : tâches internes désactivées (pilotage externe via /api/v1/cron/*)');
       return;
     }
 

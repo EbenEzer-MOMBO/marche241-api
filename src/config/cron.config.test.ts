@@ -13,6 +13,13 @@ test('CRON_INTERNE_ACTIVE=false coupe les tâches internes', () => {
   assert.equal(cronInterneActif({ CRON_INTERNE_ACTIVE: ' FALSE ' }), false);
 });
 
+test('0, off et no coupent aussi les tâches internes', () => {
+  for (const valeur of ['0', 'off', 'OFF', 'no', 'non']) {
+    assert.equal(cronInterneActif({ CRON_INTERNE_ACTIVE: valeur }), false, valeur);
+    assert.equal(autoPingActif({ MONITOR_AUTOPING_ACTIVE: valeur }), false, valeur);
+  }
+});
+
 test('l\'auto-ping est indépendant des tâches internes', () => {
   assert.equal(autoPingActif({}), true);
   assert.equal(autoPingActif({ MONITOR_AUTOPING_ACTIVE: 'false' }), false);

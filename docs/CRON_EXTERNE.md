@@ -9,13 +9,20 @@ redémarrer l'API), sinon chaque tâche s'exécute deux fois.
 - Méthode : `GET`, URL de base de l'API (`https://<api>`).
 - Authentification : en-tête **`x-cron-key: <CRON_SECRET_KEY>`**. Éviter `?key=` : la clé finirait
   dans les journaux des serveurs.
-- Réponse : `200` + `{ success: true, ... }`. Les tâches sont idempotentes : un doublon est sans danger.
+- Réponse : `200` + `{ success: true, ... }`.
 - Délai de cron-job.org : 30 s. Si la tâche dure plus longtemps, le job est marqué en échec côté
   cron-job.org mais l'API va au bout de son traitement.
+- L'API ne verrouille pas les tâches : deux appels simultanés d'une même route s'exécutent en
+  parallèle. Désactiver les nouvelles tentatives automatiques de cron-job.org sur les jobs qui
+  appellent Meta ou eBilling (`boosts/sync`, `expirer-transactions/execute`) et ne pas rapprocher
+  leurs fréquences.
 
 ## Jobs de l'API
 
 Fuseau des jobs : `Africa/Libreville` (UTC+1). Les horaires ci-dessous sont ceux de Libreville.
+Le retrait du badge « nouveau » tournait jusqu'ici à 02:00 **heure du serveur** (node-cron sans
+fuseau) : 03:00 Libreville ne lui correspond que si l'hébergeur est en UTC. L'heure exacte n'a pas
+d'importance (la tâche ne retire que les badges de plus de 7 jours), mais à vérifier si elle compte.
 
 | Job | Fréquence | Route |
 |---|---|---|
