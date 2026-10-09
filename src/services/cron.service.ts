@@ -1,5 +1,6 @@
 import cron, { ScheduledTask } from 'node-cron';
 import { query } from '../config/database';
+import { cronInterneActif } from '../config/cron.config';
 
 /**
  * Service pour gérer les tâches planifiées (cron jobs)
@@ -11,6 +12,11 @@ export class CronService {
    * Initialise tous les cron jobs
    */
   static init(): void {
+    if (!cronInterneActif()) {
+      console.log('[CronService] CRON_INTERNE_ACTIVE=false : tâches internes désactivées (pilotage externe via /api/v1/cron/*)');
+      return;
+    }
+
     console.log('[CronService] Initialisation des tâches planifiées...');
 
     // Tâche pour retirer le statut 'nouveau' des produits

@@ -18,6 +18,7 @@ router.post('/jobs/:jobName/start', auth, isAdmin, CronController.startCronJob);
  */
 router.get('/tasks', requireCronSecret, CronController.executeAllTasks);
 router.get('/health', CronController.healthCheck);
+router.get('/retirer-statut-nouveau', requireCronSecret, CronController.executeRetirerStatutNouveau);
 router.get('/expirer-transactions/execute', requireCronSecret, CronController.executeExpirerTransactions);
 router.get('/nettoyer-vues', requireCronSecret, CronController.executeNettoyerVues);
 router.get('/nettoyer-vues-mois', requireCronSecret, CronController.executeNettoyerVuesMoisEnCours);
