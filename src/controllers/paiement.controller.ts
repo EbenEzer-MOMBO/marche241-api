@@ -17,6 +17,7 @@ import { PubliciteService } from '../services/publicite.service';
 import { logger } from '../utils/logger';
 import { notifier } from '../services/telegram.service';
 import { formaterFcfa } from '../lib/boost/devis';
+import { avecMarge, normaliserTauxMarge } from '../lib/marge/marge';
 import { BoutiqueModel } from '../models/boutique.model';
 
 /** Notification Telegram de l'équipe pour une commande payée (sans attente : n'interrompt jamais le flux). */
@@ -128,8 +129,10 @@ export class PaiementController {
       const totalCommandeHT = totalArticles + fraisLivraison;
       const montantTransaction = transaction.montant;
 
-      const FRAIS_SERVICE_POURCENTAGE = 0.10;
-      const avecFraisService = (montant: number) => Math.round(montant * (1 + FRAIS_SERVICE_POURCENTAGE));
+      // Taux figé sur la commande à sa création : un changement de marge du vendeur
+      // ne doit pas invalider les paiements d'une commande déjà passée
+      const tauxMarge = normaliserTauxMarge(commande.taux_marge);
+      const avecFraisService = (montant: number) => avecMarge(montant, tauxMarge);
 
       let montantAttendu: number;
       let typePaiementDescription: string;
@@ -137,23 +140,23 @@ export class PaiementController {
       switch (transaction.type_paiement) {
         case 'frais_livraison':
           montantAttendu = fraisLivraison > 0 ? avecFraisService(fraisLivraison) : 0;
-          typePaiementDescription = `frais de livraison (${fraisLivraison} + 10% = ${montantAttendu})`;
+          typePaiementDescription = `frais de livraison (${fraisLivraison} + ${tauxMarge}% = ${montantAttendu})`;
           break;
 
         case 'paiement_complet':
           montantAttendu = avecFraisService(totalCommandeHT);
-          typePaiementDescription = `paiement complet ((${totalArticles} + ${fraisLivraison}) + 10% = ${montantAttendu})`;
+          typePaiementDescription = `paiement complet ((${totalArticles} + ${fraisLivraison}) + ${tauxMarge}% = ${montantAttendu})`;
           break;
 
         case 'solde_apres_livraison':
           montantAttendu = avecFraisService(totalArticles);
-          typePaiementDescription = `solde après livraison (${totalArticles} + 10% = ${montantAttendu})`;
+          typePaiementDescription = `solde après livraison (${totalArticles} + ${tauxMarge}% = ${montantAttendu})`;
           break;
 
         case 'acompte': {
           const ACOMPTE_POURCENTAGE = 0.50;
           montantAttendu = avecFraisService(Math.round(totalCommandeHT * ACOMPTE_POURCENTAGE));
-          typePaiementDescription = `acompte 50% (50% de (${totalArticles} + ${fraisLivraison}) + 10% = ${montantAttendu})`;
+          typePaiementDescription = `acompte 50% (50% de (${totalArticles} + ${fraisLivraison}) + ${tauxMarge}% = ${montantAttendu})`;
           break;
         }
 
@@ -162,7 +165,7 @@ export class PaiementController {
 
         default:
           montantAttendu = avecFraisService(totalCommandeHT);
-          typePaiementDescription = `total de la commande ((${totalArticles} + ${fraisLivraison}) + 10% = ${montantAttendu})`;
+          typePaiementDescription = `total de la commande ((${totalArticles} + ${fraisLivraison}) + ${tauxMarge}% = ${montantAttendu})`;
           logger.warn(`[PaiementController] Type de paiement non reconnu: ${transaction.type_paiement}`);
       }
 

@@ -70,6 +70,7 @@ export interface Vendeur {
   statut: StatutVendeur;
   photo_profil?: string;
   numero_paiement?: string;
+  taux_marge?: number; // Marge plateforme en % entier (10 à 50, 10 par défaut) — modifiable par l'admin uniquement
   ville?: string;
   verification_telephone: boolean;
   verification_email: boolean;
@@ -133,6 +134,7 @@ export interface Boutique {
   nombre_vues: number; // Nombre de vues uniques de la boutique
   payment_restriction_mode: 'complet_uniquement' | 'livraison_uniquement' | 'les_deux' | 'acompte_50'; // Restriction de paiement de la boutique
   est_verifiee: boolean; // Badge de vérification (attribution manuelle par un admin)
+  taux_marge?: number; // Lecture seule : marge du vendeur (jointure vendeurs.taux_marge), renvoyée par GET /boutiques/:id|:slug
 
   // Relations
   vendeur?: Vendeur;
@@ -219,6 +221,7 @@ export interface Commande {
   total: number;
   montant_paye: number; // Montant déjà payé
   montant_restant: number; // Montant restant à payer (calculé automatiquement)
+  taux_marge?: number; // Marge plateforme figée à la création (% entier, copie de vendeurs.taux_marge)
   
   // Statuts et paiement
   statut: StatutCommande;

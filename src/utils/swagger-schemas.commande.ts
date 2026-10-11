@@ -143,6 +143,10 @@
  *           type: number
  *           format: float
  *           description: Montant restant à payer (calculé automatiquement = total - montant_paye)
+ *         taux_marge:
+ *           type: integer
+ *           readOnly: true
+ *           description: Marge plateforme en %, copiée du vendeur et figée à la création de la commande
  *         statut:
  *           type: string
  *           enum: [en_attente, confirmee, en_preparation, expedie, livree, annulee, remboursee]

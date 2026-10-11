@@ -54,6 +54,12 @@ const filtrerColonnes = (donnees: Record<string, unknown>): Array<[string, unkno
     (COLONNES_AUTORISEES as readonly string[]).includes(colonne)
   );
 
+/**
+ * Taux de marge du vendeur de la boutique (lecture seule) : le checkout en a besoin
+ * pour calculer les frais de service avant que la commande (qui le fige) n'existe.
+ */
+const TAUX_MARGE_VENDEUR = `(SELECT v.taux_marge FROM vendeurs v WHERE v.id = b.vendeur_id) AS taux_marge`;
+
 export class BoutiqueModel {
   private static readonly TABLE_NAME = 'boutiques';
 
@@ -98,7 +104,7 @@ export class BoutiqueModel {
    * Récupère une boutique par son ID
    */
   static async getBoutiqueById(id: number): Promise<Boutique | null> {
-    const { rows } = await query<Boutique>(`SELECT * FROM ${this.TABLE_NAME} WHERE id = $1`, [id]);
+    const { rows } = await query<Boutique>(`SELECT b.*, ${TAUX_MARGE_VENDEUR} FROM ${this.TABLE_NAME} b WHERE b.id = $1`, [id]);
 
     return rows[0] ?? null;
   }
@@ -107,7 +113,7 @@ export class BoutiqueModel {
    * Récupère une boutique par son slug
    */
   static async getBoutiqueBySlug(slug: string): Promise<Boutique | null> {
-    const { rows } = await query<Boutique>(`SELECT * FROM ${this.TABLE_NAME} WHERE slug = $1`, [slug]);
+    const { rows } = await query<Boutique>(`SELECT b.*, ${TAUX_MARGE_VENDEUR} FROM ${this.TABLE_NAME} b WHERE b.slug = $1`, [slug]);
 
     return rows[0] ?? null;
   }
