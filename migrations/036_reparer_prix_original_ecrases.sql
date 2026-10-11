@@ -20,13 +20,13 @@ SELECT p.id, p.nom, p.prix AS prix_actuel, p.prix_original AS original_actuel,
        r.prix_normal AS original_repare
 FROM produits p
 CROSS JOIN LATERAL (
-  SELECT min((v->>'prix')::int) AS prix_normal
+  SELECT min(CASE WHEN v->>'prix' ~ '^[0-9]+$' THEN (v->>'prix')::int END) AS prix_normal
   FROM jsonb_array_elements(
          CASE WHEN jsonb_typeof(p.variants::jsonb->'variants') = 'array'
               THEN p.variants::jsonb->'variants' ELSE '[]'::jsonb END) v
-  WHERE (v->>'prix_promo')::int = p.prix
-    AND (v->>'prix_promo')::int > 0
-    AND (v->>'prix')::int > p.prix
+  WHERE CASE WHEN v->>'prix_promo' ~ '^[0-9]+$' THEN (v->>'prix_promo')::int END = p.prix
+    AND p.prix > 0
+    AND CASE WHEN v->>'prix' ~ '^[0-9]+$' THEN (v->>'prix')::int END > p.prix
 ) r
 WHERE p.prix_original = p.prix
   AND r.prix_normal IS NOT NULL
@@ -38,9 +38,16 @@ ORDER BY p.id;
 -- ============================================
 BEGIN;
 
--- Sauvegarde des lignes touchées (supprimer la table une fois la réparation validée)
+-- Sauvegarde des lignes touchées. Rejouable : la table est créée une seule fois puis chaque exécution
+-- ajoute (avec sa date) les lignes qu'elle s'apprête à modifier. À supprimer une fois la réparation validée :
+--   DROP TABLE produits_backup_prix_036;
 CREATE TABLE IF NOT EXISTS produits_backup_prix_036 AS
-SELECT id, prix, prix_original, est_en_promotion, date_modification
+SELECT id, prix, prix_original, est_en_promotion, date_modification, now() AS sauvegarde_le
+FROM produits
+WHERE false;
+
+INSERT INTO produits_backup_prix_036
+SELECT id, prix, prix_original, est_en_promotion, date_modification, now()
 FROM produits
 WHERE prix_original IS NOT NULL AND prix_original <= prix;
 
@@ -49,13 +56,13 @@ UPDATE produits p
 SET prix_original = r.prix_normal
 FROM (
   SELECT p2.id,
-         (SELECT min((v->>'prix')::int)
+         (SELECT min(CASE WHEN v->>'prix' ~ '^[0-9]+$' THEN (v->>'prix')::int END)
             FROM jsonb_array_elements(
                    CASE WHEN jsonb_typeof(p2.variants::jsonb->'variants') = 'array'
                         THEN p2.variants::jsonb->'variants' ELSE '[]'::jsonb END) v
-           WHERE (v->>'prix_promo')::int = p2.prix
-             AND (v->>'prix_promo')::int > 0
-             AND (v->>'prix')::int > p2.prix) AS prix_normal
+           WHERE CASE WHEN v->>'prix_promo' ~ '^[0-9]+$' THEN (v->>'prix_promo')::int END = p2.prix
+             AND p2.prix > 0
+             AND CASE WHEN v->>'prix' ~ '^[0-9]+$' THEN (v->>'prix')::int END > p2.prix) AS prix_normal
   FROM produits p2
   WHERE p2.prix_original = p2.prix
 ) r
