@@ -896,10 +896,19 @@ export class ProduitModel {
     
     if (produitData.prix_promo !== undefined && produitData.prix_promo !== null) {
       logger.debug('[ProduitModel] Prix promotionnel détecté:', produitData.prix_promo);
-      // Le prix_promo devient le prix affiché/actif
-      prixOriginal = produitData.prix; // Sauvegarder le prix normal
-      prixFinal = produitData.prix_promo; // Le prix promo devient le prix actif
-      logger.debug('[ProduitModel] Conversion: prix_original =', prixOriginal, ', prix =', prixFinal);
+      if (Number(produitData.prix_promo) < Number(produitData.prix)) {
+        // Le prix_promo devient le prix affiché/actif
+        prixOriginal = produitData.prix; // Sauvegarder le prix normal
+        prixFinal = produitData.prix_promo; // Le prix promo devient le prix actif
+        logger.debug('[ProduitModel] Conversion: prix_original =', prixOriginal, ', prix =', prixFinal);
+      } else {
+        // Promo >= prix normal : pas de vraie promotion, on la neutralise
+        logger.warn('[ProduitModel] prix_promo >= prix ignoré:', produitData.prix_promo, '>=', produitData.prix);
+        prixOriginal = null;
+      }
+    } else if (prixOriginal !== undefined && prixOriginal !== null && Number(prixOriginal) <= Number(prixFinal)) {
+      // prix_original doit être strictement supérieur au prix actif, sinon ce n'est pas une promotion
+      prixOriginal = null;
     }
 
     // Préparer les données avec les valeurs par défaut
@@ -978,14 +987,19 @@ export class ProduitModel {
     if (updatedData.prix_promo !== undefined) {
       if (updatedData.prix_promo !== null && updatedData.prix_promo !== '') {
         logger.debug('[ProduitModel] Mise à jour avec prix promotionnel:', updatedData.prix_promo);
-        // Si on modifie le prix, il devient prix_original
-        if (updatedData.prix !== undefined) {
-          updatedData.prix_original = updatedData.prix; // Le nouveau prix devient prix_original
+        // Prix normal : celui fourni, sinon l'ancien prix_original (promo en cours), sinon le prix actuel
+        const prixNormal = updatedData.prix !== undefined
+          ? updatedData.prix
+          : (existingProduit.prix_original || existingProduit.prix);
+        if (Number(updatedData.prix_promo) < Number(prixNormal)) {
+          updatedData.prix_original = prixNormal; // Le prix normal est conservé dans prix_original
+          updatedData.prix = updatedData.prix_promo; // Le prix_promo devient le prix actif
         } else {
-          // Si prix n'est pas fourni, utiliser l'ancien prix_original ou le prix actuel
-          updatedData.prix_original = existingProduit.prix_original || existingProduit.prix;
+          // Promo >= prix normal : pas de vraie promotion, on la neutralise
+          logger.warn('[ProduitModel] prix_promo >= prix ignoré:', updatedData.prix_promo, '>=', prixNormal);
+          updatedData.prix_original = null;
+          updatedData.prix = prixNormal;
         }
-        updatedData.prix = updatedData.prix_promo; // Le prix_promo devient le prix actif
         logger.debug('[ProduitModel] Conversion update: prix_original =', updatedData.prix_original, ', prix =', updatedData.prix);
       } else {
         // prix_promo est null ou vide : supprimer la promotion
