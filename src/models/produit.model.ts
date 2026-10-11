@@ -1,6 +1,7 @@
 import { query } from '../config/database';
 import { Produit } from '../lib/database-types';
 import { logger } from '../utils/logger';
+import { prixOriginalCoherent, prixPourStockage } from '../utils/prix-promo';
 
 /**
  * Jointures de la boutique et de la catégorie, sous forme d'objets JSON.
@@ -187,36 +188,6 @@ function construireWhereListeProduits(
 }
 
 export class ProduitModel {
-  /**
-   * Transforme un produit pour ajouter prix_promo si nécessaire
-   * Si le produit a un prix_original, cela signifie qu'il est en promotion:
-   * - prix_original contient le prix normal
-   * - prix contient le prix promotionnel (prix affiché)
-   * - on ajoute prix_promo (= prix actuel) pour le frontend
-   */
-  private static transformProduitForResponse(produit: any): any {
-    if (!produit) return null;
-    
-    // Si le produit a un prix_original, il est en promotion
-    if (produit.prix_original !== null && produit.prix_original !== undefined) {
-      return {
-        ...produit,
-        prix_promo: produit.prix,        // Le prix actuel est le prix promo
-        prix: produit.prix_original       // Restaurer le prix normal pour le frontend
-      };
-    }
-    
-    // Sinon, retourner tel quel
-    return produit;
-  }
-  
-  /**
-   * Transforme un tableau de produits
-   */
-  private static transformProduitsForResponse(produits: any[]): any[] {
-    return produits.map(p => this.transformProduitForResponse(p));
-  }
-
   /**
    * Met à jour le stock d'un produit
    * @param produitId ID du produit
@@ -890,16 +861,19 @@ export class ProduitModel {
       }
     }
 
-    // Gérer la logique des prix : si prix_promo existe, c'est le prix actif
+    // Prix : contrat d'entrée prix = normal / prix_promo = promo ; stockage prix = actif / prix_original = normal.
+    // Un prix_original fourni directement (ancien format) n'est conservé que s'il dépasse le prix actif.
     let prixFinal = produitData.prix;
-    let prixOriginal = produitData.prix_original;
-    
+    let prixOriginal: number | null = prixOriginalCoherent(produitData.prix, produitData.prix_original);
+
     if (produitData.prix_promo !== undefined && produitData.prix_promo !== null) {
       logger.debug('[ProduitModel] Prix promotionnel détecté:', produitData.prix_promo);
-      // Le prix_promo devient le prix affiché/actif
-      prixOriginal = produitData.prix; // Sauvegarder le prix normal
-      prixFinal = produitData.prix_promo; // Le prix promo devient le prix actif
-      logger.debug('[ProduitModel] Conversion: prix_original =', prixOriginal, ', prix =', prixFinal);
+      const stockage = prixPourStockage(produitData.prix, produitData.prix_promo);
+      if (stockage.prix_original === null) {
+        logger.warn('[ProduitModel] prix_promo invalide ignoré (doit être > 0 et < prix):', produitData.prix_promo, produitData.prix);
+      }
+      prixFinal = stockage.prix;
+      prixOriginal = stockage.prix_original;
     }
 
     // Préparer les données avec les valeurs par défaut
@@ -974,19 +948,21 @@ export class ProduitModel {
       date_modification: new Date().toISOString()
     };
     
-    // Gérer la logique des prix : si prix_promo existe et n'est pas null, c'est le prix actif
+    // Prix : contrat d'entrée prix = normal / prix_promo = promo ; stockage prix = actif / prix_original = normal.
+    // Prix normal courant : celui fourni, sinon l'ancien prix_original (promo en cours), sinon le prix actuel.
+    const prixNormalCourant = updatedData.prix !== undefined
+      ? updatedData.prix
+      : (existingProduit.prix_original || existingProduit.prix);
+
     if (updatedData.prix_promo !== undefined) {
       if (updatedData.prix_promo !== null && updatedData.prix_promo !== '') {
         logger.debug('[ProduitModel] Mise à jour avec prix promotionnel:', updatedData.prix_promo);
-        // Si on modifie le prix, il devient prix_original
-        if (updatedData.prix !== undefined) {
-          updatedData.prix_original = updatedData.prix; // Le nouveau prix devient prix_original
-        } else {
-          // Si prix n'est pas fourni, utiliser l'ancien prix_original ou le prix actuel
-          updatedData.prix_original = existingProduit.prix_original || existingProduit.prix;
+        const stockage = prixPourStockage(prixNormalCourant, updatedData.prix_promo);
+        if (stockage.prix_original === null) {
+          logger.warn('[ProduitModel] prix_promo invalide ignoré (doit être > 0 et < prix):', updatedData.prix_promo, prixNormalCourant);
         }
-        updatedData.prix = updatedData.prix_promo; // Le prix_promo devient le prix actif
-        logger.debug('[ProduitModel] Conversion update: prix_original =', updatedData.prix_original, ', prix =', updatedData.prix);
+        updatedData.prix = stockage.prix;
+        updatedData.prix_original = stockage.prix_original;
       } else {
         // prix_promo est null ou vide : supprimer la promotion
         logger.debug('[ProduitModel] Suppression de la promotion (prix_promo = null)');
@@ -997,11 +973,17 @@ export class ProduitModel {
           logger.debug('[ProduitModel] Restauration du prix original:', updatedData.prix);
         }
       }
-      
+
       // Supprimer prix_promo des données à mettre à jour (pas une colonne de la base)
       delete updatedData.prix_promo;
+    } else if (updatedData.prix !== undefined) {
+      // Prix modifié sans prix_promo : le prix_original (fourni ou en base) ne doit pas passer sous le nouveau prix
+      const original = updatedData.prix_original !== undefined
+        ? updatedData.prix_original
+        : existingProduit.prix_original;
+      updatedData.prix_original = prixOriginalCoherent(updatedData.prix, original);
     }
-    
+
     // Si le champ stock est présent, le convertir en quantite_stock
     if (produitData.stock !== undefined) {
       updatedData.quantite_stock = produitData.stock;
@@ -1095,7 +1077,7 @@ export class ProduitModel {
 
     logger.debug(`[ProduitModel] ${rows.length} produits trouvés`);
 
-    return this.transformProduitsForResponse(rows);
+    return rows;
   }
 
   /**

@@ -6,6 +6,7 @@ import { authOrServiceKey } from '../middlewares/service-auth.middleware';
 import { validate, validateParams, validateQuery } from '../middlewares/validation.middleware';
 import { idParamSchema, slugParamSchema, produitsListQuerySchema, boutiqueIdParamSchema } from '../utils/validation.schemas';
 import Joi from 'joi';
+import { prixPromoJoi } from '../utils/prix-promo';
 
 /**
  * Statuts acceptés en saisie. Pour un événement, un vendeur est limité à brouillon /
@@ -43,9 +44,7 @@ const createProduitSchema = Joi.object({
     'number.min': 'Le prix doit être positif',
     'any.required': 'Le prix est obligatoire'
   }),
-  prix_promo: Joi.number().min(0).optional().allow(null).messages({
-    'number.min': 'Le prix promotionnel doit être positif'
-  }),
+  prix_promo: prixPromoJoi,
   stock: Joi.number().integer().min(0).default(0).messages({
     'number.min': 'Le stock doit être positif'
   }),
@@ -86,9 +85,7 @@ const updateProduitSchema = Joi.object({
   prix: Joi.number().min(0).messages({
     'number.min': 'Le prix doit être positif'
   }),
-  prix_promo: Joi.number().min(0).optional().allow(null).messages({
-    'number.min': 'Le prix promotionnel doit être positif'
-  }),
+  prix_promo: prixPromoJoi,
   stock: Joi.number().integer().min(0).messages({
     'number.min': 'Le stock doit être positif'
   }),
@@ -475,12 +472,12 @@ router.get('/:id', optionalAuth, validateParams(idParamSchema), ProduitControlle
  *               prix:
  *                 type: number
  *                 minimum: 0
- *                 description: Prix du produit en FCFA
+ *                 description: Prix NORMAL du produit en FCFA (le prix actif stocké en base devient le prix promo si une promotion est définie)
  *                 example: 850000
  *               prix_promo:
  *                 type: number
  *                 minimum: 0
- *                 description: Prix promotionnel (optionnel)
+ *                 description: Prix promotionnel en FCFA (optionnel). Doit être strictement inférieur à `prix` ; 0 ou null = pas de promotion. Ne jamais renvoyer le prix promo dans `prix`.
  *                 example: 750000
  *               stock:
  *                 type: integer
@@ -589,12 +586,12 @@ router.post('/', authOrServiceKey, validate(createProduitSchema), ProduitControl
  *               prix:
  *                 type: number
  *                 minimum: 0
- *                 description: Prix du produit en FCFA
+ *                 description: Prix NORMAL du produit en FCFA (le prix actif stocké en base devient le prix promo si une promotion est définie)
  *                 example: 950000
  *               prix_promo:
  *                 type: number
  *                 minimum: 0
- *                 description: Prix promotionnel (optionnel)
+ *                 description: Prix promotionnel en FCFA (optionnel). Doit être strictement inférieur à `prix` ; 0 ou null = pas de promotion. Ne jamais renvoyer le prix promo dans `prix`.
  *                 example: 850000
  *               stock:
  *                 type: integer
