@@ -134,7 +134,7 @@ export interface Boutique {
   nombre_vues: number; // Nombre de vues uniques de la boutique
   payment_restriction_mode: 'complet_uniquement' | 'livraison_uniquement' | 'les_deux' | 'acompte_50'; // Restriction de paiement de la boutique
   est_verifiee: boolean; // Badge de vérification (attribution manuelle par un admin)
-  taux_marge?: number; // Lecture seule : marge du vendeur (jointure vendeurs.taux_marge), renvoyée par GET /boutiques/:id|:slug
+  taux_marge?: number; // Lecture seule : marge du vendeur (jointure vendeurs.taux_marge), renvoyée par GET /boutiques/:id|:slug et la liste des boutiques du vendeur
 
   // Relations
   vendeur?: Vendeur;

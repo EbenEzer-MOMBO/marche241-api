@@ -56,7 +56,8 @@ const filtrerColonnes = (donnees: Record<string, unknown>): Array<[string, unkno
 
 /**
  * Taux de marge du vendeur de la boutique (lecture seule) : le checkout en a besoin
- * pour calculer les frais de service avant que la commande (qui le fige) n'existe.
+ * pour calculer les frais de service avant que la commande (qui le fige) n'existe,
+ * et l'espace vendeur pour afficher le taux appliqué.
  */
 const TAUX_MARGE_VENDEUR = `(SELECT v.taux_marge FROM vendeurs v WHERE v.id = b.vendeur_id) AS taux_marge`;
 
@@ -123,7 +124,7 @@ export class BoutiqueModel {
    */
   static async getBoutiquesByVendeurId(vendeurId: number): Promise<Boutique[]> {
     const { rows } = await query<Boutique>(
-      `SELECT * FROM ${this.TABLE_NAME} WHERE vendeur_id = $1 ORDER BY date_creation DESC`,
+      `SELECT b.*, ${TAUX_MARGE_VENDEUR} FROM ${this.TABLE_NAME} b WHERE b.vendeur_id = $1 ORDER BY b.date_creation DESC`,
       [vendeurId]
     );
 
