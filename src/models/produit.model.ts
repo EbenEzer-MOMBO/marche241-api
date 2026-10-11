@@ -189,36 +189,6 @@ function construireWhereListeProduits(
 
 export class ProduitModel {
   /**
-   * Transforme un produit pour ajouter prix_promo si nécessaire
-   * Si le produit a un prix_original, cela signifie qu'il est en promotion:
-   * - prix_original contient le prix normal
-   * - prix contient le prix promotionnel (prix affiché)
-   * - on ajoute prix_promo (= prix actuel) pour le frontend
-   */
-  private static transformProduitForResponse(produit: any): any {
-    if (!produit) return null;
-    
-    // Si le produit a un prix_original, il est en promotion
-    if (produit.prix_original !== null && produit.prix_original !== undefined) {
-      return {
-        ...produit,
-        prix_promo: produit.prix,        // Le prix actuel est le prix promo
-        prix: produit.prix_original       // Restaurer le prix normal pour le frontend
-      };
-    }
-    
-    // Sinon, retourner tel quel
-    return produit;
-  }
-  
-  /**
-   * Transforme un tableau de produits
-   */
-  private static transformProduitsForResponse(produits: any[]): any[] {
-    return produits.map(p => this.transformProduitForResponse(p));
-  }
-
-  /**
    * Met à jour le stock d'un produit
    * @param produitId ID du produit
    * @param quantite Quantité à décrémenter (valeur positive pour décrémenter, négative pour incrémenter)
@@ -1107,7 +1077,7 @@ export class ProduitModel {
 
     logger.debug(`[ProduitModel] ${rows.length} produits trouvés`);
 
-    return this.transformProduitsForResponse(rows);
+    return rows;
   }
 
   /**
