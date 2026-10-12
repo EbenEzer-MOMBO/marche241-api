@@ -123,3 +123,34 @@ export const renvoiBilletsLimiter = rateLimit({
     code: 'TOO_MANY_REQUESTS'
   }
 });
+
+/**
+ * Limiteur des invitations à laisser un avis (lecture + soumission par jeton) :
+ * 30 requêtes par 15 minutes par IP, pour rendre l'essai de jetons au hasard inutile.
+ */
+export const avisJetonLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Trop de tentatives, veuillez réessayer dans quelques minutes.',
+    code: 'TOO_MANY_REQUESTS'
+  }
+});
+
+/**
+ * Limiteur des soumissions d'avis : 10 envois par heure par IP.
+ */
+export const avisSoumissionLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: "Trop d'envois d'avis depuis cette connexion, veuillez réessayer plus tard.",
+    code: 'TOO_MANY_REQUESTS'
+  }
+});

@@ -5,6 +5,7 @@ import {
   TemplateComponent,
   buildAnnulationComponents,
   buildBilletsComponents,
+  buildInvitationAvisComponents,
   buildConfirmationClientComponents,
   buildConfirmationVendeurComponents,
   buildExpeditionComponents,
@@ -453,6 +454,41 @@ export class WhatsAppService {
       tpl.language,
       buildBilletsComponents(data)
     );
+  }
+
+  /**
+   * Invitation à laisser un avis : template Meta `invitation_avis`, sinon GREEN-API texte avec le lien.
+   * Renvoie le canal utilisé ou 'echec'.
+   */
+  static async sendInvitationAvis(
+    phone: string,
+    data: { prenom: string; numeroCommande: string; boutiqueNom: string; jeton: string; relance?: boolean }
+  ): Promise<'meta' | 'green_api' | 'echec'> {
+    if (this.isMetaConfigured()) {
+      const tpl = META_TEMPLATES.invitationAvis;
+      const metaId = await this.sendTemplateMessage(
+        phone,
+        tpl.name,
+        tpl.language,
+        buildInvitationAvisComponents(data)
+      );
+      if (metaId) return 'meta';
+      logger.warn('[WhatsAppService] Échec Meta invitation_avis, fallback GREEN-API');
+    }
+
+    const frontend = (process.env.FRONTEND_URL || 'https://marche241.ga').replace(/\/$/, '');
+    const intro = data.relance
+      ? `Bonjour ${data.prenom}, petit rappel : votre avis sur votre commande *${data.numeroCommande}* chez *${data.boutiqueNom}* nous intéresse.`
+      : `Bonjour ${data.prenom}, votre commande *${data.numeroCommande}* chez *${data.boutiqueNom}* a été livrée.`;
+    const message = `⭐ ${intro}
+
+Votre avis aide les autres acheteurs. Notez vos articles en 1 minute :
+${frontend}/avis/${data.jeton}
+
+Merci pour votre confiance ! 🙏`;
+
+    const id = await this.sendMessage(phone, message);
+    return id ? 'green_api' : 'echec';
   }
 
   /**

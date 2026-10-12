@@ -29,6 +29,7 @@ const META_TEMPLATES = {
   annulation: { name: 'commande_annulee_notification', language: 'fr' },
   paiementEchoue: { name: 'tentative_de_paiement_echouee', language: 'fr' },
   billets: { name: 'billets_commande', language: 'fr' },
+  invitationAvis: { name: 'invitation_avis', language: 'fr' },
 } as const;
 
 export { META_TEMPLATES };
@@ -187,6 +188,31 @@ export function buildAnnulationComponents(data: {
       sub_type: 'url',
       index: 0,
       parameters: textParams(data.boutiqueSlug),
+    },
+  ];
+}
+
+/**
+ * Template `invitation_avis` (catégorie Utility) :
+ * corps « Bonjour {{1}}, votre commande {{2}} chez {{3}} a été livrée… »,
+ * bouton URL {FRONTEND}/avis/{{1}} avec le jeton de l'invitation.
+ */
+export function buildInvitationAvisComponents(data: {
+  prenom: string;
+  numeroCommande: string;
+  boutiqueNom: string;
+  jeton: string;
+}): TemplateComponent[] {
+  return [
+    {
+      type: 'body',
+      parameters: textParams(data.prenom, data.numeroCommande, data.boutiqueNom),
+    },
+    {
+      type: 'button',
+      sub_type: 'url',
+      index: 0,
+      parameters: textParams(data.jeton),
     },
   ];
 }
