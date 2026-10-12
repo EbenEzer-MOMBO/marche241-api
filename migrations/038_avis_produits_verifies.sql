@@ -25,6 +25,11 @@ CREATE TABLE IF NOT EXISTS avis_invitations (
   date_creation TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Tentatives d'envoi : une invitation jamais remise (WhatsApp en échec) est retentée quelques fois
+ALTER TABLE avis_invitations
+  ADD COLUMN IF NOT EXISTS tentatives SMALLINT NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS derniere_tentative_le TIMESTAMPTZ;
+
 CREATE UNIQUE INDEX IF NOT EXISTS avis_invitations_commande_unique ON avis_invitations (commande_id);
 CREATE UNIQUE INDEX IF NOT EXISTS avis_invitations_jeton_unique ON avis_invitations (jeton_hash);
 

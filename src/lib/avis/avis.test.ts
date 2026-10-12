@@ -43,6 +43,8 @@ test('filtre : liens, e-mails, téléphones', () => {
   assert.deepEqual(filtrerCommentaireAvis('Appelez le 077 12 34 56').motifs, ['telephone']);
   assert.deepEqual(filtrerCommentaireAvis('whatsapp +241 66 12 34 56').motifs, ['telephone']);
   assert.deepEqual(filtrerCommentaireAvis('06.12.34.56').motifs, ['telephone']);
+  assert.equal(filtrerCommentaireAvis('Commande COM-2026-050014 reçue en bon état').suspect, false);
+  assert.deepEqual(filtrerCommentaireAvis('Commande COM-2026-050014, appelez le 077 12 34 56').motifs, ['telephone']);
 });
 
 test('filtre : mots interdits (accents et casse ignorés, mot entier)', () => {

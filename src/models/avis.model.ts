@@ -12,7 +12,7 @@ import {
 } from '../lib/database-types';
 import { nomAuteurAvis, prenomClient } from '../lib/avis/auteur';
 import { genererJetonAvis } from '../lib/avis/jeton';
-import { parserParametresAvis, serialiserParametresAvis } from '../lib/avis/parametres';
+import { PARAMETRES_AVIS_DEFAUT, parserParametresAvis, serialiserParametresAvis } from '../lib/avis/parametres';
 
 /**
  * Accès SQL des avis produits vérifiés (tables avis_produits, avis_invitations, avis_parametres).
@@ -61,7 +61,11 @@ export interface ResultatSoumission {
   crees: Array<{ id: number; produit_id: number; note: number; statut: StatutAvis; signale_auto: boolean }>;
   ignores: number[]; // produits déjà notés ou absents de la commande
   terminee: boolean;
+  numero_commande: string;
 }
+
+/** Soumission refusée car envoyée trop vite après l'ouverture du lien (mesurée côté serveur). */
+export const SOUMISSION_TROP_RAPIDE = 'trop_rapide' as const;
 
 export interface FiltresAvis {
   statut?: StatutAvis;
@@ -178,22 +182,28 @@ async function recalculer(client: PoolClient, produitId: number): Promise<void> 
   await client.query('SELECT recalculer_note_avis($1)', [produitId]);
 }
 
-let cacheSeuil: { valeur: number; expire: number } | null = null;
+/** Les paramètres changent rarement : cache unique (60 s) pour toutes les lectures hors back-office. */
+const DUREE_CACHE_PARAMETRES_MS = 60_000;
+let cacheParametres: { valeur: AvisParametres; expire: number } | null = null;
+
+/** Paramètres des avis, mis en cache 60 s (invalidé à chaque modification depuis le back-office). */
+export async function parametresAvisEnCache(): Promise<AvisParametres> {
+  if (cacheParametres && cacheParametres.expire > Date.now()) return cacheParametres.valeur;
+  const valeur = await AvisParametresModel.lire();
+  cacheParametres = { valeur, expire: Date.now() + DUREE_CACHE_PARAMETRES_MS };
+  return valeur;
+}
 
 /**
- * Seuil d'affichage de la note (avis approuvés), mis en cache 60 s. Ne lève jamais :
- * en cas d'erreur (table absente avant la migration 038), renvoie la valeur par défaut.
+ * Seuil d'affichage de la note (avis approuvés). Ne lève jamais : en cas d'erreur
+ * (table absente avant la migration 038), renvoie la valeur par défaut.
  */
 export async function seuilAffichageNote(): Promise<number> {
-  if (cacheSeuil && cacheSeuil.expire > Date.now()) return cacheSeuil.valeur;
-  let valeur = 3;
   try {
-    valeur = (await AvisParametresModel.lire()).seuil_affichage_note;
+    return (await parametresAvisEnCache()).seuil_affichage_note;
   } catch {
-    /* défaut */
+    return PARAMETRES_AVIS_DEFAUT.seuil_affichage_note;
   }
-  cacheSeuil = { valeur, expire: Date.now() + 60_000 };
-  return valeur;
 }
 
 /** Ajoute `afficher_note` (nombre d'avis approuvés ≥ seuil) aux produits renvoyés par l'API. */
@@ -238,6 +248,7 @@ export class AvisParametresModel {
         );
       }
     });
+    cacheParametres = null;
     return AvisParametresModel.lire();
   }
 }
@@ -284,22 +295,62 @@ export class AvisInvitationModel {
     return { ...commande, invitation_id: rows[0].id, jeton };
   }
 
-  static async marquerEnvoi(invitationId: number, canal: 'meta' | 'green_api' | 'echec', relance = false): Promise<void> {
+  /**
+   * Résultat d'une tentative d'envoi de l'invitation. `envoyee_le` n'est renseigné qu'en cas de succès :
+   * une invitation jamais remise reste éligible aux renvois (`renvoisDus`).
+   */
+  static async marquerTentative(invitationId: number, canal: 'meta' | 'green_api' | 'echec'): Promise<void> {
     await query(
-      relance
-        ? `UPDATE avis_invitations SET relancee_le = NOW(), canal = $2 WHERE id = $1`
-        : `UPDATE avis_invitations SET envoyee_le = NOW(), canal = $2 WHERE id = $1`,
+      `UPDATE avis_invitations SET
+         canal = $2::varchar,
+         envoyee_le = CASE WHEN $2::varchar = 'echec' THEN envoyee_le ELSE NOW() END,
+         tentatives = tentatives + 1,
+         derniere_tentative_le = NOW()
+       WHERE id = $1`,
       [invitationId, canal]
     );
   }
 
   /**
-   * Invitations à relancer : envoyées depuis au moins `ecartJours`, jamais relancées, encore valides,
-   * commande toujours livrée, et au moins un produit pas encore noté.
-   * Le jeton n'étant jamais stocké en clair, la relance génère un nouveau jeton (l'ancien lien cesse de fonctionner)
-   * et prolonge la validité.
+   * Invitations jamais remises (WhatsApp en échec) à renvoyer : moins de `maxTentatives` essais, dernier essai
+   * il y a au moins `intervalleHeures`, encore valides. Le lien n'ayant jamais été remis, un nouveau jeton
+   * remplace l'ancien sans risque.
    */
-  static async relancer(ecartJours: number, validiteJours: number, limite: number): Promise<InvitationCreee[]> {
+  static async renvoisDus(
+    maxTentatives: number,
+    intervalleHeures: number,
+    limite: number
+  ): Promise<InvitationCreee[]> {
+    const { rows } = await query<CommandeAInviter & { invitation_id: number }>(
+      `SELECT i.id AS invitation_id, c.id AS commande_id, c.numero_commande, c.client_nom, c.client_telephone, b.nom AS boutique_nom
+       FROM avis_invitations i
+       JOIN commandes c ON c.id = i.commande_id
+       JOIN boutiques b ON b.id = c.boutique_id
+       WHERE i.envoyee_le IS NULL
+         AND i.utilisee_le IS NULL
+         AND i.tentatives < $1
+         AND (i.derniere_tentative_le IS NULL OR i.derniere_tentative_le <= NOW() - make_interval(hours => $2))
+         AND i.expire_le > NOW()
+         AND c.statut = 'livree'
+       ORDER BY i.derniere_tentative_le NULLS FIRST
+       LIMIT $3`,
+      [maxTentatives, intervalleHeures, limite]
+    );
+    const resultat: InvitationCreee[] = [];
+    for (const ligne of rows) {
+      const { jeton, hash } = genererJetonAvis();
+      await query('UPDATE avis_invitations SET jeton_hash = $2 WHERE id = $1 AND envoyee_le IS NULL', [ligne.invitation_id, hash]);
+      resultat.push({ ...ligne, jeton });
+    }
+    return resultat;
+  }
+
+  /**
+   * Invitations à relancer : remises depuis au moins `ecartJours`, jamais relancées, encore valides,
+   * commande toujours livrée, et aucun avis laissé. Ne modifie rien : le nouveau jeton n'est enregistré
+   * (`appliquerRelance`) qu'une fois la relance effectivement remise, pour ne pas invalider le premier lien.
+   */
+  static async candidatsRelance(ecartJours: number, limite: number): Promise<Array<CommandeAInviter & { invitation_id: number }>> {
     const { rows } = await query<CommandeAInviter & { invitation_id: number }>(
       `SELECT i.id AS invitation_id, c.id AS commande_id, c.numero_commande, c.client_nom, c.client_telephone, b.nom AS boutique_nom
        FROM avis_invitations i
@@ -317,16 +368,29 @@ export class AvisInvitationModel {
        LIMIT $2`,
       [ecartJours, limite]
     );
-    const resultat: InvitationCreee[] = [];
-    for (const ligne of rows) {
-      const { jeton, hash } = genererJetonAvis();
-      await query(
-        `UPDATE avis_invitations SET jeton_hash = $2, expire_le = NOW() + make_interval(days => $3) WHERE id = $1`,
-        [ligne.invitation_id, hash, validiteJours]
-      );
-      resultat.push({ ...ligne, jeton });
+    return rows;
+  }
+
+  /**
+   * Relance remise : le nouveau jeton remplace l'ancien et la validité est prolongée.
+   * Relance en échec : on la note (une seule tentative) sans toucher au premier lien, toujours valable.
+   */
+  static async appliquerRelance(
+    invitationId: number,
+    canal: 'meta' | 'green_api' | 'echec',
+    nouveauHash: string,
+    validiteJours: number
+  ): Promise<void> {
+    if (canal === 'echec') {
+      await query('UPDATE avis_invitations SET relancee_le = NOW() WHERE id = $1', [invitationId]);
+      return;
     }
-    return resultat;
+    await query(
+      `UPDATE avis_invitations SET jeton_hash = $2, expire_le = NOW() + make_interval(days => $3),
+         relancee_le = NOW(), canal = $4
+       WHERE id = $1`,
+      [invitationId, nouveauHash, validiteJours, canal]
+    );
   }
 
   /** Invitation valide (non expirée, commande livrée) telle que présentée sur la page publique. */
@@ -391,11 +455,21 @@ export class AvisInvitationModel {
   static async soumettre(
     jetonHash: string,
     avis: AvisSoumis[],
-    meta: { ip_hash: string | null; user_agent: string | null }
-  ): Promise<ResultatSoumission | null> {
+    meta: { ip_hash: string | null; user_agent: string | null },
+    dureeMinimaleMs: number
+  ): Promise<ResultatSoumission | typeof SOUMISSION_TROP_RAPIDE | null> {
     return withTransaction(async (client) => {
-      const { rows } = await client.query<{ id: number; commande_id: number; client_nom: string; client_telephone: string; client_email: string | null }>(
-        `SELECT i.id, i.commande_id, c.client_nom, c.client_telephone, c.client_email
+      const { rows } = await client.query<{
+        id: number;
+        commande_id: number;
+        numero_commande: string;
+        client_nom: string;
+        client_telephone: string;
+        client_email: string | null;
+        ouverte_depuis_ms: number | null;
+      }>(
+        `SELECT i.id, i.commande_id, c.numero_commande, c.client_nom, c.client_telephone, c.client_email,
+                (EXTRACT(EPOCH FROM (NOW() - i.ouverte_le)) * 1000)::float8 AS ouverte_depuis_ms
          FROM avis_invitations i
          JOIN commandes c ON c.id = i.commande_id
          WHERE i.jeton_hash = $1 AND i.expire_le > NOW() AND c.statut = 'livree'
@@ -404,10 +478,12 @@ export class AvisInvitationModel {
       );
       const inv = rows[0];
       if (!inv) return null;
+      // Le formulaire n'est rempli qu'après ouverture du lien (GET) : un envoi direct ou immédiat est un script
+      if (inv.ouverte_depuis_ms === null || inv.ouverte_depuis_ms < dureeMinimaleMs) return SOUMISSION_TROP_RAPIDE;
 
       const notables = await AvisInvitationModel.produitsANoter(inv.commande_id, client);
       const autorises = new Map(notables.map((p) => [p.produit_id, p]));
-      const resultat: ResultatSoumission = { crees: [], ignores: [], terminee: false };
+      const resultat: ResultatSoumission = { crees: [], ignores: [], terminee: false, numero_commande: inv.numero_commande };
       const aRecalculer = new Set<number>();
 
       for (const a of avis) {

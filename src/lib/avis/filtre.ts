@@ -15,6 +15,8 @@ const RE_LIEN = /(https?:\/\/|www\.|\b[a-z0-9-]+\.(com|net|org|ga|fr|io|co|me|in
 const RE_EMAIL = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
 // Numéros gabonais (+241…, 0X XX XX XX) et toute suite de 8 chiffres ou plus (espaces / points / tirets tolérés)
 const RE_TELEPHONE = /(\+?\s*241[\s.-]?\d)|(\b0[1-9](?:[\s.-]?\d){6,8}\b)|(\d(?:[\s.-]?\d){7,})/;
+// Références de commande Marché 241 (COM-2026-050014, CMD-2024-001234) : ce ne sont pas des numéros de téléphone
+const RE_REFERENCE_COMMANDE = /\b[A-Z]{2,5}-\d{4}-\d{4,8}\b/gi;
 
 /** Minuscules sans accents, pour comparer les mots interdits. */
 function normaliser(texte: string): string {
@@ -32,7 +34,7 @@ export function filtrerCommentaireAvis(commentaire: string | null | undefined, m
 
   if (RE_LIEN.test(texte)) motifs.push('lien');
   if (RE_EMAIL.test(texte)) motifs.push('email');
-  if (RE_TELEPHONE.test(texte)) motifs.push('telephone');
+  if (RE_TELEPHONE.test(texte.replace(RE_REFERENCE_COMMANDE, ' '))) motifs.push('telephone');
 
   const normalise = normaliser(texte);
   const mots = motsInterdits.map((m) => normaliser(m.trim())).filter(Boolean);

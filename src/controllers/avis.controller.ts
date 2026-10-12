@@ -1,5 +1,13 @@
 import { NextFunction, Request, Response } from 'express';
-import { AvisInvitationModel, AvisModel, AvisParametresModel, AvisSoumis, FiltresAvis } from '../models/avis.model';
+import {
+  AvisInvitationModel,
+  AvisModel,
+  AvisParametresModel,
+  AvisSoumis,
+  FiltresAvis,
+  parametresAvisEnCache,
+  SOUMISSION_TROP_RAPIDE
+} from '../models/avis.model';
 import { AvisParametres } from '../lib/database-types';
 import { hacherIp, hacherJetonAvis, jetonAvisBienForme } from '../lib/avis/jeton';
 import { filtrerCommentaireAvis, nettoyerTexteAvis } from '../lib/avis/filtre';
@@ -12,17 +20,15 @@ import { logger } from '../utils/logger';
 const DUREE_MIN_REMPLISSAGE_MS = 5000;
 /** Le vendeur peut modifier sa réponse pendant 48 h. */
 const DELAI_MODIFICATION_REPONSE_H = 48;
-/** Les paramètres changent rarement : cache court pour les routes publiques. */
-const CACHE_PARAMETRES_MS = 60_000;
+const parametres = parametresAvisEnCache;
 
-let cacheParametres: { valeur: AvisParametres; expire: number } | null = null;
-
-async function parametres(): Promise<AvisParametres> {
-  if (cacheParametres && cacheParametres.expire > Date.now()) return cacheParametres.valeur;
-  const valeur = await AvisParametresModel.lire();
-  cacheParametres = { valeur, expire: Date.now() + CACHE_PARAMETRES_MS };
-  return valeur;
-}
+const soumissionTropRapide = (res: Response): void => {
+  res.status(400).json({
+    success: false,
+    message: 'Merci de prendre quelques secondes pour relire votre avis avant de l’envoyer.',
+    code: 'SOUMISSION_TROP_RAPIDE'
+  });
+};
 
 const invitationInvalide = (res: Response): void => {
   res.status(404).json({
@@ -79,14 +85,8 @@ export class AvisController {
         res.json({ success: true, resultat: { crees: 0, en_moderation: 0, ignores: [], terminee: true } });
         return;
       }
-      if (corps.rempli_en_ms === undefined || corps.rempli_en_ms < DUREE_MIN_REMPLISSAGE_MS) {
-        res.status(400).json({
-          success: false,
-          message: 'Merci de prendre quelques secondes pour relire votre avis avant de l’envoyer.',
-          code: 'SOUMISSION_TROP_RAPIDE'
-        });
-        return;
-      }
+      // Premier filtre côté client ; la durée réelle (depuis l'ouverture du lien) est contrôlée en base
+      if (corps.rempli_en_ms === undefined || corps.rempli_en_ms < DUREE_MIN_REMPLISSAGE_MS) return soumissionTropRapide(res);
 
       const erreurs: Array<{ field: string; message: string }> = [];
       const avis: AvisSoumis[] = corps.avis.map((a, i) => {
@@ -113,17 +113,22 @@ export class AvisController {
       }
 
       const ua = req.headers['user-agent'];
-      const resultat = await AvisInvitationModel.soumettre(hacherJetonAvis(jeton), avis, {
-        ip_hash: hacherIp(getClientIp(req)),
-        user_agent: typeof ua === 'string' ? ua.slice(0, 255) : null
-      });
+      const resultat = await AvisInvitationModel.soumettre(
+        hacherJetonAvis(jeton),
+        avis,
+        {
+          ip_hash: hacherIp(getClientIp(req)),
+          user_agent: typeof ua === 'string' ? ua.slice(0, 255) : null
+        },
+        DUREE_MIN_REMPLISSAGE_MS
+      );
       if (!resultat) return invitationInvalide(res);
+      if (resultat === SOUMISSION_TROP_RAPIDE) return soumissionTropRapide(res);
 
       if (resultat.crees.length > 0) {
-        void AvisService.alerterNouveauxAvis(resultat.crees, {});
-        for (const a of resultat.crees.filter((c) => c.statut === 'approuve')) {
-          void AvisService.notifierVendeurAvisPublie(a.id);
-        }
+        void AvisService.alerterNouveauxAvis(resultat.crees, { numero_commande: resultat.numero_commande });
+        const publies = resultat.crees.filter((c) => c.statut === 'approuve').map((c) => c.id);
+        if (publies.length > 0) void AvisService.notifierVendeursAvisPublies(publies);
       }
 
       res.status(resultat.crees.length > 0 ? 201 : 200).json({
@@ -296,7 +301,7 @@ export class AvisController {
         res.status(404).json({ success: false, message: 'Avis introuvable', code: 'AVIS_INTROUVABLE' });
         return;
       }
-      if (resultat.avant !== 'approuve') void AvisService.notifierVendeurAvisPublie(id);
+      if (resultat.avant !== 'approuve') void AvisService.notifierVendeursAvisPublies([id]);
       res.json({ success: true, avis: await AvisModel.trouver(id) });
     } catch (err) {
       next(err);
@@ -308,12 +313,14 @@ export class AvisController {
     try {
       const { ids, modere_par } = (req as any).validatedBody as { ids: number[]; modere_par?: string | null };
       let approuves = 0;
+      const nouvellementPublies: number[] = [];
       for (const id of ids) {
         const resultat = await AvisModel.moderer(id, 'approuve', modere_par || null, null);
         if (!resultat) continue;
         approuves += 1;
-        if (resultat.avant !== 'approuve') void AvisService.notifierVendeurAvisPublie(id);
+        if (resultat.avant !== 'approuve') nouvellementPublies.push(id);
       }
+      if (nouvellementPublies.length > 0) void AvisService.notifierVendeursAvisPublies(nouvellementPublies);
       res.json({ success: true, approuves });
     } catch (err) {
       next(err);
@@ -363,7 +370,6 @@ export class AvisController {
   static async ecrireParametres(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const parametresMaj = await AvisParametresModel.ecrire((req as any).validatedBody as Partial<AvisParametres>);
-      cacheParametres = null;
       res.json({ success: true, parametres: parametresMaj });
     } catch (err) {
       next(err);

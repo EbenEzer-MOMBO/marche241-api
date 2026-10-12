@@ -1,5 +1,6 @@
 import { AvisInvitationModel, AvisModel, AvisParametresModel, InvitationCreee } from '../models/avis.model';
 import { prenomClient } from '../lib/avis/auteur';
+import { genererJetonAvis } from '../lib/avis/jeton';
 import { WhatsAppService } from './whatsapp.service';
 import { PushService } from './push.service';
 import { notifier } from './telegram.service';
@@ -11,39 +12,60 @@ const TAILLE_LOT = 50;
 /** Intervalle minimal entre deux résumés « avis en attente » envoyés à l'équipe. */
 const INTERVALLE_RESUME_HEURES = 20;
 
+/** Invitation jamais remise (WhatsApp en échec) : nombre d'essais au total et écart entre deux essais. */
+const MAX_TENTATIVES_INVITATION = 3;
+const INTERVALLE_RENVOI_HEURES = 6;
+
 export interface BilanInvitationsAvis {
   actif: boolean;
   invitations: number;
+  renvois: number;
   relances: number;
   echecs: number;
   resume_envoye: boolean;
 }
 
+type CanalEnvoi = 'meta' | 'green_api' | 'echec';
+
 const frontend = (): string => (process.env.FRONTEND_URL || 'https://marche241.ga').replace(/\/$/, '');
 
-async function envoyer(invitation: InvitationCreee, relance: boolean): Promise<boolean> {
-  const canal = await WhatsAppService.sendInvitationAvis(invitation.client_telephone, {
-    prenom: prenomClient(invitation.client_nom),
-    numeroCommande: invitation.numero_commande,
-    boutiqueNom: invitation.boutique_nom,
-    jeton: invitation.jeton,
+/** Envoie le lien WhatsApp ; ne lève jamais (un échec est un canal 'echec'). */
+async function envoyerLien(destinataire: Omit<InvitationCreee, 'jeton'>, jeton: string, relance: boolean): Promise<CanalEnvoi> {
+  return WhatsAppService.sendInvitationAvis(destinataire.client_telephone, {
+    prenom: prenomClient(destinataire.client_nom),
+    numeroCommande: destinataire.numero_commande,
+    boutiqueNom: destinataire.boutique_nom,
+    jeton,
     relance
   }).catch((err) => {
-    logger.error(`[AvisService] Envoi invitation commande ${invitation.commande_id} impossible:`, err);
+    logger.error(`[AvisService] Envoi invitation commande ${destinataire.commande_id} impossible:`, err);
     return 'echec' as const;
   });
-  await AvisInvitationModel.marquerEnvoi(invitation.invitation_id, canal, relance);
+}
+
+/** Premier envoi (ou renvoi d'une invitation jamais remise) : la tentative est toujours enregistrée. */
+async function envoyerInvitation(invitation: InvitationCreee): Promise<boolean> {
+  const canal = await envoyerLien(invitation, invitation.jeton, false);
+  await AvisInvitationModel.marquerTentative(invitation.invitation_id, canal);
   return canal !== 'echec';
 }
 
 export class AvisService {
   /**
    * Cron : crée et envoie les invitations dues (commandes livrées depuis `delai_invitation_jours`),
-   * puis les relances. Sans effet si le module est désactivé (kill switch).
+   * renvoie celles jamais remises, puis les relances. Sans effet si le module est désactivé (kill switch),
+   * à part le résumé quotidien des avis à modérer.
    */
   static async envoyerInvitations(): Promise<BilanInvitationsAvis> {
     const parametres = await AvisParametresModel.lire();
-    const bilan: BilanInvitationsAvis = { actif: parametres.actif, invitations: 0, relances: 0, echecs: 0, resume_envoye: false };
+    const bilan: BilanInvitationsAvis = {
+      actif: parametres.actif,
+      invitations: 0,
+      renvois: 0,
+      relances: 0,
+      echecs: 0,
+      resume_envoye: false
+    };
     // Le résumé est envoyé même module coupé : des avis peuvent rester à modérer
     bilan.resume_envoye = await AvisService.envoyerResumeQuotidien();
     if (!parametres.actif) return bilan;
@@ -52,20 +74,33 @@ export class AvisService {
     for (const commande of commandes) {
       const invitation = await AvisInvitationModel.creer(commande, parametres.validite_jeton_jours);
       if (!invitation) continue;
-      if (await envoyer(invitation, false)) bilan.invitations += 1;
+      if (await envoyerInvitation(invitation)) bilan.invitations += 1;
       else bilan.echecs += 1;
     }
 
+    // Invitations jamais remises : nouvel essai (nouveau jeton, le précédent n'ayant jamais été reçu)
+    const renvois = await AvisInvitationModel.renvoisDus(MAX_TENTATIVES_INVITATION, INTERVALLE_RENVOI_HEURES, TAILLE_LOT);
+    for (const invitation of renvois) {
+      if (await envoyerInvitation(invitation)) bilan.renvois += 1;
+      else bilan.echecs += 1;
+    }
+
+    // Relance : le nouveau jeton n'est enregistré que si le message part, sinon le premier lien reste valable
     const ecart = parametres.relance_jours - parametres.delai_invitation_jours;
     if (parametres.relance_jours > 0 && ecart > 0) {
-      const relances = await AvisInvitationModel.relancer(ecart, parametres.validite_jeton_jours, TAILLE_LOT);
-      for (const invitation of relances) {
-        if (await envoyer(invitation, true)) bilan.relances += 1;
+      const candidats = await AvisInvitationModel.candidatsRelance(ecart, TAILLE_LOT);
+      for (const candidat of candidats) {
+        const { jeton, hash } = genererJetonAvis();
+        const canal = await envoyerLien(candidat, jeton, true);
+        await AvisInvitationModel.appliquerRelance(candidat.invitation_id, canal, hash, parametres.validite_jeton_jours);
+        if (canal !== 'echec') bilan.relances += 1;
         else bilan.echecs += 1;
       }
     }
 
-    logger.info(`[AvisService] Invitations : ${bilan.invitations} envoyée(s), ${bilan.relances} relance(s), ${bilan.echecs} échec(s)`);
+    logger.info(
+      `[AvisService] Invitations : ${bilan.invitations} envoyée(s), ${bilan.renvois} renvoi(s), ${bilan.relances} relance(s), ${bilan.echecs} échec(s)`
+    );
     return bilan;
   }
 
@@ -116,26 +151,41 @@ export class AvisService {
     }).catch(() => false);
   }
 
-  /** Avis publié : push web + WhatsApp au vendeur. Ne lève jamais (la modération ne doit pas échouer pour ça). */
-  static async notifierVendeurAvisPublie(avisId: number): Promise<void> {
+  /**
+   * Avis publiés (unitaire ou en masse) : un seul push + un seul WhatsApp par vendeur, quel que soit le nombre
+   * d'avis publiés pour lui (pas de rafale de messages lors d'une approbation en masse). Ne lève jamais :
+   * la modération ne doit pas échouer à cause d'une notification.
+   */
+  static async notifierVendeursAvisPublies(avisIds: number[]): Promise<void> {
     try {
-      const ctx = await AvisModel.contexteNotification(avisId);
-      if (!ctx) return;
-      const etoiles = '★'.repeat(ctx.note) + '☆'.repeat(5 - ctx.note);
-      const url = `${frontend()}/admin/${ctx.boutique_slug}/avis`;
-      await PushService.sendToVendeur(ctx.vendeur_id, {
-        title: 'Nouvel avis client',
-        body: `${etoiles} sur « ${ctx.produit_nom} »`,
-        url: `/admin/${ctx.boutique_slug}/avis`
-      });
-      if (ctx.vendeur_telephone) {
-        await WhatsAppService.sendCustomMessage(
-          ctx.vendeur_telephone,
-          `⭐ *Nouvel avis client*\n\n${etoiles} sur *${ctx.produit_nom}*.\n\nLisez-le et répondez depuis votre espace vendeur :\n${url}`
-        );
+      const contextes = (await Promise.all(avisIds.map((id) => AvisModel.contexteNotification(id)))).filter(
+        (ctx): ctx is NonNullable<typeof ctx> => ctx !== null
+      );
+      const parVendeur = new Map<number, typeof contextes>();
+      for (const ctx of contextes) parVendeur.set(ctx.vendeur_id, [...(parVendeur.get(ctx.vendeur_id) ?? []), ctx]);
+
+      for (const [vendeurId, liste] of parVendeur) {
+        const premier = liste[0];
+        const chemin = `/admin/${premier.boutique_slug}/avis`;
+        const titre = liste.length === 1 ? 'Nouvel avis client' : 'Nouveaux avis clients';
+        const corps =
+          liste.length === 1
+            ? `${'★'.repeat(premier.note)}${'☆'.repeat(5 - premier.note)} sur « ${premier.produit_nom} »`
+            : `${liste.length} nouveaux avis publiés sur vos produits`;
+        try {
+          await PushService.sendToVendeur(vendeurId, { title: titre, body: corps, url: chemin });
+          if (premier.vendeur_telephone) {
+            await WhatsAppService.sendCustomMessage(
+              premier.vendeur_telephone,
+              `⭐ *${titre}*\n\n${corps}.\n\nLisez et répondez depuis votre espace vendeur :\n${frontend()}${chemin}`
+            );
+          }
+        } catch (err) {
+          logger.warn(`[AvisService] Notification du vendeur ${vendeurId} non envoyée:`, err);
+        }
       }
     } catch (err) {
-      logger.warn(`[AvisService] Notification vendeur de l'avis ${avisId} non envoyée:`, err);
+      logger.warn('[AvisService] Notifications vendeur des avis publiés non envoyées:', err);
     }
   }
 }

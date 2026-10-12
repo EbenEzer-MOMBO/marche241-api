@@ -21,6 +21,11 @@ EmailService.initialize();
 const app: Application = express();
 const port = parseInt(process.env.PORT || '3000', 10);
 
+// Derrière le proxy de l'hébergeur, req.ip doit être l'IP du client (X-Forwarded-For) et non celle du proxy :
+// sinon tous les visiteurs partagent le même quota des limiteurs (express-rate-limit) et Turnstile reçoit
+// l'IP du proxy. TRUST_PROXY_HOPS = nombre de proxys de confiance (1 sur Render, 0 en local sans proxy).
+app.set('trust proxy', Number.parseInt(process.env.TRUST_PROXY_HOPS ?? '1', 10) || false);
+
 // Middlewares
 app.use(cors({
   origin: [

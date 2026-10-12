@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { CronService } from '../services/cron.service';
 import { VueModel } from '../models/vue.model';
 import { AvisService } from '../services/avis.service';
+import { logger } from '../utils/logger';
 
 /**
  * Contrôleur pour gérer les tâches cron
@@ -238,7 +239,7 @@ export class CronController {
         const result = await AvisService.envoyerInvitations();
         results.push({ task: 'invitations_avis', success: true, result, duration: Date.now() - taskAvisStart });
       } catch (error: any) {
-        console.error('[CronController] Erreur invitations avis:', error.message);
+        logger.error('[CronController] Erreur invitations avis:', error.message);
         results.push({ task: 'invitations_avis', success: false, error: error.message, duration: Date.now() - taskAvisStart });
       }
 
