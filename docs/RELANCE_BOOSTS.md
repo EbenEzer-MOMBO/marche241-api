@@ -61,7 +61,7 @@ Une question ? Répondez simplement à ce message, l'équipe Marché 241 est là
 Exemples : `{{1}}` = Aïcha, `{{2}}` = Mode Akanda, `{{3}}` = 2 boost(s) en brouillon et 1 boost(s) en attente de paiement.
 
 - Pied : `Marché 241 · Boostez vos ventes`
-- Bouton URL « Finaliser mes boosts » : `https://marche241.ga/admin/{{1}}` (exemple `mode-akanda/boost` — le `{{1}}` doit être en fin d’URL pour Meta)
+- Bouton URL « Finaliser mes boosts » : `https://marche241.ga/admin/{{1}}/boost` (exemple `mode-akanda`)
 - Bouton URL « Ne plus recevoir » : `https://marche241.ga/desinscription/relances-boost?jeton={{1}}`
 
 Pas de repli Green API : seul le template Meta est envoyé.
