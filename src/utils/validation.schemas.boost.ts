@@ -143,7 +143,8 @@ export const devisSchema = fr(
       'any.required': 'Le montant est obligatoire',
       'number.base': 'Le montant doit être un nombre'
     }),
-    duree_jours: Joi.number().integer().min(1).max(60).default(7).label('La durée')
+    duree_jours: Joi.number().integer().min(1).max(60).default(7).label('La durée'),
+    objectif: Joi.string().valid('trafic', 'whatsapp', 'notoriete').label("L'objectif")
   })
 );
 
@@ -254,6 +255,7 @@ export const parametresBoostSchema = fr(
     cpm_min_fcfa: Joi.number().positive().label('Le CPM minimum'),
     cpm_max_fcfa: Joi.number().positive().label('Le CPM maximum'),
     budget_jour_min_fcfa: Joi.number().integer().min(0).label('Le budget minimum par jour'),
+    budget_jour_min_whatsapp_usd: Joi.number().min(0).max(100).label('Le budget minimum par jour en $US (WhatsApp)'),
     kill_switch: Joi.boolean().label('Le kill switch'),
     relance_active: Joi.boolean().label('Les relances'),
     relance_whatsapp_active: Joi.boolean().label('Les relances WhatsApp'),

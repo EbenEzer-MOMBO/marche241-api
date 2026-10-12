@@ -402,6 +402,7 @@ export const PARAMETRES_BOOST_DEFAUT: BoostParametres = {
   cpm_min_fcfa: 46,
   cpm_max_fcfa: 85,
   budget_jour_min_fcfa: 600,
+  budget_jour_min_whatsapp_usd: 2.2,
   kill_switch: false,
   relance_active: true,
   relance_whatsapp_active: true,

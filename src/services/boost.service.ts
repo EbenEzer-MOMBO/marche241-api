@@ -9,7 +9,7 @@ import {
   DonneesBoost
 } from '../models/boost.model';
 import { Boost, BoostEvenement, BoostParametres, CiblageBoost, ObjectifBoost, TypeCibleBoost } from '../lib/database-types';
-import { budgetParJour, devisDepuisTotal, estTotalDansBornes, formaterFcfa } from '../lib/boost/devis';
+import { budgetJourMinimum, budgetParJour, devisDepuisTotal, estTotalDansBornes, formaterFcfa, totalMinimumPourMedia } from '../lib/boost/devis';
 import { notifier } from './telegram.service';
 import { EvenementNotification } from '../config/notifications.config';
 import { calculerCloture, fraisEncaissement, remboursementIntegral } from '../lib/boost/reliquat';
@@ -95,6 +95,22 @@ export interface DonneesBrouillon {
   texte_principal?: string | null;
   description?: string | null;
   image_url?: string | null;
+}
+
+/**
+ * Message d'erreur si le budget média par jour est sous le plancher de l'objectif (null sinon).
+ * Pour WhatsApp, indique le montant minimum pour la durée choisie ou l'alternative « Visites ».
+ */
+export function messageBudgetInsuffisant(totalFcfa: number, dureeJours: number, objectif: ObjectifBoost | null | undefined, parametres: BoostParametres): string | null {
+  const devis = devisDepuisTotal(totalFcfa, parametres.commission_bps, parametres.commission_min_fcfa, parametres.tva_bps);
+  const parJour = budgetParJour(devis.budget_media_fcfa, dureeJours);
+  const minimum = budgetJourMinimum(objectif, parametres);
+  if (parJour >= minimum) return null;
+  if (objectif === 'whatsapp' && minimum > parametres.budget_jour_min_fcfa) {
+    const totalMin = totalMinimumPourMedia(minimum * dureeJours, parametres.commission_bps, parametres.commission_min_fcfa, parametres.tva_bps);
+    return `Pour recevoir des messages WhatsApp, Meta demande au moins ${formaterFcfa(minimum)} de publicité par jour : il faut au moins ${formaterFcfa(totalMin)} pour ${dureeJours} jours. Augmentez le montant, réduisez la durée ou choisissez l'objectif « Visites »`;
+  }
+  return `Budget publicitaire trop faible pour ${dureeJours} jours (${formaterFcfa(parJour)} par jour, minimum ${formaterFcfa(minimum)}) : augmentez le montant ou réduisez la durée`;
 }
 
 /** Âge maximal des statistiques affichées avant un rafraîchissement à la demande (15 min). */
@@ -224,14 +240,9 @@ export class BoostService {
     }
     if (!erreurs.some((e) => e.field === 'total_fcfa' || e.field === 'duree_jours')) {
       try {
-        const devis = devisDepuisTotal(boost.total_fcfa, parametres.commission_bps, parametres.commission_min_fcfa, parametres.tva_bps);
-        const parJour = budgetParJour(devis.budget_media_fcfa, boost.duree_jours);
-        if (parJour < parametres.budget_jour_min_fcfa) {
-          erreurs.push({
-            field: 'duree_jours',
-            message: `Budget publicitaire trop faible pour ${boost.duree_jours} jours (${formaterFcfa(parJour)} par jour, minimum ${formaterFcfa(parametres.budget_jour_min_fcfa)}) : augmentez le montant ou réduisez la durée`
-          });
-        }
+        const message = messageBudgetInsuffisant(boost.total_fcfa, boost.duree_jours, boost.objectif, parametres);
+        // Plancher WhatsApp : c'est le montant qu'il faut augmenter (la durée est souvent déjà au minimum)
+        if (message) erreurs.push({ field: boost.objectif === 'whatsapp' ? 'total_fcfa' : 'duree_jours', message });
       } catch (err: any) {
         erreurs.push({ field: 'total_fcfa', message: err.message });
       }
@@ -293,6 +304,18 @@ export class BoostService {
   static async initierPaiement(boost: Boost, demande: DemandePaiement): Promise<{ bill_id: string; url?: string; transaction_id: number }> {
     if (boost.statut !== 'en_attente_paiement') {
       throw new BoostErreur("Ce boost n'est pas en attente de paiement", 409, 'BOOST_NON_PAYABLE');
+    }
+    // Boost soumis avant l'introduction du plancher WhatsApp : on bloque le paiement plutôt que de
+    // laisser Meta refuser la publication après encaissement.
+    let insuffisant: string | null;
+    try {
+      insuffisant = messageBudgetInsuffisant(boost.total_fcfa, boost.duree_jours, boost.objectif, await BoostParametresModel.lire());
+    } catch (err: any) {
+      // Paramètres modifiés depuis la soumission (ex. commission minimum relevée au-dessus du total)
+      insuffisant = err?.message ?? 'Montant devenu insuffisant';
+    }
+    if (insuffisant) {
+      throw new BoostErreur(`${insuffisant}. Revenez au brouillon pour modifier votre publicité.`, 409, 'BOOST_BUDGET_INSUFFISANT');
     }
     const reference = `BOOST-${boost.id}-${Date.now()}`;
     const description = `Boost publicitaire ${boost.nom}`.slice(0, 100);
@@ -389,6 +412,17 @@ export class BoostService {
     if (!boost) throw introuvable();
     if (boost.statut !== 'en_attente_validation' && boost.statut !== 'erreur') {
       throw new BoostErreur("Ce boost n'est pas en attente de validation", 409, 'BOOST_NON_VALIDABLE');
+    }
+    // Le budget Meta vient du paiement du vendeur, marge déduite : on ne le complète jamais. Sous le
+    // plancher de l'objectif (WhatsApp), Meta refuserait la publication : on bloque avant tout appel.
+    const minimumJour = budgetJourMinimum(boost.objectif, parametres);
+    const parJour = budgetParJour(boost.budget_media_fcfa, boost.duree_jours);
+    if (!boost.meta_campaign_id && parJour < minimumJour) {
+      throw new BoostErreur(
+        `Budget Meta insuffisant pour cet objectif : ${formaterFcfa(parJour)} par jour, minimum ${formaterFcfa(minimumJour)}. Refusez le boost pour rembourser le vendeur, qui pourra en créer un avec un montant suffisant ou l'objectif « Visites »`,
+        409,
+        'BOOST_BUDGET_INSUFFISANT'
+      );
     }
     // Hors mode simulé, une connexion Meta incomplète bloque l'approbation sans toucher au boost.
     if (!estModeSimule()) {
