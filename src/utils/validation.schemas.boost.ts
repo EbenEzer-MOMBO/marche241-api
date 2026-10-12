@@ -255,7 +255,7 @@ export const parametresBoostSchema = fr(
     cpm_min_fcfa: Joi.number().positive().label('Le CPM minimum'),
     cpm_max_fcfa: Joi.number().positive().label('Le CPM maximum'),
     budget_jour_min_fcfa: Joi.number().integer().min(0).label('Le budget minimum par jour'),
-    budget_jour_min_whatsapp_fcfa: Joi.number().integer().min(0).label('Le budget minimum par jour (WhatsApp)'),
+    budget_jour_min_whatsapp_usd: Joi.number().min(0).max(100).label('Le budget minimum par jour en $US (WhatsApp)'),
     kill_switch: Joi.boolean().label('Le kill switch'),
     relance_active: Joi.boolean().label('Les relances'),
     relance_whatsapp_active: Joi.boolean().label('Les relances WhatsApp'),
