@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { budgetParJour, devisDepuisMedia, devisDepuisTotal, estTotalDansBornes } from './devis';
+import { budgetJourMinimum, budgetParJour, devisDepuisMedia, devisDepuisTotal, estTotalDansBornes, totalMinimumPourMedia } from './devis';
 
 test('devisDepuisMedia : commission en % avec minimum', () => {
   assert.deepEqual(devisDepuisMedia(50_000, 2000, 1000), {
@@ -52,4 +52,22 @@ test('bornes et budget par jour', () => {
   assert.equal(estTotalDansBornes(2999, 3000, 500_000), false);
   assert.equal(estTotalDansBornes(3000.5, 3000, 500_000), false);
   assert.equal(budgetParJour(2000, 3), 666);
+});
+
+test('budgetJourMinimum : plancher propre à WhatsApp, jamais sous le minimum général', () => {
+  const p = { budget_jour_min_fcfa: 600, budget_jour_min_whatsapp_fcfa: 1300 };
+  assert.equal(budgetJourMinimum('trafic', p), 600);
+  assert.equal(budgetJourMinimum('notoriete', p), 600);
+  assert.equal(budgetJourMinimum('whatsapp', p), 1300);
+  assert.equal(budgetJourMinimum('whatsapp', { budget_jour_min_fcfa: 600, budget_jour_min_whatsapp_fcfa: 0 }), 600);
+});
+
+test('totalMinimumPourMedia : plus petit total à la centaine couvrant le budget média', () => {
+  // 3 jours × 1 300 FCFA = 3 900 FCFA de média, commission 30 % (minimum 1 000)
+  const total = totalMinimumPourMedia(3900, 3000, 1000);
+  assert.equal(total % 100, 0);
+  assert.ok(devisDepuisTotal(total, 3000, 1000).budget_media_fcfa >= 3900);
+  assert.ok(devisDepuisTotal(total - 100, 3000, 1000).budget_media_fcfa < 3900);
+  // commission au minimum : 500 FCFA de média → 1 500 FCFA
+  assert.equal(totalMinimumPourMedia(500, 3000, 1000), 1500);
 });

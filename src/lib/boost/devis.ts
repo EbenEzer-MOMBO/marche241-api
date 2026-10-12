@@ -71,6 +71,34 @@ export function budgetParJour(mediaFcfa: number, dureeJours: number): number {
   return Math.floor(mediaFcfa / Math.max(1, dureeJours));
 }
 
+/**
+ * Budget média minimum par jour selon l'objectif. Meta refuse un ensemble de publicités optimisé pour
+ * les conversations WhatsApp sous ~2 $US par jour (« doit être supérieur à 6,00 $US » sur 3 jours) :
+ * cet objectif a donc son propre plancher, jamais inférieur au minimum général.
+ */
+export function budgetJourMinimum(
+  objectif: string | null | undefined,
+  parametres: { budget_jour_min_fcfa: number; budget_jour_min_whatsapp_fcfa: number }
+): number {
+  return objectif === 'whatsapp'
+    ? Math.max(parametres.budget_jour_min_fcfa, parametres.budget_jour_min_whatsapp_fcfa)
+    : parametres.budget_jour_min_fcfa;
+}
+
+/**
+ * Plus petit total payé (arrondi à la centaine supérieure) dont le budget média atteint `mediaMinFcfa`.
+ * Inverse de `devisDepuisTotal` : la commission vaut max(minimum, base × bps / (10 000 + bps)).
+ */
+export function totalMinimumPourMedia(mediaMinFcfa: number, commissionBps: number, commissionMinFcfa: number, tvaBps = 0): number {
+  const media = Math.max(0, Math.ceil(mediaMinFcfa));
+  let total = Math.max(media + commissionMinFcfa, Math.ceil((media * (10_000 + commissionBps)) / 10_000));
+  total = Math.ceil((total * (10_000 + tvaBps)) / 10_000);
+  total = Math.ceil(total / 100) * 100;
+  // Garde-fou contre les arrondis : on avance par centaine jusqu'à couvrir le média
+  while (devisDepuisTotal(total, commissionBps, commissionMinFcfa, tvaBps).budget_media_fcfa < media) total += 100;
+  return total;
+}
+
 export function formaterFcfa(montant: number): string {
   return `${new Intl.NumberFormat('fr-FR').format(Math.round(montant)).replace(/ | /g, ' ')} FCFA`;
 }

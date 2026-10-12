@@ -288,7 +288,7 @@ router.get('/prefill', auth, validateQuery(prefillQuerySchema), BoostController.
  *     requestBody:
  *       content:
  *         application/json:
- *           schema: { type: object, required: [total_fcfa], properties: { total_fcfa: { type: integer, example: 7500 }, duree_jours: { type: integer, example: 5 } } }
+ *           schema: { type: object, required: [total_fcfa], properties: { total_fcfa: { type: integer, example: 7500 }, duree_jours: { type: integer, example: 5 }, objectif: { type: string, enum: [trafic, whatsapp, notoriete], description: "Applique le plancher propre à l'objectif (WhatsApp plus élevé) ; la réponse inclut budget_jour_min_fcfa et total_minimum_fcfa" } } }
  *     responses:
  *       200: { description: "{ success, devis }" }
  */

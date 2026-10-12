@@ -8,7 +8,7 @@ import { estimerAudience, estimerImpressionsJour } from '../services/meta-estima
 import { santeMeta, estModeSimule } from '../services/meta-ads.service';
 import { decouvrir, enregistrerChoix, MetaConnexionErreur, verifier } from '../services/meta-connexion.service';
 import { MetaGraphError } from '../lib/meta/graph';
-import { budgetParJour, devisDepuisTotal, estTotalDansBornes, formaterFcfa } from '../lib/boost/devis';
+import { budgetJourMinimum, budgetParJour, devisDepuisTotal, estTotalDansBornes, formaterFcfa, totalMinimumPourMedia } from '../lib/boost/devis';
 import { fraisEncaissement } from '../lib/boost/reliquat';
 import { LIBELLES_STATUT_BOOST } from '../lib/boost/transitions';
 import { Boost } from '../lib/database-types';
@@ -84,6 +84,7 @@ export class BoostController {
           tva_bps: parametres.tva_bps,
           frais_encaissement_bps: parametres.frais_encaissement_bps,
           budget_jour_min_fcfa: parametres.budget_jour_min_fcfa,
+          budget_jour_min_whatsapp_fcfa: parametres.budget_jour_min_whatsapp_fcfa,
           packs: parametres.packs,
           kill_switch: parametres.kill_switch,
           types: { plateforme: pub.plateforme_active && !pub.kill_switch, meta: true },
@@ -117,7 +118,7 @@ export class BoostController {
 
   static async getDevis(req: Request, res: Response): Promise<void> {
     try {
-      const { total_fcfa, duree_jours } = corps(req);
+      const { total_fcfa, duree_jours, objectif } = corps(req);
       const p = await BoostParametresModel.lire();
       if (!estTotalDansBornes(total_fcfa, p.total_min_fcfa, p.total_max_fcfa)) {
         const message = `Le montant doit être compris entre ${formaterFcfa(p.total_min_fcfa)} et ${formaterFcfa(p.total_max_fcfa)}`;
@@ -136,7 +137,13 @@ export class BoostController {
           ...devis,
           duree_jours,
           budget_jour_fcfa: budgetParJour(devis.budget_media_fcfa, duree_jours),
-          frais_encaissement_fcfa: fraisEncaissement(devis.total_fcfa, p.frais_encaissement_bps)
+          frais_encaissement_fcfa: fraisEncaissement(devis.total_fcfa, p.frais_encaissement_bps),
+          // Plancher de l'objectif (WhatsApp plus élevé) et total minimum correspondant pour la durée
+          budget_jour_min_fcfa: budgetJourMinimum(objectif, p),
+          total_minimum_fcfa: Math.max(
+            p.total_min_fcfa,
+            totalMinimumPourMedia(budgetJourMinimum(objectif, p) * duree_jours, p.commission_bps, p.commission_min_fcfa, p.tva_bps)
+          )
         }
       });
     } catch (err: any) {
