@@ -8,7 +8,12 @@ export function nomAuteurAvis(nomClient: string | null | undefined): string {
     .split(/\s+/)
     .filter(Boolean);
   if (morceaux.length === 0) return 'Client';
-  const majuscule = (mot: string) => mot.charAt(0).toLocaleUpperCase('fr') + mot.slice(1).toLocaleLowerCase('fr');
+  // Majuscule à chaque partie d'un prénom composé : « jean-pierre » → « Jean-Pierre »
+  const majuscule = (mot: string) =>
+    mot
+      .split('-')
+      .map((partie) => partie.charAt(0).toLocaleUpperCase('fr') + partie.slice(1).toLocaleLowerCase('fr'))
+      .join('-');
   const prenom = majuscule(morceaux[0]);
   if (morceaux.length === 1) return prenom;
   return `${prenom} ${morceaux[morceaux.length - 1].charAt(0).toLocaleUpperCase('fr')}.`;

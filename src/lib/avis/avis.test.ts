@@ -67,7 +67,8 @@ test('nettoyage du texte', () => {
 
 test('nom de l\'auteur : « Prénom N. »', () => {
   assert.equal(nomAuteurAvis('aïcha MOUSSAVOU'), 'Aïcha M.');
-  assert.equal(nomAuteurAvis('Jean-Pierre Ndong Obame'), 'Jean-pierre O.');
+  assert.equal(nomAuteurAvis('Jean-Pierre Ndong Obame'), 'Jean-Pierre O.');
+  assert.equal(nomAuteurAvis('MARIE-CLAIRE nze'), 'Marie-Claire N.');
   assert.equal(nomAuteurAvis('Paul'), 'Paul');
   assert.equal(nomAuteurAvis('  '), 'Client');
   assert.equal(nomAuteurAvis(null), 'Client');
