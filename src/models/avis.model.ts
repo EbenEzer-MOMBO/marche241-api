@@ -298,16 +298,18 @@ export class AvisInvitationModel {
   /**
    * Résultat d'une tentative d'envoi de l'invitation. `envoyee_le` n'est renseigné qu'en cas de succès :
    * une invitation jamais remise reste éligible aux renvois (`renvoisDus`).
+   * Le même canal est lié en $2 et $3 : Postgres refuse un placeholder réutilisé
+   * (« inconsistent types deduced for parameter $2 », varchar de la colonne contre text du CASE).
    */
   static async marquerTentative(invitationId: number, canal: 'meta' | 'green_api' | 'echec'): Promise<void> {
     await query(
       `UPDATE avis_invitations SET
          canal = $2::varchar,
-         envoyee_le = CASE WHEN $2::varchar = 'echec' THEN envoyee_le ELSE NOW() END,
+         envoyee_le = CASE WHEN $3::varchar = 'echec' THEN envoyee_le ELSE NOW() END,
          tentatives = tentatives + 1,
          derniere_tentative_le = NOW()
        WHERE id = $1`,
-      [invitationId, canal]
+      [invitationId, canal, canal]
     );
   }
 
