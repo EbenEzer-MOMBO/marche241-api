@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { CronService } from '../services/cron.service';
 import { VueModel } from '../models/vue.model';
+import { AvisService } from '../services/avis.service';
 
 /**
  * Contrôleur pour gérer les tâches cron
@@ -229,6 +230,16 @@ export class CronController {
           error: error.message,
           duration: Date.now() - taskAggStart
         });
+      }
+
+      // Invitations à laisser un avis (commandes livrées) — sans effet si le module est désactivé
+      const taskAvisStart = Date.now();
+      try {
+        const result = await AvisService.envoyerInvitations();
+        results.push({ task: 'invitations_avis', success: true, result, duration: Date.now() - taskAvisStart });
+      } catch (error: any) {
+        console.error('[CronController] Erreur invitations avis:', error.message);
+        results.push({ task: 'invitations_avis', success: false, error: error.message, duration: Date.now() - taskAvisStart });
       }
 
       // Tâche 2: Nettoyer les anciennes vues (> 90 jours)

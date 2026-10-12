@@ -298,23 +298,142 @@ export interface Transaction {
   commande?: Commande;
 }
 
-// Table avis_produits
+// Table avis_produits (complétée par la migration 038 : avis vérifiés par achat)
 export interface AvisProduit {
   id: number;
   produit_id: number;
-  commande_id?: number;
+  commande_id?: number | null;
+  invitation_id?: number | null;
+  commande_article_id?: number | null;
   nom_client: string;
-  email_client?: string;
-  telephone_client?: string;
+  email_client?: string | null;
+  telephone_client?: string | null;
   note: number; // 1-5
-  commentaire?: string;
+  commentaire?: string | null;
   statut: StatutAvis;
+  reponse_vendeur?: string | null;
+  date_reponse_vendeur?: Date | null;
+  signale_auto: boolean; // filtre automatique (lien, téléphone, e-mail, mot interdit)
+  motifs_auto: string[];
+  signale_par_vendeur: boolean;
+  motif_signalement?: string | null;
+  date_signalement?: Date | null;
+  motif_rejet?: string | null;
+  modere_par?: string | null;
+  ip_hash?: string | null;
+  user_agent?: string | null;
   date_creation: Date;
-  date_moderation?: Date;
-  
+  date_moderation?: Date | null;
+  date_modification: Date;
+
   // Relations
   produit?: Produit;
   commande?: Commande;
+}
+
+// Table avis_invitations (migration 038) : lien WhatsApp à jeton, une par commande livrée
+export type CanalInvitationAvis = 'meta' | 'green_api' | 'echec';
+
+export interface AvisInvitation {
+  id: number;
+  commande_id: number;
+  jeton_hash: string; // SHA-256 du jeton (jamais le jeton en clair)
+  expire_le: Date;
+  envoyee_le?: Date | null;
+  relancee_le?: Date | null;
+  canal?: CanalInvitationAvis | null;
+  ouverte_le?: Date | null;
+  utilisee_le?: Date | null;
+  date_creation: Date;
+}
+
+/** Avis tel qu'exposé publiquement (aucune donnée personnelle). */
+export interface AvisPublic {
+  id: number;
+  note: number;
+  commentaire: string | null;
+  auteur: string; // « Prénom N. »
+  achat_verifie: boolean;
+  date_creation: string;
+  reponse_vendeur: string | null;
+  date_reponse_vendeur: string | null;
+}
+
+/** Résumé des avis d'un produit. */
+export interface ResumeAvisProduit {
+  note_moyenne: number;
+  nombre_avis: number;
+  afficher_note: boolean; // nombre_avis >= seuil_affichage_note
+  repartition: Record<1 | 2 | 3 | 4 | 5, number>;
+}
+
+/** Produit à noter dans le formulaire d'invitation. */
+export interface ProduitANoter {
+  produit_id: number;
+  nom_produit: string;
+  image: string | null;
+  deja_note: boolean;
+}
+
+/** Invitation telle que présentée sur la page /avis/[jeton]. */
+export interface InvitationAvisPublique {
+  numero_commande: string;
+  prenom_client: string;
+  boutique: { nom: string; slug: string; logo: string | null };
+  produits: ProduitANoter[];
+  expire_le: string;
+  terminee: boolean; // tous les produits ont été notés
+}
+
+/** Avis vu par le vendeur (dashboard) ou l'équipe (back-office). */
+export interface AvisDetaille {
+  id: number;
+  produit_id: number;
+  produit_nom: string;
+  produit_image: string | null;
+  boutique_id: number;
+  boutique_nom: string;
+  commande_id: number | null;
+  numero_commande: string | null;
+  auteur: string;
+  note: number;
+  commentaire: string | null;
+  statut: StatutAvis;
+  reponse_vendeur: string | null;
+  date_reponse_vendeur: string | null;
+  signale_auto: boolean;
+  motifs_auto: string[];
+  signale_par_vendeur: boolean;
+  motif_signalement: string | null;
+  motif_rejet: string | null;
+  modere_par: string | null;
+  date_creation: string;
+  date_moderation: string | null;
+  // Réservé au back-office
+  nom_client?: string;
+  telephone_client?: string | null;
+}
+
+export type AutoApprobationAvis = 'aucune' | 'positifs_sans_texte_suspect';
+
+export interface AvisParametres {
+  actif: boolean; // kill switch : invitations + soumissions
+  delai_invitation_jours: number; // délai après la livraison
+  relance_jours: number; // 0 = pas de relance
+  validite_jeton_jours: number;
+  auto_approbation: AutoApprobationAvis;
+  seuil_affichage_note: number;
+  mots_interdits: string[];
+  longueur_max_commentaire: number;
+}
+
+export interface StatsAvis {
+  en_attente: number;
+  signales: number;
+  approuves: number;
+  rejetes: number;
+  invitations_envoyees_30j: number;
+  avis_recus_30j: number;
 }
 
 // Table paniers

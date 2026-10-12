@@ -3,6 +3,7 @@ import { query, withTransaction } from '../config/database';
 import { Commande, CommandeArticle, StatutCommande, StatutPaiement } from '../lib/database-types';
 import { ProduitModel } from './produit.model';
 import { logger } from '../utils/logger';
+import { AvisModel } from './avis.model';
 import { construireInsertionCommande } from '../lib/marge/insertion-commande';
 
 /**
@@ -340,6 +341,16 @@ export class CommandeModel {
         [statut, id]
       );
       const commande = misesAJour[0];
+
+      // Commande annulée / remboursée après livraison : ses avis ne sont plus « vérifiés »
+      if ((statut === 'annulee' || statut === 'remboursee') && statutActuel === 'livree') {
+        try {
+          const invalides = await AvisModel.invaliderCommande(id);
+          if (invalides > 0) logger.info(`[CommandeModel] ${invalides} avis rejeté(s) suite à l'annulation de la commande ${id}`);
+        } catch (err) {
+          logger.error(`[CommandeModel] Invalidation des avis de la commande ${id} impossible:`, err);
+        }
+      }
 
       // Recharger avec la boutique associée, comme le faisait la jointure d'origine
       const { rows } = await query<Commande>(

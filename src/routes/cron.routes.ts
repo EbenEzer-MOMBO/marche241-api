@@ -4,6 +4,7 @@ import { auth, isAdmin } from '../middlewares/auth.middleware';
 import { requireCronSecret } from '../middlewares/cron-auth.middleware';
 import { BoostController } from '../controllers/boost.controller';
 import { PubliciteController } from '../controllers/publicite.controller';
+import { AvisController } from '../controllers/avis.controller';
 
 const router = Router();
 
@@ -26,5 +27,6 @@ router.get('/agreger-statistiques', requireCronSecret, CronController.executeAgr
 router.get('/annuler-commandes-orphelines', requireCronSecret, CronController.executeAnnulerCommandesOrphelines);
 router.get('/boosts/sync', requireCronSecret, BoostController.synchroniser);
 router.get('/publicites/statuts', requireCronSecret, PubliciteController.rafraichirStatuts);
+router.get('/avis/invitations', requireCronSecret, AvisController.cronInvitations);
 
 export default router;

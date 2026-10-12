@@ -19,6 +19,7 @@ import boostRoutes from './boost.routes';
 import publiciteRoutes from './publicite.routes';
 import notificationRoutes from './notification.routes';
 import vueRoutes from './vue.routes';
+import avisRoutes from './avis.routes';
 import { CronController } from '../controllers/cron.controller';
 import { requireCronSecret } from '../middlewares/cron-auth.middleware';
 
@@ -86,6 +87,9 @@ router.use(`${apiPrefix}/publicites`, publiciteRoutes);
 router.use(`${apiPrefix}/notifications`, notificationRoutes);
 
 router.use(`${apiPrefix}/vues`, vueRoutes);
+
+// Routes pour les avis produits vérifiés
+router.use(`${apiPrefix}/avis`, avisRoutes);
 
 // Routes pour les tâches cron
 router.use(`${apiPrefix}/cron`, cronRoutes);
