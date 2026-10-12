@@ -3,6 +3,7 @@ import { TransactionModel } from '../models/transaction.model';
 import { CommandeModel } from '../models/commande.model';
 import { BoutiqueModel } from '../models/boutique.model';
 import { StatutPaiement } from '../lib/database-types';
+import { avecMarge, normaliserTauxMarge } from '../lib/marge/marge';
 
 export class TransactionController {
   /**
@@ -299,34 +300,32 @@ export class TransactionController {
         const commande = await CommandeModel.getCommandeById(body.commande_id);
 
         if (commande) {
-          // IMPORTANT: Le total de la commande (commande.total) inclut DÉJÀ la majoration de 10%
-          // appliquée sur les prix des articles dans le panier. 
+          // IMPORTANT: Le total de la commande (commande.total) inclut DÉJÀ la majoration
+          // appliquée sur les prix des articles dans le panier.
           // Nous devons donc seulement appliquer la majoration sur les frais de livraison s'ils existent.
-          const FRAIS_SERVICE_POURCENTAGE = 0.10; // 10%
-
-          // Fonction pour calculer le montant avec frais de service
-          const avecFraisService = (montant: number) => Math.round(montant * (1 + FRAIS_SERVICE_POURCENTAGE));
+          // Le taux est celui figé sur la commande (marge personnalisée du vendeur).
+          const tauxMarge = normaliserTauxMarge(commande.taux_marge);
 
           // Déterminer le type de paiement en fonction du montant
           const fraisLivraison = commande.frais_livraison || 0;
-          const totalCommande = commande.total; // Déjà avec majoration 4.5%
+          const totalCommande = commande.total; // Déjà avec majoration
           const montantTransaction = body.montant;
 
           // Calculer les montants attendus
           // Note: commande.total inclut déjà la majoration, donc pas besoin de la réappliquer
-          const fraisLivraisonAvecFrais = fraisLivraison > 0 ? avecFraisService(fraisLivraison) : 0;
+          const fraisLivraisonAvecFrais = fraisLivraison > 0 ? avecMarge(fraisLivraison, tauxMarge) : 0;
           const totalCommandeAvecFrais = totalCommande; // Déjà avec majoration
           const soldeApresLivraisonAvecFrais = totalCommande - fraisLivraisonAvecFrais;
 
           // Si le montant correspond aux frais de livraison + frais de service (avec tolérance de 2)
           if (Math.abs(montantTransaction - fraisLivraisonAvecFrais) <= 2 && fraisLivraison > 0) {
             body.type_paiement = 'frais_livraison';
-            body.description = body.description || `Paiement des frais de livraison (${fraisLivraison} FCFA + majoration 10%)`;
+            body.description = body.description || `Paiement des frais de livraison (${fraisLivraison} FCFA + frais de service)`;
           }
           // Si le montant correspond au total de la commande (déjà avec majoration)
           else if (Math.abs(montantTransaction - totalCommandeAvecFrais) <= 2) {
             body.type_paiement = 'paiement_complet';
-            body.description = body.description || `Paiement complet de la commande (${totalCommande} FCFA déjà avec majoration 10%)`;
+            body.description = body.description || `Paiement complet de la commande (${totalCommande} FCFA, frais de service inclus)`;
           }
           // Si le montant correspond au solde après paiement des frais de livraison
           else if (Math.abs(montantTransaction - soldeApresLivraisonAvecFrais) <= 2 && fraisLivraison > 0) {

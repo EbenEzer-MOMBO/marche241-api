@@ -3,6 +3,7 @@ import { query, withTransaction } from '../config/database';
 import { Commande, CommandeArticle, StatutCommande, StatutPaiement } from '../lib/database-types';
 import { ProduitModel } from './produit.model';
 import { logger } from '../utils/logger';
+import { construireInsertionCommande } from '../lib/marge/insertion-commande';
 
 /**
  * Exécute une requête sur la transaction en cours si un client est fourni,
@@ -151,13 +152,13 @@ export class CommandeModel {
       const colonnes = champs.map(([colonne]) => colonne);
       const placeholders = champs.map(([colonne], i) => placeholder(colonne, i + 1));
 
-      const { rows } = await executer<Commande>(
-        client,
-        `INSERT INTO commandes (${colonnes.join(', ')}, date_commande, date_modification)
-         VALUES (${placeholders.join(', ')}, NOW(), NOW())
-         RETURNING *`,
-        champs.map(([, valeur]) => valeur)
+      const requete = construireInsertionCommande(
+        colonnes,
+        placeholders,
+        champs.map(([, valeur]) => valeur),
+        commande.boutique_id
       );
+      const { rows } = await executer<Commande>(client, requete.text, requete.params);
 
       logger.debug('[CommandeModel] Commande créée avec succès, ID:', rows[0].id);
 

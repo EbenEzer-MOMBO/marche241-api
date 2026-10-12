@@ -28,6 +28,10 @@
  *         vendeur_id:
  *           type: integer
  *           description: ID du vendeur propriétaire
+ *         taux_marge:
+ *           type: integer
+ *           readOnly: true
+ *           description: Marge plateforme du vendeur en % (renvoyée par GET /boutiques/{id|slug}, sert au calcul des frais de service au checkout)
  *         logo:
  *           type: string
  *           description: URL du logo de la boutique
@@ -125,6 +129,13 @@
  *         numero_paiement:
  *           type: string
  *           description: Numéro ou identifiant pour recevoir les paiements
+ *         taux_marge:
+ *           type: integer
+ *           minimum: 10
+ *           maximum: 50
+ *           default: 10
+ *           readOnly: true
+ *           description: Marge plateforme (frais de service payés par l'acheteur) en %, modifiable uniquement par l'admin
  *         verification_telephone:
  *           type: boolean
  *           description: Indique si le téléphone a été vérifié
