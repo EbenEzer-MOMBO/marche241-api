@@ -7,7 +7,7 @@ Relance WhatsApp (template Meta) et e-mail pour les boosts Meta restés en `brou
 - Un vendeur désinscrit (`vendeurs.relances_boost_desinscrit_le`) n'est plus relancé.
 - Seuls les boosts créés depuis moins de `relance_age_max_jours` sont éligibles.
 - Le compteur repart de `boosts.date_modification` : la relance n°(n+1) part quand `n < relance_max` et que `relance_delai_initial_heures + n × relance_intervalle_heures` se sont écoulées.
-- Un seul message par boutique, qui résume tous les boosts encore ouverts. L'événement `relance` n'est écrit que sur les boosts dus.
+- Un seul message par boutique, qui résume tous les boosts encore ouverts. L'événement `relance` n'est écrit que sur les boosts dus, et seulement si au moins un canal a réellement envoyé (`ok`). Un échec ou une simulation (`simule`, Meta/Resend absents) ne consomme pas `relance_max`. En manuel, l'API répond alors `502 RELANCE_NON_ENVOYEE`.
 - Pas plus d'un message automatique par boutique par `relance_intervalle_heures`.
 - Le cron `40 * * * *` n'envoie qu'à l'heure `relance_heure_envoi` (fuseau `Africa/Libreville`).
 - Le bouton admin envoie tout de suite, sans délai, heure ni maximum. Il refuse si le vendeur est désinscrit (`409 VENDEUR_DESINSCRIT`) ou si les deux canaux sont coupés (`409 CANAUX_COUPES`).
@@ -38,7 +38,7 @@ Résumé construit dans le code : `2 boost(s) en brouillon et 1 boost(s) en atte
 - `GET` / `PUT /api/v1/boosts/relances/preferences` — vendeur. `{ success, preferences: { relances_boost } }`.
 - `GET /api/v1/cron/boosts/relances?key=` — secret cron.
 
-Le jeton est `base64url(vendeurId).hmac-sha256`, secret `RELANCE_DESINSCRIPTION_SECRET` ou `JWT_SECRET`, sans expiration.
+Le jeton est `base64url(vendeurId).hmac-sha256`, secret `RELANCE_DESINSCRIPTION_SECRET` ou à défaut `JWT_SECRET` (erreur `500 SECRET_RELANCE_ABSENT` si les deux manquent), sans expiration. `APP_URL` doit être l'URL publique de l'API en production (liens `List-Unsubscribe`). Un `POST` de désinscription sur un vendeur inexistant répond `404 VENDEUR_INTROUVABLE`.
 
 ## Template WhatsApp à soumettre
 

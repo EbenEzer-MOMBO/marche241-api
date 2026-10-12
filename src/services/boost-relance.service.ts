@@ -41,7 +41,15 @@ const bilanVide = (): BilanRelances => ({
 });
 
 function secretDesinscription(): string {
-  return process.env.RELANCE_DESINSCRIPTION_SECRET || process.env.JWT_SECRET || 'relance-boosts';
+  const secret = process.env.RELANCE_DESINSCRIPTION_SECRET || process.env.JWT_SECRET;
+  if (!secret) {
+    throw new BoostErreur(
+      'Secret de désinscription manquant (RELANCE_DESINSCRIPTION_SECRET ou JWT_SECRET)',
+      500,
+      'SECRET_RELANCE_ABSENT'
+    );
+  }
+  return secret;
 }
 
 export function jetonDesinscription(vendeurId: number): string {
@@ -118,14 +126,21 @@ function remplacer(modele: string, variables: Record<string, string>): string {
   return modele.replace(/\{(vendeur|boutique|resume)\}/g, (_tout, cle: string) => variables[cle] ?? '');
 }
 
-function canalReussi(canal: CanalRelance): boolean {
-  return canal === 'ok' || canal === 'simule';
+/** Un canal `simule` n'est pas un envoi réel : il ne doit ni journaliser ni consommer le quota. */
+export function relanceDelivree(whatsapp: CanalRelance, email: CanalRelance): boolean {
+  return whatsapp === 'ok' || email === 'ok';
 }
 
 function urlApi(): string {
-  const base = (process.env.APP_URL || 'http://localhost:3001').replace(/\/$/, '');
+  const brute = process.env.APP_URL || '';
+  const base = brute.replace(/\/$/, '');
+  if (!base) {
+    logger.error('[BoostRelance] APP_URL manquant — les liens List-Unsubscribe seront incorrects');
+  } else if (process.env.NODE_ENV === 'production' && /^https?:\/\/(localhost|127\.0\.0\.1)/i.test(base)) {
+    logger.error('[BoostRelance] APP_URL pointe vers localhost en production');
+  }
   const prefixe = process.env.API_PREFIX || '/api/v1';
-  return `${base}${prefixe}`;
+  return `${base || 'http://localhost:3001'}${prefixe}`;
 }
 
 function urlFront(): string {
@@ -167,13 +182,13 @@ export class BoostRelanceService {
           continue;
         }
         const resultat = await BoostRelanceService.envoyer(boosts, dus, 'auto', 'systeme', parametres);
-        if (canalReussi(resultat.canal_whatsapp) || canalReussi(resultat.canal_email)) {
+        if (relanceDelivree(resultat.canal_whatsapp, resultat.canal_email)) {
           bilan.relancees += 1;
         } else {
           bilan.erreurs += 1;
         }
-        if (canalReussi(resultat.canal_whatsapp)) bilan.whatsapp_ok += 1;
-        if (canalReussi(resultat.canal_email)) bilan.email_ok += 1;
+        if (resultat.canal_whatsapp === 'ok') bilan.whatsapp_ok += 1;
+        if (resultat.canal_email === 'ok') bilan.email_ok += 1;
       } catch (err) {
         bilan.erreurs += 1;
         logger.error(`[BoostRelance] boutique ${boutiqueId}:`, (err as Error)?.message ?? err);
@@ -205,8 +220,7 @@ export class BoostRelanceService {
     if (!parametres.relance_whatsapp_active && !parametres.relance_email_active) {
       throw new BoostErreur('Les relances WhatsApp et e-mail sont désactivées', 409, 'CANAUX_COUPES');
     }
-    const dus = mode === 'manuel' ? ouverts : ouverts;
-    return BoostRelanceService.envoyer(ouverts, dus, mode, acteur, parametres);
+    return BoostRelanceService.envoyer(ouverts, ouverts, mode, acteur, parametres);
   }
 
   private static async envoyer(
@@ -238,6 +252,26 @@ export class BoostRelanceService {
       lienPage,
       lienOneClick
     );
+
+    if (!relanceDelivree(canalWhatsapp, canalEmail)) {
+      logger.warn(
+        `[BoostRelance] aucun canal livré pour ${reference.boutique_slug} (whatsapp=${canalWhatsapp}, email=${canalEmail})`
+      );
+      if (mode === 'manuel') {
+        throw new BoostErreur(
+          'La relance n’a pas pu être envoyée (WhatsApp et e-mail indisponibles ou en échec)',
+          502,
+          'RELANCE_NON_ENVOYEE'
+        );
+      }
+      return {
+        boutique_id: reference.boutique_id,
+        boost_ids: [],
+        mode,
+        canal_whatsapp: canalWhatsapp,
+        canal_email: canalEmail
+      };
+    }
 
     const colonneActeur = mode === 'manuel' ? 'admin' : 'systeme';
     for (const boost of dus) {

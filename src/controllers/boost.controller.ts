@@ -520,6 +520,10 @@ export class BoostController {
       }
       const desinscrit = brut.desinscrit === undefined ? true : brut.desinscrit;
       const etat = await BoostRelanceModel.definirDesinscription(vendeurId, desinscrit);
+      if (etat === null) {
+        res.status(404).json({ success: false, message: 'Vendeur introuvable', code: 'VENDEUR_INTROUVABLE' });
+        return;
+      }
       res.json({ success: true, desinscrit: etat });
     } catch (err) {
       repondreErreur(res, err, 'la mise à jour de la désinscription');

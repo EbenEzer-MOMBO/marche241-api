@@ -634,7 +634,7 @@ export class BoostRelanceModel {
     return rows[0]?.desinscrit === true;
   }
 
-  static async definirDesinscription(vendeurId: number, desinscrit: boolean): Promise<boolean> {
+  static async definirDesinscription(vendeurId: number, desinscrit: boolean): Promise<boolean | null> {
     const { rows } = await query<{ desinscrit: boolean }>(
       `UPDATE vendeurs
        SET relances_boost_desinscrit_le = CASE WHEN $2::boolean THEN NOW() ELSE NULL END,
@@ -643,7 +643,10 @@ export class BoostRelanceModel {
        RETURNING (relances_boost_desinscrit_le IS NOT NULL) AS desinscrit`,
       [vendeurId, desinscrit]
     );
-    return rows[0]?.desinscrit === true;
+    if (rows.length === 0) {
+      return null;
+    }
+    return rows[0].desinscrit === true;
   }
 
   static async premiereBoutique(vendeurId: number): Promise<string | null> {

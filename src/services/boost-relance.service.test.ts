@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   heureLibreville,
   jetonDesinscription,
+  relanceDelivree,
   relanceDue,
   resumeBoosts,
   verifierJeton
@@ -45,6 +46,24 @@ test('jeton HMAC : valide, altéré, autre secret', () => {
   process.env.RELANCE_DESINSCRIPTION_SECRET = 'autre-secret';
   assert.equal(verifierJeton(jeton), null);
   delete process.env.RELANCE_DESINSCRIPTION_SECRET;
+});
+
+test('secret HMAC : refuse de signer sans RELANCE_DESINSCRIPTION_SECRET ni JWT_SECRET', () => {
+  const relance = process.env.RELANCE_DESINSCRIPTION_SECRET;
+  const jwt = process.env.JWT_SECRET;
+  delete process.env.RELANCE_DESINSCRIPTION_SECRET;
+  delete process.env.JWT_SECRET;
+  assert.throws(() => jetonDesinscription(1), /Secret de désinscription manquant/);
+  if (relance !== undefined) process.env.RELANCE_DESINSCRIPTION_SECRET = relance;
+  if (jwt !== undefined) process.env.JWT_SECRET = jwt;
+});
+
+test('relance livrée seulement si un canal a réellement envoyé', () => {
+  assert.equal(relanceDelivree('ok', 'echec'), true);
+  assert.equal(relanceDelivree('simule', 'simule'), false);
+  assert.equal(relanceDelivree('echec', 'echec'), false);
+  assert.equal(relanceDelivree('inactif', 'sans_destinataire'), false);
+  assert.equal(relanceDelivree('simule', 'ok'), true);
 });
 
 test('filtre d’heure de Libreville (UTC+1)', () => {
