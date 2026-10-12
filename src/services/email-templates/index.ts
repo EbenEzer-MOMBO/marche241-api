@@ -27,3 +27,6 @@ export type { VendeurEvenementPublieData, VendeurEvenementRefuseData } from './v
 
 export { vendeurAvisVersementTemplate } from './vendeurAvisVersement';
 export type { VendeurAvisVersementData } from './vendeurAvisVersement';
+
+export { vendeurRelanceBoostsTemplate } from './vendeurRelanceBoosts';
+export type { VendeurRelanceBoostsData } from './vendeurRelanceBoosts';

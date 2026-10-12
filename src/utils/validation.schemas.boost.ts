@@ -254,7 +254,32 @@ export const parametresBoostSchema = fr(
     cpm_min_fcfa: Joi.number().positive().label('Le CPM minimum'),
     cpm_max_fcfa: Joi.number().positive().label('Le CPM maximum'),
     budget_jour_min_fcfa: Joi.number().integer().min(0).label('Le budget minimum par jour'),
-    kill_switch: Joi.boolean().label('Le kill switch')
+    kill_switch: Joi.boolean().label('Le kill switch'),
+    relance_active: Joi.boolean().label('Les relances'),
+    relance_whatsapp_active: Joi.boolean().label('Les relances WhatsApp'),
+    relance_email_active: Joi.boolean().label('Les relances par e-mail'),
+    relance_delai_initial_heures: Joi.number().integer().min(1).max(720).label('Le délai initial').messages({
+      'number.min': 'Le délai initial doit être d’au moins 1 heure',
+      'number.max': 'Le délai initial ne doit pas dépasser 720 heures'
+    }),
+    relance_intervalle_heures: Joi.number().integer().min(1).max(720).label('L’intervalle entre relances').messages({
+      'number.min': 'L’intervalle doit être d’au moins 1 heure',
+      'number.max': 'L’intervalle ne doit pas dépasser 720 heures'
+    }),
+    relance_max: Joi.number().integer().min(0).max(5).label('Le nombre maximum de relances').messages({
+      'number.min': 'Le nombre maximum de relances doit être au moins 0',
+      'number.max': 'Le nombre maximum de relances ne doit pas dépasser 5'
+    }),
+    relance_heure_envoi: Joi.number().integer().min(0).max(23).label('L’heure d’envoi').messages({
+      'number.min': 'L’heure d’envoi doit être entre 0 et 23',
+      'number.max': 'L’heure d’envoi doit être entre 0 et 23'
+    }),
+    relance_age_max_jours: Joi.number().integer().min(1).max(180).label('L’âge maximum').messages({
+      'number.min': 'L’âge maximum doit être d’au moins 1 jour',
+      'number.max': 'L’âge maximum ne doit pas dépasser 180 jours'
+    }),
+    relance_email_objet: Joi.string().trim().min(1).max(150).label('L’objet de l’e-mail'),
+    relance_email_message: Joi.string().trim().min(1).max(2000).label('Le message de l’e-mail')
   })
     .min(1)
     .messages({ 'object.min': 'Aucun paramètre à modifier' })

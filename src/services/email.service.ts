@@ -39,7 +39,13 @@ export class EmailService {
     logger.debug('✅ Service email Resend configuré');
   }
 
-  private static async send(to: string, subject: string, html: string, text: string): Promise<void> {
+  private static async send(
+    to: string,
+    subject: string,
+    html: string,
+    text: string,
+    headers?: Record<string, string>
+  ): Promise<void> {
     const apiKey = process.env.RESEND_API_KEY;
     const fromEmail = process.env.MAIL_FROM_ADDRESS || 'noreply@marche241.ga';
     const fromName = process.env.MAIL_FROM_NAME || 'Marché241';
@@ -62,6 +68,7 @@ export class EmailService {
           subject,
           html,
           text,
+          ...(headers ? { headers } : {}),
         }),
       });
 
@@ -215,5 +222,15 @@ export class EmailService {
       dashboardUrl: `${frontendUrl}/admin/${data.boutiqueSlug}/evenements/${data.produitId}`,
     });
     await this.send(email, subject, html, text);
+  }
+
+  static async envoyerRelanceBoosts(
+    email: string,
+    objet: string,
+    html: string,
+    text: string,
+    headers: Record<string, string>
+  ): Promise<void> {
+    await this.send(email, objet, html, text, headers);
   }
 }

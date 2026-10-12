@@ -26,6 +26,7 @@ router.get('/nettoyer-vues-mois', requireCronSecret, CronController.executeNetto
 router.get('/agreger-statistiques', requireCronSecret, CronController.executeAgregerStatistiques);
 router.get('/annuler-commandes-orphelines', requireCronSecret, CronController.executeAnnulerCommandesOrphelines);
 router.get('/boosts/sync', requireCronSecret, BoostController.synchroniser);
+router.get('/boosts/relances', requireCronSecret, BoostController.relancesCron);
 router.get('/publicites/statuts', requireCronSecret, PubliciteController.rafraichirStatuts);
 router.get('/avis/invitations', requireCronSecret, AvisController.cronInvitations);
 
