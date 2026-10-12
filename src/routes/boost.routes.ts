@@ -233,6 +233,20 @@ router.post('/admin/:id/reprendre', ...admin, validateParams(boostIdParamSchema)
 router.post('/admin/:id/cloturer', ...admin, validateParams(boostIdParamSchema), BoostController.cloturer);
 router.post('/admin/:id/rembourse', ...admin, validateParams(boostIdParamSchema), validate(remboursementBoostSchema), BoostController.marquerRembourse);
 
+/**
+ * @swagger
+ * /boosts/admin/{id}/relancer:
+ *   post:
+ *     summary: Relance immédiate (WhatsApp + e-mail) du vendeur pour les boosts ouverts de la boutique
+ *     tags: [Boosts]
+ *     security: [{ serviceKey: [] }]
+ *     parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+ *     responses:
+ *       200: { description: "{ success, resultat }" }
+ *       409: { description: Vendeur désinscrit, canaux coupés ou boost déjà payé }
+ */
+router.post('/admin/:id/relancer', ...admin, validateParams(boostIdParamSchema), BoostController.relancer);
+
 // ============================================================================
 // Vendeur (JWT)
 // ============================================================================
@@ -368,6 +382,53 @@ router.post('/', auth, validate(creerBoostSchema), isBoutiqueOwner, BoostControl
  *     responses:
  *       200: { description: Brouillon supprimé }
  */
+/**
+ * @swagger
+ * /boosts/relances/desinscription:
+ *   get:
+ *     summary: État de désinscription des relances de boosts (sans effet de bord)
+ *     tags: [Boosts]
+ *     parameters: [{ in: query, name: jeton, required: true, schema: { type: string } }]
+ *     responses:
+ *       200: { description: "{ success, desinscrit, boutique? }" }
+ *       400: { description: Jeton invalide }
+ *   post:
+ *     summary: Désinscription ou réinscription (one-click e-mail si le corps est vide)
+ *     tags: [Boosts]
+ *     parameters: [{ in: query, name: jeton, schema: { type: string } }]
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               jeton: { type: string }
+ *               desinscrit: { type: boolean }
+ *     responses:
+ *       200: { description: "{ success, desinscrit }" }
+ */
+router.get('/relances/desinscription', BoostController.lireDesinscription);
+router.post('/relances/desinscription', BoostController.majDesinscription);
+
+/**
+ * @swagger
+ * /boosts/relances/preferences:
+ *   get:
+ *     summary: Préférence de relance du vendeur connecté
+ *     tags: [Boosts]
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: "{ success, preferences: { relances_boost } }" }
+ *   put:
+ *     summary: Active ou coupe les relances de boosts du vendeur connecté
+ *     tags: [Boosts]
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: "{ success, preferences: { relances_boost } }" }
+ */
+router.get('/relances/preferences', auth, BoostController.getPreferencesRelances);
+router.put('/relances/preferences', auth, BoostController.majPreferencesRelances);
+
 router.get('/:id', auth, validateParams(boostIdParamSchema), BoostController.detail);
 router.put('/:id', auth, validateParams(boostIdParamSchema), validate(modifierBoostSchema), BoostController.modifier);
 router.delete('/:id', auth, validateParams(boostIdParamSchema), BoostController.supprimer);

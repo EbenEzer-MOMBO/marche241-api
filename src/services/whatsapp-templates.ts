@@ -30,6 +30,7 @@ const META_TEMPLATES = {
   paiementEchoue: { name: 'tentative_de_paiement_echouee', language: 'fr' },
   billets: { name: 'billets_commande', language: 'fr' },
   invitationAvis: { name: 'invitation_avis', language: 'fr' },
+  relanceBoosts: { name: 'relance_boosts_vendeur', language: 'fr' },
 } as const;
 
 export { META_TEMPLATES };
@@ -212,6 +213,38 @@ export function buildInvitationAvisComponents(data: {
       type: 'button',
       sub_type: 'url',
       index: 0,
+      parameters: textParams(data.jeton),
+    },
+  ];
+}
+
+/**
+ * Template `relance_boosts_vendeur` (catégorie Marketing) :
+ * corps {{1}} vendeur, {{2}} boutique, {{3}} résumé ;
+ * bouton 0 = slug boutique, bouton 1 = jeton de désinscription.
+ */
+export function buildRelanceBoostsComponents(data: {
+  vendeur: string;
+  boutique: string;
+  resume: string;
+  slug: string;
+  jeton: string;
+}): TemplateComponent[] {
+  return [
+    {
+      type: 'body',
+      parameters: textParams(data.vendeur, data.boutique, data.resume),
+    },
+    {
+      type: 'button',
+      sub_type: 'url',
+      index: 0,
+      parameters: textParams(data.slug),
+    },
+    {
+      type: 'button',
+      sub_type: 'url',
+      index: 1,
       parameters: textParams(data.jeton),
     },
   ];

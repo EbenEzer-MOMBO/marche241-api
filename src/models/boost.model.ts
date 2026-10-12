@@ -402,15 +402,37 @@ export const PARAMETRES_BOOST_DEFAUT: BoostParametres = {
   cpm_min_fcfa: 46,
   cpm_max_fcfa: 85,
   budget_jour_min_fcfa: 600,
-  kill_switch: false
+  kill_switch: false,
+  relance_active: true,
+  relance_whatsapp_active: true,
+  relance_email_active: true,
+  relance_delai_initial_heures: 24,
+  relance_intervalle_heures: 48,
+  relance_max: 2,
+  relance_heure_envoi: 10,
+  relance_age_max_jours: 30,
+  relance_email_objet: '{boutique} : vos boosts vous attendent 🚀',
+  relance_email_message:
+    'Bonjour {vendeur},\n\nVotre boutique {boutique} a {resume}. Vous y étiez presque !\n\nEn quelques clics, finalisez-les pour placer vos produits devant des milliers d\'acheteurs au Gabon et booster vos ventes.\n\nBesoin d\'un coup de main ? Répondez à cet e-mail ou écrivez-nous sur WhatsApp, on vous accompagne.'
 };
+
+const CLES_BOOLEENNES = new Set<keyof BoostParametres>([
+  'kill_switch',
+  'relance_active',
+  'relance_whatsapp_active',
+  'relance_email_active'
+]);
+
+const CLES_TEXTE = new Set<keyof BoostParametres>(['relance_email_objet', 'relance_email_message']);
 
 /** Convertit les lignes clé/valeur en paramètres typés (valeurs invalides → défaut). */
 export function parserParametres(lignes: Array<{ cle: string; valeur: string }>): BoostParametres {
   const parametres: BoostParametres = { ...PARAMETRES_BOOST_DEFAUT, packs: [...PARAMETRES_BOOST_DEFAUT.packs] };
   for (const { cle, valeur } of lignes) {
-    if (cle === 'kill_switch') {
-      parametres.kill_switch = valeur === 'true';
+    if (CLES_BOOLEENNES.has(cle as keyof BoostParametres)) {
+      (parametres as unknown as Record<string, boolean>)[cle] = valeur === 'true';
+    } else if (CLES_TEXTE.has(cle as keyof BoostParametres)) {
+      (parametres as unknown as Record<string, string>)[cle] = valeur;
     } else if (cle === 'packs') {
       try {
         const packs = JSON.parse(valeur) as PackBoost[];
@@ -494,5 +516,144 @@ export class BoostTransactionModel {
       [boostId]
     );
     return Number(rows[0].count);
+  }
+}
+
+export interface BoostRelanceLigne {
+  id: number;
+  boutique_id: number;
+  nom: string;
+  statut: StatutBoost;
+  total_fcfa: number;
+  date_creation: Date;
+  date_modification: Date;
+  boutique_nom: string;
+  boutique_slug: string;
+  vendeur_id: number;
+  vendeur_nom: string;
+  vendeur_telephone: string;
+  vendeur_email: string | null;
+  relances_boost_desinscrit_le: Date | null;
+  relances_depuis_modification: number;
+}
+
+const SQL_RELANCE = `
+  SELECT b.id, b.boutique_id, b.nom, b.statut::text AS statut, b.total_fcfa,
+         b.date_creation, b.date_modification,
+         bt.nom AS boutique_nom, bt.slug AS boutique_slug,
+         v.id AS vendeur_id, v.nom AS vendeur_nom, v.telephone AS vendeur_telephone,
+         v.email AS vendeur_email, v.relances_boost_desinscrit_le,
+         (
+           SELECT COUNT(*)::int FROM boost_evenements e
+           WHERE e.boost_id = b.id
+             AND e.type_evenement = 'relance'
+             AND e.date_creation > b.date_modification
+         ) AS relances_depuis_modification
+  FROM boosts b
+  JOIN boutiques bt ON bt.id = b.boutique_id
+  JOIN vendeurs v ON v.id = bt.vendeur_id
+`;
+
+function mapperRelance(row: BoostRelanceLigne): BoostRelanceLigne {
+  return {
+    ...row,
+    total_fcfa: Number(row.total_fcfa),
+    relances_depuis_modification: Number(row.relances_depuis_modification),
+    date_creation: new Date(row.date_creation),
+    date_modification: new Date(row.date_modification),
+    relances_boost_desinscrit_le: row.relances_boost_desinscrit_le ? new Date(row.relances_boost_desinscrit_le) : null
+  };
+}
+
+export interface SuiviRelances {
+  desinscrit: boolean;
+  nombre: number;
+  derniere: Date | null;
+}
+
+export class BoostRelanceModel {
+  /** Boosts encore ouverts, vendeur abonné, plus récents que l'âge maximum. */
+  static async listerEligibles(ageMaxJours: number): Promise<BoostRelanceLigne[]> {
+    const { rows } = await query<BoostRelanceLigne>(
+      `${SQL_RELANCE}
+       WHERE b.statut IN ('brouillon'::statut_boost, 'en_attente_paiement'::statut_boost)
+         AND v.relances_boost_desinscrit_le IS NULL
+         AND b.date_creation >= NOW() - make_interval(days => $1::int)`,
+      [ageMaxJours]
+    );
+    return rows.map(mapperRelance);
+  }
+
+  /** Tous les boosts ouverts d'une boutique, y compris si le vendeur est désinscrit. */
+  static async boostsOuvertsBoutique(boutiqueId: number): Promise<BoostRelanceLigne[]> {
+    const { rows } = await query<BoostRelanceLigne>(
+      `${SQL_RELANCE}
+       WHERE b.boutique_id = $1
+         AND b.statut IN ('brouillon'::statut_boost, 'en_attente_paiement'::statut_boost)
+       ORDER BY b.date_creation ASC`,
+      [boutiqueId]
+    );
+    return rows.map(mapperRelance);
+  }
+
+  static async derniereRelanceBoutique(boutiqueId: number): Promise<Date | null> {
+    const { rows } = await query<{ derniere: Date | null }>(
+      `SELECT MAX(e.date_creation) AS derniere
+       FROM boost_evenements e
+       JOIN boosts b ON b.id = e.boost_id
+       WHERE b.boutique_id = $1 AND e.type_evenement = 'relance'`,
+      [boutiqueId]
+    );
+    return rows[0]?.derniere ? new Date(rows[0].derniere) : null;
+  }
+
+  static async suivi(boostId: number): Promise<SuiviRelances> {
+    const { rows } = await query<{ desinscrit: boolean; nombre: string; derniere: Date | null }>(
+      `SELECT (v.relances_boost_desinscrit_le IS NOT NULL) AS desinscrit,
+              (SELECT COUNT(*) FROM boost_evenements e WHERE e.boost_id = b.id AND e.type_evenement = 'relance') AS nombre,
+              (SELECT MAX(e.date_creation) FROM boost_evenements e WHERE e.boost_id = b.id AND e.type_evenement = 'relance') AS derniere
+       FROM boosts b
+       JOIN boutiques bt ON bt.id = b.boutique_id
+       JOIN vendeurs v ON v.id = bt.vendeur_id
+       WHERE b.id = $1`,
+      [boostId]
+    );
+    const ligne = rows[0];
+    return {
+      desinscrit: ligne?.desinscrit === true,
+      nombre: Number(ligne?.nombre ?? 0),
+      derniere: ligne?.derniere ? new Date(ligne.derniere) : null
+    };
+  }
+
+  static async estDesinscrit(vendeurId: number): Promise<boolean> {
+    const { rows } = await query<{ desinscrit: boolean }>(
+      `SELECT (relances_boost_desinscrit_le IS NOT NULL) AS desinscrit FROM vendeurs WHERE id = $1`,
+      [vendeurId]
+    );
+    return rows[0]?.desinscrit === true;
+  }
+
+  static async definirDesinscription(vendeurId: number, desinscrit: boolean): Promise<boolean | null> {
+    const { rows } = await query<{ desinscrit: boolean }>(
+      `UPDATE vendeurs
+       SET relances_boost_desinscrit_le = CASE WHEN $2::boolean THEN NOW() ELSE NULL END,
+           date_modification = NOW()
+       WHERE id = $1
+       RETURNING (relances_boost_desinscrit_le IS NOT NULL) AS desinscrit`,
+      [vendeurId, desinscrit]
+    );
+    if (rows.length === 0) {
+      return null;
+    }
+    return rows[0].desinscrit === true;
+  }
+
+  static async premiereBoutique(vendeurId: number): Promise<string | null> {
+    const { rows } = await query<{ nom: string }>(
+      `SELECT nom FROM boutiques WHERE vendeur_id = $1 ORDER BY id ASC LIMIT 1`,
+      [vendeurId]
+    );
+    return rows[0]?.nom ?? null;
   }
 }

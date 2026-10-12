@@ -73,6 +73,8 @@ export interface EmailLayoutOptions {
   kicker: string;
   contentRows: string;
   unsubscribe?: boolean;
+  /** Lien de désinscription propre au message (remplace les liens génériques du pied). */
+  lienDesinscription?: string;
 }
 
 function mailLogoUrl(): string {
@@ -89,10 +91,18 @@ function mailLogoUrl(): string {
  * "Emails transactionnels Marché241". `contentRows` fournit les <tr> entre le
  * bandeau dégradé du haut et l'espaceur de fermeture de la carte.
  */
-export function renderEmailLayout({ preheader, kicker, contentRows, unsubscribe = false }: EmailLayoutOptions): string {
-  const footerLinks = unsubscribe
-    ? `<a href="https://marche241.ga/preferences" style="color:${BRAND.grayLight};text-decoration:underline;">Gérer mes notifications</a> · <a href="https://marche241.ga/desinscription" style="color:${BRAND.grayLight};text-decoration:underline;">Se désinscrire</a>`
-    : `Message automatique lié à votre compte vendeur. Vous ne pouvez pas vous désinscrire des emails de sécurité.`;
+export function renderEmailLayout({
+  preheader,
+  kicker,
+  contentRows,
+  unsubscribe = false,
+  lienDesinscription
+}: EmailLayoutOptions): string {
+  const footerLinks = lienDesinscription
+    ? `<a href="${lienDesinscription}" style="color:${BRAND.grayLight};text-decoration:underline;">Ne plus recevoir ces rappels</a>`
+    : unsubscribe
+      ? `<a href="https://marche241.ga/preferences" style="color:${BRAND.grayLight};text-decoration:underline;">Gérer mes notifications</a> · <a href="https://marche241.ga/desinscription" style="color:${BRAND.grayLight};text-decoration:underline;">Se désinscrire</a>`
+      : `Message automatique lié à votre compte vendeur. Vous ne pouvez pas vous désinscrire des emails de sécurité.`;
 
   return `<!DOCTYPE html>
 <html lang="fr">

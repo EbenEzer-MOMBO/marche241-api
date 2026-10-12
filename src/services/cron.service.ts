@@ -35,6 +35,7 @@ export class CronService {
 
     // Synchronisation des boosts Meta (insights, revue Meta, clôture)
     this.scheduleSyncBoosts();
+    this.scheduleRelancesBoosts();
 
     // Publicité interne : début/fin de diffusion, libération des semaines non payées
     this.scheduleStatutsPublicites();
@@ -58,6 +59,29 @@ export class CronService {
         );
       } catch (error) {
         console.error('[CronService] Erreur lors de la synchro des boosts:', error);
+      }
+    });
+
+    this.jobs.set(jobName, task);
+    console.log(`[CronService] Tâche planifiée: ${jobName} - Toutes les heures`);
+  }
+
+  /**
+   * Relance les boosts Meta non finalisés, une fois par heure.
+   * L'envoi effectif n'a lieu qu'à l'heure de Libreville configurée.
+   */
+  static scheduleRelancesBoosts(): void {
+    const jobName = 'relances-boosts';
+
+    const task = cron.schedule('40 * * * *', async () => {
+      try {
+        const { BoostRelanceService } = await import('./boost-relance.service');
+        const result = await BoostRelanceService.executerRelancesAuto();
+        console.log(
+          `[CronService] Relances boosts : ${result.boutiques_examinees} boutique(s), ${result.relancees} relancée(s), ${result.whatsapp_ok} WhatsApp, ${result.email_ok} e-mail, ${result.erreurs} erreur(s)`
+        );
+      } catch (error) {
+        console.error('[CronService] Erreur lors des relances de boosts:', error);
       }
     });
 

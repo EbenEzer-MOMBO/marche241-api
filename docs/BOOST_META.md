@@ -69,7 +69,7 @@ Les requêtes de transactions qui joignent `commandes` excluent naturellement le
 | Accès | Routes |
 |---|---|
 | Vendeur (JWT, propriétaire de la boutique) | `GET /boosts/parametres`, `GET /boosts/prefill`, `POST /boosts/devis`, `POST /boosts/estimation/{audience,impressions}`, `GET /boosts/boutique/:boutiqueId`, `POST /boosts`, `GET\|PUT\|DELETE /boosts/:id`, `POST /boosts/:id/{soumettre,annuler-soumission,paiement,pause,reprendre}` |
-| Back-office (`x-service-key` seule, sans JWT) | `GET /boosts/admin`, `GET /boosts/admin/stats`, `GET /boosts/admin/:id`, `POST /boosts/admin/:id/{approuver,refuser,pause,reprendre,cloturer,rembourse}`, `GET\|PUT /boosts/admin/parametres`, `GET /boosts/admin/meta/{sante,decouverte}`, `PUT /boosts/admin/meta/connexion`, `POST /boosts/admin/meta/verifier` |
+| Back-office (`x-service-key` seule, sans JWT) | `GET /boosts/admin`, `GET /boosts/admin/stats`, `GET /boosts/admin/:id`, `POST /boosts/admin/:id/{approuver,refuser,pause,reprendre,cloturer,rembourse,relancer}`, `GET\|PUT /boosts/admin/parametres`, `GET /boosts/admin/meta/{sante,decouverte}`, `PUT /boosts/admin/meta/connexion`, `POST /boosts/admin/meta/verifier` |
 | Cron (`CRON_SECRET_KEY`) | `GET /cron/boosts/sync` |
 
 Le détail des routes est dans Swagger (`/api/docs`, tag `Boosts`).

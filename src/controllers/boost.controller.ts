@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
-import { BoostModel, BoostParametresModel } from '../models/boost.model';
+import { BoostModel, BoostParametresModel, BoostRelanceModel } from '../models/boost.model';
+import { BoostRelanceService, verifierJeton } from '../services/boost-relance.service';
 import { PubliciteParametresModel } from '../models/publicite.model';
 import { BoutiqueModel } from '../models/boutique.model';
 import { BoostErreur, BoostService } from '../services/boost.service';
@@ -326,7 +327,12 @@ export class BoostController {
         res.status(404).json({ success: false, message: 'Boost introuvable', code: 'BOOST_INTROUVABLE' });
         return;
       }
-      res.json({ success: true, ...(await BoostService.detail(await BoostService.rafraichirSiPerime(boost), false)), conformite_items: CONFORMITE_BOOST });
+      res.json({
+        success: true,
+        ...(await BoostService.detail(await BoostService.rafraichirSiPerime(boost), false)),
+        relances: await BoostRelanceModel.suivi(boost.id),
+        conformite_items: CONFORMITE_BOOST
+      });
     } catch (err) {
       repondreErreur(res, err, 'la récupération du boost');
     }
@@ -413,6 +419,9 @@ export class BoostController {
       if (fusion.total_min_fcfa > fusion.total_max_fcfa) erreurs.push({ field: 'total_min_fcfa', message: 'Le minimum doit être inférieur au maximum' });
       if (fusion.duree_min_jours > fusion.duree_max_jours) erreurs.push({ field: 'duree_min_jours', message: 'La durée minimum doit être inférieure à la durée maximum' });
       if (fusion.cpm_min_fcfa > fusion.cpm_max_fcfa) erreurs.push({ field: 'cpm_min_fcfa', message: 'Le CPM minimum doit être inférieur au CPM maximum' });
+      if (fusion.relance_email_active && (!String(fusion.relance_email_objet ?? '').trim() || !String(fusion.relance_email_message ?? '').trim())) {
+        erreurs.push({ field: 'relance_email_message', message: 'L’objet et le message sont obligatoires lorsque l’e-mail de relance est actif' });
+      }
       for (const pack of fusion.packs as Array<{ code: string; total_fcfa: number }>) {
         if (pack.total_fcfa < fusion.total_min_fcfa || pack.total_fcfa > fusion.total_max_fcfa) {
           erreurs.push({ field: 'packs', message: `Le pack ${pack.code} doit respecter les bornes de montant` });
@@ -465,6 +474,98 @@ export class BoostController {
 
   // ---------------------------------------------------------------- cron
 
+  static async relancer(req: Request, res: Response): Promise<void> {
+    try {
+      const resultat = await BoostRelanceService.relancerDepuisBoost(
+        Number(params(req).id),
+        String(corps(req).valide_par ?? 'admin')
+      );
+      res.json({ success: true, resultat });
+    } catch (err) {
+      repondreErreur(res, err, 'la relance du vendeur');
+    }
+  }
+
+  static async lireDesinscription(req: Request, res: Response): Promise<void> {
+    try {
+      const vendeurId = vendeurDuJeton(String(requete(req).jeton ?? req.query.jeton ?? ''));
+      if (!vendeurId) {
+        res.status(400).json({ success: false, message: 'Lien de désinscription invalide', code: 'JETON_INVALIDE' });
+        return;
+      }
+      const desinscrit = await BoostRelanceModel.estDesinscrit(vendeurId);
+      const boutique = await BoostRelanceModel.premiereBoutique(vendeurId);
+      res.json({ success: true, desinscrit, ...(boutique ? { boutique } : {}) });
+    } catch (err) {
+      repondreErreur(res, err, 'la lecture de la désinscription');
+    }
+  }
+
+  static async majDesinscription(req: Request, res: Response): Promise<void> {
+    try {
+      const brut = corps(req) as { jeton?: unknown; desinscrit?: unknown };
+      const vendeurId = vendeurDuJeton(String(brut.jeton ?? req.query.jeton ?? ''));
+      if (!vendeurId) {
+        res.status(400).json({ success: false, message: 'Lien de désinscription invalide', code: 'JETON_INVALIDE' });
+        return;
+      }
+      if (brut.desinscrit !== undefined && typeof brut.desinscrit !== 'boolean') {
+        res.status(400).json({
+          success: false,
+          message: 'La désinscription doit être oui ou non',
+          code: 'VALIDATION_ERROR',
+          errors: [{ field: 'desinscrit', message: 'La désinscription doit être oui ou non' }]
+        });
+        return;
+      }
+      const desinscrit = brut.desinscrit === undefined ? true : brut.desinscrit;
+      const etat = await BoostRelanceModel.definirDesinscription(vendeurId, desinscrit);
+      if (etat === null) {
+        res.status(404).json({ success: false, message: 'Vendeur introuvable', code: 'VENDEUR_INTROUVABLE' });
+        return;
+      }
+      res.json({ success: true, desinscrit: etat });
+    } catch (err) {
+      repondreErreur(res, err, 'la mise à jour de la désinscription');
+    }
+  }
+
+  static async getPreferencesRelances(req: Request, res: Response): Promise<void> {
+    try {
+      if (!req.vendeur) {
+        res.status(401).json({ success: false, message: 'Authentification requise' });
+        return;
+      }
+      const desinscrit = await BoostRelanceModel.estDesinscrit(req.vendeur.id);
+      res.json({ success: true, preferences: { relances_boost: !desinscrit } });
+    } catch (err) {
+      repondreErreur(res, err, 'la lecture des préférences de relance');
+    }
+  }
+
+  static async majPreferencesRelances(req: Request, res: Response): Promise<void> {
+    try {
+      if (!req.vendeur) {
+        res.status(401).json({ success: false, message: 'Authentification requise' });
+        return;
+      }
+      const valeur = (corps(req) as { relances_boost?: unknown }).relances_boost;
+      if (typeof valeur !== 'boolean') {
+        res.status(400).json({
+          success: false,
+          message: 'Les rappels de boosts doivent être activés ou désactivés',
+          code: 'VALIDATION_ERROR',
+          errors: [{ field: 'relances_boost', message: 'Les rappels de boosts doivent être activés ou désactivés' }]
+        });
+        return;
+      }
+      await BoostRelanceModel.definirDesinscription(req.vendeur.id, !valeur);
+      res.json({ success: true, preferences: { relances_boost: valeur } });
+    } catch (err) {
+      repondreErreur(res, err, 'la mise à jour des préférences de relance');
+    }
+  }
+
   static async synchroniser(_req: Request, res: Response): Promise<void> {
     try {
       res.json({ success: true, resultat: await BoostService.synchroniserTous() });
@@ -472,4 +573,17 @@ export class BoostController {
       repondreErreur(res, err, 'la synchronisation des boosts');
     }
   }
+
+  static async relancesCron(_req: Request, res: Response): Promise<void> {
+    try {
+      res.json({ success: true, resultat: await BoostRelanceService.executerRelancesAuto() });
+    } catch (err) {
+      repondreErreur(res, err, "l'envoi des relances");
+    }
+  }
+}
+
+function vendeurDuJeton(jeton: string): number | null {
+  if (!jeton || jeton === 'undefined') return null;
+  return verifierJeton(jeton);
 }
