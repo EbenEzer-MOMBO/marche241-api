@@ -28,6 +28,10 @@ const CONDITION_EVENEMENT = `(COALESCE(p.variants->>'type', '') = 'evenement'
 const IMAGE_PRODUIT = `COALESCE(NULLIF(p.image_principale, ''),
   CASE WHEN json_typeof(p.images) = 'array' THEN p.images->>0 END)`;
 
+/** Avis signalés restant à trancher (même définition pour le filtre et le compteur). */
+const CONDITION_SIGNALE = `((a.statut = 'en_attente' AND (a.signale_auto OR a.signale_par_vendeur))
+  OR (a.statut = 'approuve' AND a.signale_par_vendeur))`;
+
 /** Fenêtre de rattrapage : on n'invite pas les commandes livrées depuis plus longtemps (activation tardive). */
 const RATTRAPAGE_MAX_JOURS = 21;
 
@@ -148,7 +152,8 @@ function construireFiltres(filtres: FiltresAvis, params: unknown[], conditions: 
     params.push(filtres.statut);
     conditions.push(`a.statut = $${params.length}::statut_avis`);
   }
-  if (filtres.signales) conditions.push('(a.signale_auto OR a.signale_par_vendeur)');
+  // Signalés = à trancher : en attente et marqués (filtre auto ou vendeur), ou publiés puis signalés par le vendeur
+  if (filtres.signales) conditions.push(CONDITION_SIGNALE);
   if (filtres.boutique_id) {
     params.push(filtres.boutique_id);
     conditions.push(`b.id = $${params.length}`);
@@ -533,8 +538,7 @@ export class AvisModel {
     const { rows } = await query<StatsAvis>(
       `SELECT
          (SELECT COUNT(*)::int FROM avis_produits WHERE statut = 'en_attente') AS en_attente,
-         (SELECT COUNT(*)::int FROM avis_produits WHERE statut = 'en_attente' AND (signale_auto OR signale_par_vendeur)
-            OR statut = 'approuve' AND signale_par_vendeur) AS signales,
+         (SELECT COUNT(*)::int FROM avis_produits a WHERE ${CONDITION_SIGNALE}) AS signales,
          (SELECT COUNT(*)::int FROM avis_produits WHERE statut = 'approuve') AS approuves,
          (SELECT COUNT(*)::int FROM avis_produits WHERE statut = 'rejete') AS rejetes,
          (SELECT COUNT(*)::int FROM avis_invitations WHERE envoyee_le >= NOW() - INTERVAL '30 days' AND canal <> 'echec') AS invitations_envoyees_30j,
