@@ -178,10 +178,53 @@ async function recalculer(client: PoolClient, produitId: number): Promise<void> 
   await client.query('SELECT recalculer_note_avis($1)', [produitId]);
 }
 
+let cacheSeuil: { valeur: number; expire: number } | null = null;
+
+/**
+ * Seuil d'affichage de la note (avis approuvés), mis en cache 60 s. Ne lève jamais :
+ * en cas d'erreur (table absente avant la migration 038), renvoie la valeur par défaut.
+ */
+export async function seuilAffichageNote(): Promise<number> {
+  if (cacheSeuil && cacheSeuil.expire > Date.now()) return cacheSeuil.valeur;
+  let valeur = 3;
+  try {
+    valeur = (await AvisParametresModel.lire()).seuil_affichage_note;
+  } catch {
+    /* défaut */
+  }
+  cacheSeuil = { valeur, expire: Date.now() + 60_000 };
+  return valeur;
+}
+
+/** Ajoute `afficher_note` (nombre d'avis approuvés ≥ seuil) aux produits renvoyés par l'API. */
+export async function marquerAffichageNote<T extends { nombre_avis?: number | null }>(
+  produits: T[]
+): Promise<Array<T & { afficher_note: boolean }>> {
+  if (produits.length === 0) return produits as Array<T & { afficher_note: boolean }>;
+  const seuil = await seuilAffichageNote();
+  return produits.map((p) => ({ ...p, afficher_note: (p.nombre_avis ?? 0) >= seuil }));
+}
+
 export class AvisParametresModel {
   static async lire(): Promise<AvisParametres> {
     const { rows } = await query<{ cle: string; valeur: string }>('SELECT cle, valeur FROM avis_parametres');
     return parserParametresAvis(rows);
+  }
+
+  /**
+   * Réserve le résumé quotidien : enregistre l'horodatage (clé technique `dernier_resume_le`, hors paramètres
+   * modifiables) seulement si le précédent date de plus de `intervalleHeures`. Renvoie vrai si c'est au tour
+   * de cet appel d'envoyer le résumé (atomique : deux crons simultanés n'envoient pas deux résumés).
+   */
+  static async reserverResumeQuotidien(intervalleHeures: number): Promise<boolean> {
+    const { rows } = await query<{ cle: string }>(
+      `INSERT INTO avis_parametres (cle, valeur, date_modification) VALUES ('dernier_resume_le', NOW()::text, NOW())
+       ON CONFLICT (cle) DO UPDATE SET valeur = EXCLUDED.valeur, date_modification = NOW()
+       WHERE avis_parametres.date_modification <= NOW() - make_interval(hours => $1)
+       RETURNING cle`,
+      [intervalleHeures]
+    );
+    return rows.length > 0;
   }
 
   static async ecrire(parametres: Partial<AvisParametres>): Promise<AvisParametres> {

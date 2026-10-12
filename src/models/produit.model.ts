@@ -2,6 +2,7 @@ import { query } from '../config/database';
 import { Produit } from '../lib/database-types';
 import { logger } from '../utils/logger';
 import { prixOriginalCoherent, prixPourStockage } from '../utils/prix-promo';
+import { marquerAffichageNote } from './avis.model';
 
 /**
  * Jointures de la boutique et de la catégorie, sous forme d'objets JSON.
@@ -683,7 +684,7 @@ export class ProduitModel {
     );
 
     return {
-      produits: rows,
+      produits: await marquerAffichageNote(rows),
       total: Number(total[0].count)
     };
   }
@@ -697,7 +698,7 @@ export class ProduitModel {
       [id]
     );
 
-    return rows[0] ?? null;
+    return (await marquerAffichageNote(rows))[0] ?? null;
   }
 
   /**
@@ -709,7 +710,7 @@ export class ProduitModel {
       [slug]
     );
 
-    return rows[0] ?? null;
+    return (await marquerAffichageNote(rows))[0] ?? null;
   }
 
   /**
@@ -725,7 +726,7 @@ export class ProduitModel {
       [categorieId, limite]
     );
 
-    return rows;
+    return marquerAffichageNote(rows);
   }
 
   /**
@@ -1077,7 +1078,7 @@ export class ProduitModel {
 
     logger.debug(`[ProduitModel] ${rows.length} produits trouvés`);
 
-    return rows;
+    return marquerAffichageNote(rows);
   }
 
   /**
@@ -1117,7 +1118,7 @@ export class ProduitModel {
     const count = Number(total[0].count);
 
     return {
-      produits: data || [],
+      produits: await marquerAffichageNote(data || []),
       total: count || 0
     };
   }

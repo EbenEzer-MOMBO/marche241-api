@@ -183,6 +183,7 @@ export interface Produit {
   tags?: any; // JSON dans la base de données
   note_moyenne: number;
   nombre_avis: number;
+  afficher_note?: boolean; // Calculé par l'API : nombre_avis >= seuil d'affichage (avis_parametres)
   nombre_vues: number;
   nombre_ventes: number;
   est_nouveau: boolean;

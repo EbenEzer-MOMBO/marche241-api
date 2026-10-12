@@ -8,11 +8,15 @@ import { logger } from '../utils/logger';
 /** Taille des lots d'envoi du cron (limite le temps d'exécution et le débit WhatsApp). */
 const TAILLE_LOT = 50;
 
+/** Intervalle minimal entre deux résumés « avis en attente » envoyés à l'équipe. */
+const INTERVALLE_RESUME_HEURES = 20;
+
 export interface BilanInvitationsAvis {
   actif: boolean;
   invitations: number;
   relances: number;
   echecs: number;
+  resume_envoye: boolean;
 }
 
 const frontend = (): string => (process.env.FRONTEND_URL || 'https://marche241.ga').replace(/\/$/, '');
@@ -39,7 +43,9 @@ export class AvisService {
    */
   static async envoyerInvitations(): Promise<BilanInvitationsAvis> {
     const parametres = await AvisParametresModel.lire();
-    const bilan: BilanInvitationsAvis = { actif: parametres.actif, invitations: 0, relances: 0, echecs: 0 };
+    const bilan: BilanInvitationsAvis = { actif: parametres.actif, invitations: 0, relances: 0, echecs: 0, resume_envoye: false };
+    // Le résumé est envoyé même module coupé : des avis peuvent rester à modérer
+    bilan.resume_envoye = await AvisService.envoyerResumeQuotidien();
     if (!parametres.actif) return bilan;
 
     const commandes = await AvisInvitationModel.commandesAInviter(parametres.delai_invitation_jours, TAILLE_LOT);
@@ -61,6 +67,27 @@ export class AvisService {
 
     logger.info(`[AvisService] Invitations : ${bilan.invitations} envoyée(s), ${bilan.relances} relance(s), ${bilan.echecs} échec(s)`);
     return bilan;
+  }
+
+  /**
+   * Résumé quotidien sur Telegram : « N avis en attente de modération » (au plus une fois toutes les 20 h,
+   * seulement s'il y a des avis en attente). Ne lève jamais.
+   */
+  static async envoyerResumeQuotidien(): Promise<boolean> {
+    try {
+      const stats = await AvisModel.stats();
+      if (stats.en_attente === 0) return false;
+      if (!(await AvisParametresModel.reserverResumeQuotidien(INTERVALLE_RESUME_HEURES))) return false;
+      await notifier('avis_a_moderer', {
+        titre: `${stats.en_attente} avis en attente de modération`,
+        lignes: [stats.signales > 0 ? `dont ${stats.signales} signalé(s) à trancher en priorité` : null],
+        lien: '/avis'
+      });
+      return true;
+    } catch (err) {
+      logger.warn('[AvisService] Résumé quotidien des avis non envoyé:', err);
+      return false;
+    }
   }
 
   /** Alerte l'équipe pour les avis à surveiller (≤ 2 étoiles ou suspects). Ne lève jamais. */
