@@ -485,7 +485,12 @@ export class TransactionModel {
       if (commandeId) {
         await client.query(
           `UPDATE commandes
-           SET statut = 'annulee'::statut_commande, date_modification = NOW()
+           SET statut = 'annulee'::statut_commande,
+               statut_paiement = CASE
+                 WHEN statut_paiement = 'en_attente' THEN 'echec'::statut_paiement
+                 ELSE statut_paiement
+               END,
+               date_modification = NOW()
            WHERE id = $1 AND statut = 'en_attente'::statut_commande`,
           [commandeId]
         );
