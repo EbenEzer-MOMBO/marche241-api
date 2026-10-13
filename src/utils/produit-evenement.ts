@@ -37,6 +37,161 @@ const CHAMPS_META_VERROUILLES: Array<{ cle: string; libelle: string }> = [
   { cle: 'non_remboursable', libelle: 'La condition de remboursement' }
 ];
 
+export const LONGUEUR_MAX_CHAMP_PARTICIPANT = 200;
+export const CHAMPS_PARTICIPANT = ['nom_complet', 'telephone', 'profession', 'email'] as const;
+export type ChampParticipant = (typeof CHAMPS_PARTICIPANT)[number];
+
+export interface InfosParticipantsConfig {
+  actif: boolean;
+  champs: ChampParticipant[];
+}
+
+export function estChampParticipant(valeur: unknown): valeur is ChampParticipant {
+  return typeof valeur === 'string' && (CHAMPS_PARTICIPANT as readonly string[]).includes(valeur);
+}
+
+export function normaliserInfosParticipants(valeur: unknown): InfosParticipantsConfig {
+  if (!valeur || typeof valeur !== 'object') {
+    return { actif: false, champs: [] };
+  }
+  const brut = valeur as { actif?: unknown; champs?: unknown };
+  const champs = Array.isArray(brut.champs)
+    ? (brut.champs.filter(estChampParticipant) as ChampParticipant[])
+    : [];
+  const actif = brut.actif === true;
+  if (!actif) {
+    return { actif: false, champs: [] };
+  }
+  const unique = [...new Set(champs)];
+  if (!unique.includes('nom_complet')) {
+    unique.unshift('nom_complet');
+  }
+  return { actif, champs: unique };
+}
+
+export function signatureInfosParticipants(valeur: unknown): string {
+  const n = normaliserInfosParticipants(valeur);
+  return JSON.stringify({ actif: n.actif, champs: [...n.champs].sort() });
+}
+
+export type ParticipantSaisie = Partial<Record<ChampParticipant, string>>;
+
+export function extraireParticipantsDepuisArticle(article: {
+  participants?: unknown;
+  variants_selectionnes?: { participants?: unknown };
+}): unknown {
+  if (article.participants !== undefined) {
+    return article.participants;
+  }
+  return article.variants_selectionnes?.participants;
+}
+
+export function validerEtNormaliserParticipants(
+  produit: { nom?: string; variants?: unknown },
+  quantite: number,
+  participants: unknown
+): { ok: true; participants: ParticipantSaisie[] } | { ok: false; erreurs: ErreurModificationEvenement[] } {
+  const config = normaliserInfosParticipants(
+    ((produit.variants || {}) as VariantsEvenement).meta?.infos_participants
+  );
+  if (!config.actif) {
+    return { ok: true, participants: [] };
+  }
+
+  const nomProduit = produit.nom || 'événement';
+  if (!Array.isArray(participants) || participants.length !== quantite) {
+    return {
+      ok: false,
+      erreurs: [{
+        field: 'articles.participants',
+        code: 'PARTICIPANTS_REQUIS',
+        message: `Renseignez les informations de chaque participant pour « ${nomProduit} » (${quantite} billet${quantite > 1 ? 's' : ''})`
+      }]
+    };
+  }
+
+  const erreurs: ErreurModificationEvenement[] = [];
+  const normalises: ParticipantSaisie[] = [];
+
+  participants.forEach((entree, index) => {
+    const fiche: ParticipantSaisie = {};
+    const source = entree && typeof entree === 'object' ? (entree as Record<string, unknown>) : {};
+    for (const champ of config.champs) {
+      const valeur = texte(source[champ]);
+      if (!valeur) {
+        erreurs.push({
+          field: `articles.participants.${index}.${champ}`,
+          code: 'PARTICIPANT_CHAMP_REQUIS',
+          message: `Le champ « ${champ} » est requis pour le billet ${index + 1} de « ${nomProduit} »`
+        });
+        continue;
+      }
+      if (valeur.length > LONGUEUR_MAX_CHAMP_PARTICIPANT) {
+        erreurs.push({
+          field: `articles.participants.${index}.${champ}`,
+          code: 'PARTICIPANT_CHAMP_TROP_LONG',
+          message: `Le champ « ${champ} » du billet ${index + 1} de « ${nomProduit} » est trop long`
+        });
+        continue;
+      }
+      if (champ === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(valeur)) {
+        erreurs.push({
+          field: `articles.participants.${index}.email`,
+          code: 'PARTICIPANT_EMAIL_INVALIDE',
+          message: `L'adresse email du billet ${index + 1} de « ${nomProduit} » n'est pas valide`
+        });
+        continue;
+      }
+      fiche[champ] = valeur;
+    }
+    normalises.push(fiche);
+  });
+
+  if (erreurs.length > 0) {
+    return { ok: false, erreurs };
+  }
+  return { ok: true, participants: normalises };
+}
+
+export function verifierInfosParticipantsConfig(variants: unknown): ErreurModificationEvenement[] {
+  const meta = ((variants || {}) as VariantsEvenement).meta || {};
+  if (meta.infos_participants === undefined) {
+    return [];
+  }
+  const raw = meta.infos_participants;
+  if (typeof raw !== 'object' || raw === null) {
+    return [{
+      field: 'variants.meta.infos_participants',
+      code: 'INFOS_PARTICIPANTS_INVALIDE',
+      message: 'La configuration des informations participants est invalide'
+    }];
+  }
+  const champs = (raw as { champs?: unknown }).champs;
+  if (champs !== undefined && !Array.isArray(champs)) {
+    return [{
+      field: 'variants.meta.infos_participants.champs',
+      code: 'INFOS_PARTICIPANTS_INVALIDE',
+      message: 'Les champs participants doivent être une liste'
+    }];
+  }
+  if (Array.isArray(champs) && champs.some((c) => !estChampParticipant(c))) {
+    return [{
+      field: 'variants.meta.infos_participants.champs',
+      code: 'INFOS_PARTICIPANTS_INVALIDE',
+      message: 'Champ participant inconnu'
+    }];
+  }
+  const config = normaliserInfosParticipants(raw);
+  if (config.actif && !config.champs.includes('nom_complet')) {
+    return [{
+      field: 'variants.meta.infos_participants.champs',
+      code: 'INFOS_PARTICIPANTS_NOM_REQUIS',
+      message: 'Le nom complet est obligatoire pour les billets nommés'
+    }];
+  }
+  return [];
+}
+
 const texte = (valeur: unknown) => (valeur === undefined || valeur === null ? '' : String(valeur).trim());
 const montant = (valeur: unknown) => Number(valeur) || 0;
 
@@ -92,6 +247,10 @@ export function verifierModificationEvenement(
     if (normaliserMeta(cle, avant.meta?.[cle]) !== normaliserMeta(cle, apres.meta?.[cle])) {
       verrou(`variants.meta.${cle}`, `${libelle} ${suffixe}`);
     }
+  }
+
+  if (signatureInfosParticipants(avant.meta?.infos_participants) !== signatureInfosParticipants(apres.meta?.infos_participants)) {
+    verrou('variants.meta.infos_participants', `Les informations demandées aux participants ${suffixe}`);
   }
 
   const billetsApres = Array.isArray(apres.variants) ? apres.variants : [];

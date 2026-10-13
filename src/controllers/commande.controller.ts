@@ -6,7 +6,12 @@ import { StatutCommande, StatutPaiement, MethodePaiement } from '../lib/database
 import { WhatsAppService } from '../services/whatsapp.service';
 import { PushService } from '../services/push.service';
 import { logger } from '../utils/logger';
-import { isProduitEvenement, MESSAGE_MIX_PANIER } from '../utils/produit-evenement';
+import {
+  extraireParticipantsDepuisArticle,
+  isProduitEvenement,
+  MESSAGE_MIX_PANIER,
+  validerEtNormaliserParticipants
+} from '../utils/produit-evenement';
 
 const STATUT_PUSH_LABELS: Record<string, string> = {
   confirmee: 'confirmée',
@@ -39,6 +44,7 @@ export class CommandeController {
         logger.debug('[createCommande] Vérification de la disponibilité des produits');
         const produitsIndisponibles: any[] = [];
         const quantitesInsuffisantes: any[] = [];
+        const erreursParticipants: Array<{ field: string; code: string; message: string }> = [];
         let hasEvenement = false;
         let hasAutre = false;
         
@@ -57,6 +63,23 @@ export class CommandeController {
           // Vérifier si le produit est actif
           if (isProduitEvenement(produit)) {
             hasEvenement = true;
+            const resultat = validerEtNormaliserParticipants(
+              produit,
+              article.quantite,
+              extraireParticipantsDepuisArticle(article)
+            );
+            if (!resultat.ok) {
+              erreursParticipants.push(...resultat.erreurs);
+            } else {
+              // Seules les fiches validées sont conservées ; celles non contrôlées envoyées par le client sont écartées
+              const { participants: _ignore, ...autresVariants } =
+                article.variants_selectionnes && typeof article.variants_selectionnes === 'object'
+                  ? article.variants_selectionnes
+                  : ({} as Record<string, unknown>);
+              article.variants_selectionnes = resultat.participants.length > 0
+                ? { ...autresVariants, participants: resultat.participants }
+                : (Object.keys(autresVariants).length > 0 ? autresVariants : null);
+            }
           } else {
             hasAutre = true;
           }
@@ -96,9 +119,11 @@ export class CommandeController {
               // Support de l'ancien format pour rétrocompatibilité
               logger.debug('[createCommande] Ancien format de variants détecté');
               for (const [nomVariant, optionSelectionnee] of Object.entries(article.variants_selectionnes)) {
-                if (nomVariant === 'variant' || nomVariant === 'options') continue; // Skip nouveau format
+                if (nomVariant === 'variant' || nomVariant === 'options' || nomVariant === 'participants') continue; // Skip nouveau format et fiches participants
                 
-                const variant = produit.variants.find((v: any) => v.nom === nomVariant);
+                const variant = Array.isArray(produit.variants)
+                  ? produit.variants.find((v: any) => v.nom === nomVariant)
+                  : undefined;
                 
                 if (variant && variant.options && variant.quantites) {
                   const indexOption = variant.options.indexOf(optionSelectionnee);
@@ -161,6 +186,16 @@ export class CommandeController {
         }
         
         logger.debug('[createCommande] Tous les produits sont disponibles en quantité suffisante');
+
+        if (erreursParticipants.length > 0) {
+          res.status(400).json({
+            success: false,
+            message: erreursParticipants[0].message,
+            code: 'VALIDATION_ERROR',
+            errors: erreursParticipants
+          });
+          return;
+        }
 
         if (hasEvenement && hasAutre) {
           res.status(400).json({
@@ -673,9 +708,11 @@ export class CommandeController {
             // Support de l'ancien format pour rétrocompatibilité
             logger.debug('[initierPaiement] Ancien format de variants détecté');
             for (const [nomVariant, optionSelectionnee] of Object.entries(article.variants_selectionnes)) {
-              if (nomVariant === 'variant' || nomVariant === 'options') continue; // Skip nouveau format
+              if (nomVariant === 'variant' || nomVariant === 'options' || nomVariant === 'participants') continue; // Skip nouveau format et fiches participants
               
-              const variant = produit.variants.find((v: any) => v.nom === nomVariant);
+              const variant = Array.isArray(produit.variants)
+                  ? produit.variants.find((v: any) => v.nom === nomVariant)
+                  : undefined;
               
               if (variant && variant.options && variant.quantites) {
                 const indexOption = variant.options.indexOf(optionSelectionnee);

@@ -37,6 +37,9 @@ function formatDateEvenement(meta: Record<string, unknown> | undefined): string 
   return `${datePart} · ${timePart}`;
 }
 
+const champTexte = (valeur: unknown): string | null =>
+  typeof valeur === 'string' && valeur.trim() ? valeur.trim().slice(0, 200) : null;
+
 export class BilletService {
   static publicUrl(jeton: string): string {
     const frontend = (process.env.FRONTEND_URL || 'https://marche241.ga').replace(/\/$/, '');
@@ -95,10 +98,19 @@ export class BilletService {
         continue;
       }
 
+      const saisie = Array.isArray(article.variants_selectionnes?.participants)
+        ? article.variants_selectionnes.participants
+        : [];
       aCreer.push({
         produit_id: article.produit_id,
         type_billet: typeBilletDepuisArticle(article),
         quantite: article.quantite,
+        participants: saisie.map((p: Record<string, unknown> | null) => ({
+          nom: champTexte(p?.nom_complet),
+          telephone: champTexte(p?.telephone),
+          profession: champTexte(p?.profession),
+          email: champTexte(p?.email)
+        }))
       });
     }
 
@@ -117,7 +129,7 @@ export class BilletService {
 
   static async payloadPdfParJeton(jeton: string): Promise<{
     evenement: { nom: string; date?: string; lieu?: string; adresse?: string; image?: string };
-    billets: Array<{ type_billet: string; numero: number }>;
+    billets: Array<{ type_billet: string; numero: number; participant_nom?: string | null }>;
     jeton: string;
   } | null> {
     const billets = await BilletModel.findByJeton(jeton);
@@ -139,6 +151,7 @@ export class BilletService {
       billets: billets.map((billet) => ({
         type_billet: billet.type_billet,
         numero: billet.numero,
+        participant_nom: billet.participant_nom || null,
       })),
       jeton,
     };

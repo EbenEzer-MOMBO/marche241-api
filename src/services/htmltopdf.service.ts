@@ -8,7 +8,7 @@ export interface HtmlToPdfBilletPayload {
     adresse?: string;
     image?: string;
   };
-  billets: Array<{ type_billet: string; numero: number }>;
+  billets: Array<{ type_billet: string; numero: number; participant_nom?: string | null }>;
   jeton: string;
 }
 
