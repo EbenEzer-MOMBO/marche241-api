@@ -70,13 +70,15 @@ export class CommandeController {
             );
             if (!resultat.ok) {
               erreursParticipants.push(...resultat.erreurs);
-            } else if (resultat.participants.length > 0) {
-              article.variants_selectionnes = {
-                ...(article.variants_selectionnes && typeof article.variants_selectionnes === 'object'
+            } else {
+              // Seules les fiches validées sont conservées ; celles non contrôlées envoyées par le client sont écartées
+              const { participants: _ignore, ...autresVariants } =
+                article.variants_selectionnes && typeof article.variants_selectionnes === 'object'
                   ? article.variants_selectionnes
-                  : {}),
-                participants: resultat.participants
-              };
+                  : ({} as Record<string, unknown>);
+              article.variants_selectionnes = resultat.participants.length > 0
+                ? { ...autresVariants, participants: resultat.participants }
+                : (Object.keys(autresVariants).length > 0 ? autresVariants : null);
             }
           } else {
             hasAutre = true;
@@ -117,9 +119,11 @@ export class CommandeController {
               // Support de l'ancien format pour rétrocompatibilité
               logger.debug('[createCommande] Ancien format de variants détecté');
               for (const [nomVariant, optionSelectionnee] of Object.entries(article.variants_selectionnes)) {
-                if (nomVariant === 'variant' || nomVariant === 'options') continue; // Skip nouveau format
+                if (nomVariant === 'variant' || nomVariant === 'options' || nomVariant === 'participants') continue; // Skip nouveau format et fiches participants
                 
-                const variant = produit.variants.find((v: any) => v.nom === nomVariant);
+                const variant = Array.isArray(produit.variants)
+                  ? produit.variants.find((v: any) => v.nom === nomVariant)
+                  : undefined;
                 
                 if (variant && variant.options && variant.quantites) {
                   const indexOption = variant.options.indexOf(optionSelectionnee);
@@ -704,9 +708,11 @@ export class CommandeController {
             // Support de l'ancien format pour rétrocompatibilité
             logger.debug('[initierPaiement] Ancien format de variants détecté');
             for (const [nomVariant, optionSelectionnee] of Object.entries(article.variants_selectionnes)) {
-              if (nomVariant === 'variant' || nomVariant === 'options') continue; // Skip nouveau format
+              if (nomVariant === 'variant' || nomVariant === 'options' || nomVariant === 'participants') continue; // Skip nouveau format et fiches participants
               
-              const variant = produit.variants.find((v: any) => v.nom === nomVariant);
+              const variant = Array.isArray(produit.variants)
+                  ? produit.variants.find((v: any) => v.nom === nomVariant)
+                  : undefined;
               
               if (variant && variant.options && variant.quantites) {
                 const indexOption = variant.options.indexOf(optionSelectionnee);

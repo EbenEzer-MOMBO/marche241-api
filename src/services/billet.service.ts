@@ -37,6 +37,9 @@ function formatDateEvenement(meta: Record<string, unknown> | undefined): string 
   return `${datePart} · ${timePart}`;
 }
 
+const champTexte = (valeur: unknown): string | null =>
+  typeof valeur === 'string' && valeur.trim() ? valeur.trim().slice(0, 200) : null;
+
 export class BilletService {
   static publicUrl(jeton: string): string {
     const frontend = (process.env.FRONTEND_URL || 'https://marche241.ga').replace(/\/$/, '');
@@ -102,11 +105,11 @@ export class BilletService {
         produit_id: article.produit_id,
         type_billet: typeBilletDepuisArticle(article),
         quantite: article.quantite,
-        participants: saisie.map((p: { nom_complet?: string; telephone?: string; profession?: string; email?: string }) => ({
-          nom: p?.nom_complet || null,
-          telephone: p?.telephone || null,
-          profession: p?.profession || null,
-          email: p?.email || null
+        participants: saisie.map((p: Record<string, unknown> | null) => ({
+          nom: champTexte(p?.nom_complet),
+          telephone: champTexte(p?.telephone),
+          profession: champTexte(p?.profession),
+          email: champTexte(p?.email)
         }))
       });
     }

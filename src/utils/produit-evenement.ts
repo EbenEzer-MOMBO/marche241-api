@@ -37,6 +37,7 @@ const CHAMPS_META_VERROUILLES: Array<{ cle: string; libelle: string }> = [
   { cle: 'non_remboursable', libelle: 'La condition de remboursement' }
 ];
 
+export const LONGUEUR_MAX_CHAMP_PARTICIPANT = 200;
 export const CHAMPS_PARTICIPANT = ['nom_complet', 'telephone', 'profession', 'email'] as const;
 export type ChampParticipant = (typeof CHAMPS_PARTICIPANT)[number];
 
@@ -57,12 +58,15 @@ export function normaliserInfosParticipants(valeur: unknown): InfosParticipantsC
   const champs = Array.isArray(brut.champs)
     ? (brut.champs.filter(estChampParticipant) as ChampParticipant[])
     : [];
-  const unique = [...new Set(champs)];
   const actif = brut.actif === true;
-  if (actif && !unique.includes('nom_complet')) {
+  if (!actif) {
+    return { actif: false, champs: [] };
+  }
+  const unique = [...new Set(champs)];
+  if (!unique.includes('nom_complet')) {
     unique.unshift('nom_complet');
   }
-  return { actif, champs: actif ? unique : unique };
+  return { actif, champs: unique };
 }
 
 export function signatureInfosParticipants(valeur: unknown): string {
@@ -119,6 +123,14 @@ export function validerEtNormaliserParticipants(
           field: `articles.participants.${index}.${champ}`,
           code: 'PARTICIPANT_CHAMP_REQUIS',
           message: `Le champ « ${champ} » est requis pour le billet ${index + 1} de « ${nomProduit} »`
+        });
+        continue;
+      }
+      if (valeur.length > LONGUEUR_MAX_CHAMP_PARTICIPANT) {
+        erreurs.push({
+          field: `articles.participants.${index}.${champ}`,
+          code: 'PARTICIPANT_CHAMP_TROP_LONG',
+          message: `Le champ « ${champ} » du billet ${index + 1} de « ${nomProduit} » est trop long`
         });
         continue;
       }
