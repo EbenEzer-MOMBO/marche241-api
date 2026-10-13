@@ -302,6 +302,12 @@ export class CommandeModel {
       // Ajouter les dates spécifiques en fonction du statut
       const affectations = ['statut = $1::statut_commande', 'date_modification = NOW()'];
 
+      if (statut === 'annulee') {
+        affectations.push(
+          `statut_paiement = CASE WHEN statut_paiement = 'en_attente' THEN 'echec'::statut_paiement ELSE statut_paiement END`
+        );
+      }
+
       if (statut === 'confirmee') {
         affectations.push('date_confirmation = NOW()');
       } else if (statut === 'expedie') {
@@ -696,7 +702,13 @@ export class CommandeModel {
       );
 
       await query(
-        `UPDATE commandes SET statut = 'annulee'::statut_commande, date_modification = NOW()
+        `UPDATE commandes
+         SET statut = 'annulee'::statut_commande,
+             statut_paiement = CASE
+               WHEN statut_paiement = 'en_attente' THEN 'echec'::statut_paiement
+               ELSE statut_paiement
+             END,
+             date_modification = NOW()
          WHERE id = ANY($1)`,
         [orphelineIds]
       );
