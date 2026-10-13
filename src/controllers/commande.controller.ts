@@ -6,7 +6,12 @@ import { StatutCommande, StatutPaiement, MethodePaiement } from '../lib/database
 import { WhatsAppService } from '../services/whatsapp.service';
 import { PushService } from '../services/push.service';
 import { logger } from '../utils/logger';
-import { isProduitEvenement, MESSAGE_MIX_PANIER } from '../utils/produit-evenement';
+import {
+  extraireParticipantsDepuisArticle,
+  isProduitEvenement,
+  MESSAGE_MIX_PANIER,
+  validerEtNormaliserParticipants
+} from '../utils/produit-evenement';
 
 const STATUT_PUSH_LABELS: Record<string, string> = {
   confirmee: 'confirmée',
@@ -39,6 +44,7 @@ export class CommandeController {
         logger.debug('[createCommande] Vérification de la disponibilité des produits');
         const produitsIndisponibles: any[] = [];
         const quantitesInsuffisantes: any[] = [];
+        const erreursParticipants: Array<{ field: string; code: string; message: string }> = [];
         let hasEvenement = false;
         let hasAutre = false;
         
@@ -57,6 +63,21 @@ export class CommandeController {
           // Vérifier si le produit est actif
           if (isProduitEvenement(produit)) {
             hasEvenement = true;
+            const resultat = validerEtNormaliserParticipants(
+              produit,
+              article.quantite,
+              extraireParticipantsDepuisArticle(article)
+            );
+            if (!resultat.ok) {
+              erreursParticipants.push(...resultat.erreurs);
+            } else if (resultat.participants.length > 0) {
+              article.variants_selectionnes = {
+                ...(article.variants_selectionnes && typeof article.variants_selectionnes === 'object'
+                  ? article.variants_selectionnes
+                  : {}),
+                participants: resultat.participants
+              };
+            }
           } else {
             hasAutre = true;
           }
@@ -161,6 +182,16 @@ export class CommandeController {
         }
         
         logger.debug('[createCommande] Tous les produits sont disponibles en quantité suffisante');
+
+        if (erreursParticipants.length > 0) {
+          res.status(400).json({
+            success: false,
+            message: erreursParticipants[0].message,
+            code: 'VALIDATION_ERROR',
+            errors: erreursParticipants
+          });
+          return;
+        }
 
         if (hasEvenement && hasAutre) {
           res.status(400).json({

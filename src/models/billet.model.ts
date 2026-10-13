@@ -2,10 +2,18 @@ import crypto from 'crypto';
 import { query, withTransaction } from '../config/database';
 import { Billet } from '../lib/database-types';
 
+export interface ParticipantBilletDonnees {
+  nom?: string | null;
+  telephone?: string | null;
+  profession?: string | null;
+  email?: string | null;
+}
+
 export interface BilletACreer {
   produit_id: number;
   type_billet: string;
   quantite: number;
+  participants?: ParticipantBilletDonnees[];
 }
 
 export interface ParticipantBillet {
@@ -22,6 +30,10 @@ export interface ParticipantBillet {
   client_telephone: string;
   statut_paiement: string;
   date_commande: Date;
+  participant_nom: string | null;
+  participant_telephone: string | null;
+  participant_profession: string | null;
+  participant_email: string | null;
 }
 
 export interface StatsBilletsProduit {
@@ -58,6 +70,7 @@ export class BilletModel {
   static async findParticipantsByProduit(produitId: number): Promise<ParticipantBillet[]> {
     const { rows } = await query<ParticipantBillet>(
       `SELECT b.id, b.numero, b.type_billet, b.jeton, b.scanne_le, b.date_creation,
+              b.participant_nom, b.participant_telephone, b.participant_profession, b.participant_email,
               c.id AS commande_id, c.numero_commande, c.client_nom, c.client_email,
               c.client_telephone, c.statut_paiement, c.date_commande
          FROM billets b
@@ -148,11 +161,25 @@ export class BilletModel {
         let suivant = (maxRows[0]?.max ?? 0) + 1;
 
         for (let i = 0; i < ligne.quantite; i += 1) {
+          const titulaire = ligne.participants?.[i];
           const { rows } = await client.query<Billet>(
-            `INSERT INTO billets (commande_id, produit_id, type_billet, numero, jeton)
-             VALUES ($1, $2, $3, $4, $5)
+            `INSERT INTO billets (
+               commande_id, produit_id, type_billet, numero, jeton,
+               participant_nom, participant_telephone, participant_profession, participant_email
+             )
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
              RETURNING *`,
-            [commandeId, ligne.produit_id, ligne.type_billet, suivant, jeton]
+            [
+              commandeId,
+              ligne.produit_id,
+              ligne.type_billet,
+              suivant,
+              jeton,
+              titulaire?.nom || null,
+              titulaire?.telephone || null,
+              titulaire?.profession || null,
+              titulaire?.email || null
+            ]
           );
           crees.push(rows[0]);
           suivant += 1;

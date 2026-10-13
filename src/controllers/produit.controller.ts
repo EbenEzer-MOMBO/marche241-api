@@ -15,6 +15,7 @@ import {
   statutCreationEvenementVendeur,
   transitionStatutEvenementVendeurAutorisee,
   verifierDatesEvenement,
+  verifierInfosParticipantsConfig,
   verifierModificationEvenement
 } from '../utils/produit-evenement';
 import { notifier } from '../services/telegram.service';
@@ -354,7 +355,10 @@ export class ProduitController {
       }
 
       if (isProduitEvenement(produitData)) {
-        const erreurs = verifierDatesEvenement(produitData.variants, { creation: true });
+        const erreurs = [
+          ...verifierDatesEvenement(produitData.variants, { creation: true }),
+          ...verifierInfosParticipantsConfig(produitData.variants)
+        ];
         if (erreurs.length > 0) {
           repondreErreursEvenement(res, erreurs);
           return;
@@ -487,7 +491,10 @@ export class ProduitController {
         const erreurs = [
           ...verifierModificationEvenement(existingProduit, produitData, ventesParType),
           ...(produitData.variants !== undefined
-            ? verifierDatesEvenement(produitData.variants, { creation: false })
+            ? [
+                ...verifierDatesEvenement(produitData.variants, { creation: false }),
+                ...verifierInfosParticipantsConfig(produitData.variants)
+              ]
             : [])
         ];
         if (erreurs.length > 0) {

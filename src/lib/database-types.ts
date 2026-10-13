@@ -268,6 +268,10 @@ export interface Billet {
   numero: number;
   jeton: string;
   scanne_le?: Date | null;
+  participant_nom?: string | null;
+  participant_telephone?: string | null;
+  participant_profession?: string | null;
+  participant_email?: string | null;
   date_creation: Date;
 }
 

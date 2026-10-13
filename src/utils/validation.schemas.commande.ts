@@ -50,7 +50,13 @@ const commandeArticleSchema = Joi.object({
     'any.required': 'Le nom du produit est obligatoire'
   }),
   description: Joi.string().allow(null, ''),
-  variants_selectionnes: Joi.object().allow(null)
+  variants_selectionnes: Joi.object().unknown(true).allow(null),
+  participants: Joi.array().items(Joi.object({
+    nom_complet: Joi.string().allow('', null),
+    telephone: Joi.string().allow('', null),
+    profession: Joi.string().allow('', null),
+    email: Joi.string().allow('', null)
+  }).unknown(true)).optional()
 });
 
 // Schéma pour la création d'une commande

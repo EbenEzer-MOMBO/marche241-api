@@ -95,10 +95,19 @@ export class BilletService {
         continue;
       }
 
+      const saisie = Array.isArray(article.variants_selectionnes?.participants)
+        ? article.variants_selectionnes.participants
+        : [];
       aCreer.push({
         produit_id: article.produit_id,
         type_billet: typeBilletDepuisArticle(article),
         quantite: article.quantite,
+        participants: saisie.map((p: { nom_complet?: string; telephone?: string; profession?: string; email?: string }) => ({
+          nom: p?.nom_complet || null,
+          telephone: p?.telephone || null,
+          profession: p?.profession || null,
+          email: p?.email || null
+        }))
       });
     }
 
@@ -117,7 +126,7 @@ export class BilletService {
 
   static async payloadPdfParJeton(jeton: string): Promise<{
     evenement: { nom: string; date?: string; lieu?: string; adresse?: string; image?: string };
-    billets: Array<{ type_billet: string; numero: number }>;
+    billets: Array<{ type_billet: string; numero: number; participant_nom?: string | null }>;
     jeton: string;
   } | null> {
     const billets = await BilletModel.findByJeton(jeton);
@@ -139,6 +148,7 @@ export class BilletService {
       billets: billets.map((billet) => ({
         type_billet: billet.type_billet,
         numero: billet.numero,
+        participant_nom: billet.participant_nom || null,
       })),
       jeton,
     };
