@@ -34,6 +34,23 @@ test('vêtements : stock par taille', () => {
   assert.equal(stockDisponibleSelection(produit, { variant: { id: 'v', nom: 'Rouge - Taille L' } }), 0);
 });
 
+test('chaussures : pointure extraite du nom', () => {
+  const produit = {
+    quantite_stock: 9,
+    variants: { type: 'chaussures', variants: [{ id: 'c', nom: 'Noir', tailles: [{ taille: '42', stock: 2 }] }] }
+  };
+  assert.equal(stockDisponibleSelection(produit, { variant: { id: 'c', nom: 'Noir - Pointure 42' } }), 2);
+});
+
+test('taille introuvable ou non extractable : refus (la décrémentation lèverait une erreur)', () => {
+  const produit = {
+    quantite_stock: 9,
+    variants: { type: 'vetements', variants: [{ id: 'v', nom: 'Rouge', tailles: [{ taille: 'M', stock: 5 }] }] }
+  };
+  assert.equal(stockDisponibleSelection(produit, { variant: { id: 'v', nom: 'Rouge' } }), 0);
+  assert.equal(stockDisponibleSelection(produit, { variant: { id: 'v', nom: 'Rouge - Taille XXL' } }), 0);
+});
+
 test('ancien format avec quantite', () => {
   const produit = { quantite_stock: 5, variants: { variants: [{ id: 'x', nom: 'X', quantite: 3 }] } };
   assert.equal(stockDisponibleSelection(produit, { variant: { id: 'x', nom: 'X' } }), 3);

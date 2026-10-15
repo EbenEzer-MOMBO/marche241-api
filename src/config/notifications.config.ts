@@ -26,7 +26,8 @@ export const EVENEMENTS_NOTIFICATION = [
   { code: 'avis_a_moderer', groupe: 'avis', nom: 'Avis négatif ou suspect à modérer', emoji: '⭐' },
   { code: 'avis_signale', groupe: 'avis', nom: 'Avis signalé par un vendeur', emoji: '🚩' },
   { code: 'commande_payee', groupe: 'commandes', nom: 'Nouvelle commande payée', emoji: '🛒' },
-  { code: 'commande_a_regulariser', groupe: 'commandes', nom: 'Commande payée à régulariser (stock insuffisant)', emoji: '🚨' },
+  // `critique` : envoyé dès que Telegram est actif, même si l'événement n'a pas été coché (argent encaissé sans commande)
+  { code: 'commande_a_regulariser', groupe: 'commandes', nom: 'Commande payée à régulariser (stock insuffisant)', emoji: '🚨', critique: true },
   { code: 'paiement_echoue', groupe: 'commandes', nom: 'Paiement échoué', emoji: '❌' },
   { code: 'versement_effectue', groupe: 'versements', nom: 'Versement effectué', emoji: '✅' },
   { code: 'versement_echec', groupe: 'versements', nom: 'Versement en échec', emoji: '🚨' },

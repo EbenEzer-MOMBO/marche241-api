@@ -100,9 +100,9 @@ export class CommandeController {
           if (article.variants_selectionnes && produit.variants) {
             logger.debug('[createCommande] Vérification du stock pour les variants:', article.variants_selectionnes);
             
-          // Stock du variant choisi (champ stock des billets/tailles, ancien format quantite…) borné par le stock global
-          const stockDisponible = stockDisponibleSelection(produit, article.variants_selectionnes);
-          logger.debug('[createCommande] Stock disponible calculé:', stockDisponible);
+            // Stock du variant choisi (champ stock des billets/tailles, ancien format quantite…) borné par le stock global
+            const stockDisponible = stockDisponibleSelection(produit, article.variants_selectionnes);
+            logger.debug('[createCommande] Stock disponible calculé:', stockDisponible);
             
             // Vérifier si la quantité demandée est disponible
             if (article.quantite > stockDisponible) {

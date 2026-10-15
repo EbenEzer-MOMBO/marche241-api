@@ -254,10 +254,7 @@ export class CommandeModel {
         return;
       }
 
-      // Mettre à jour le stock de chaque produit
-      for (const article of articles) {
-        const quantite = increment ? -article.quantite : article.quantite;
-
+      const appliquer = async (article: CommandeArticle, quantite: number) => {
         // Si l'article a des variants sélectionnés, mettre à jour le stock du variant
         if (article.variants_selectionnes && Object.keys(article.variants_selectionnes).length > 0) {
           logger.debug(`[CommandeModel] Mise à jour du stock avec variants pour produit ${article.produit_id}`);
@@ -267,6 +264,23 @@ export class CommandeModel {
           logger.debug(`[CommandeModel] Mise à jour du stock global pour produit ${article.produit_id}`);
           await ProduitModel.updateStock(article.produit_id, quantite);
         }
+      };
+
+      // Mettre à jour le stock de chaque produit ; si un article échoue, les précédents sont
+      // restitués pour ne pas perdre de stock sur une commande qui ne sera pas confirmée
+      const appliques: CommandeArticle[] = [];
+      try {
+        for (const article of articles) {
+          await appliquer(article, increment ? -article.quantite : article.quantite);
+          appliques.push(article);
+        }
+      } catch (erreur) {
+        for (const article of appliques.reverse()) {
+          await appliquer(article, increment ? article.quantite : -article.quantite).catch((err) =>
+            logger.error(`[CommandeModel] Restitution du stock impossible (produit ${article.produit_id}, commande ${commandeId}):`, err)
+          );
+        }
+        throw erreur;
       }
 
       logger.debug(`[CommandeModel] Stock mis à jour pour tous les produits de la commande ${commandeId}`);

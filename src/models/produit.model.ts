@@ -3,6 +3,7 @@ import { Produit } from '../lib/database-types';
 import { logger } from '../utils/logger';
 import { prixOriginalCoherent, prixPourStockage } from '../utils/prix-promo';
 import { marquerAffichageNote } from './avis.model';
+import { extraireTaille } from '../utils/stock-variant';
 
 /**
  * Jointures de la boutique et de la catégorie, sous forme d'objets JSON.

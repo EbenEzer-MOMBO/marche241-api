@@ -37,16 +37,23 @@ function notifierEquipeCommande(commande: Commande, montantPaye: number, systeme
   })().catch(() => undefined);
 }
 
+const PREFIXE_ANOMALIE = 'ANOMALIE :';
+const MESSAGE_COMMANDE_A_REGULARISER =
+  "Votre paiement a bien été reçu, mais votre commande n'a pas pu être confirmée (article momentanément indisponible). Notre équipe vous contacte pour la régulariser ou vous rembourser.";
+
 /** Paiement reçu mais commande non confirmée : trace sur la transaction + alerte Telegram de l'équipe (jamais bloquant). */
 async function signalerCommandeARegulariser(
   commande: Commande,
-  transactionId: number,
+  transaction: Transaction,
   montantPaye: number,
   raison: string
 ): Promise<void> {
   logger.error(`[PaiementController] Commande ${commande.numero_commande} payée mais non confirmée: ${raison}`);
-  await TransactionModel.updateTransaction(transactionId, {
-    notes: `ANOMALIE : paiement reçu, commande non confirmée (${raison}). Régularisation ou remboursement à faire.`
+  // La note de confirmation (état eBilling, système de paiement) est conservée : utile pour rembourser
+  const noteAnomalie = `${PREFIXE_ANOMALIE} paiement reçu, commande non confirmée (${raison}). Régularisation ou remboursement à faire.`;
+  const noteExistante = (await TransactionModel.getTransactionById(transaction.id).catch(() => null))?.notes ?? transaction.notes;
+  await TransactionModel.updateTransaction(transaction.id, {
+    notes: noteExistante ? `${noteAnomalie} | ${noteExistante}` : noteAnomalie
   }).catch((err: any) => logger.error('[PaiementController] Annotation de la transaction impossible:', err?.message));
 
   void notifier('commande_a_regulariser', {
@@ -376,10 +383,13 @@ export class PaiementController {
       // Short-circuit: ne pas rappeler Ebilling si la transaction est déjà finalisée
       const existing = await TransactionModel.findByReferenceOperateur(bill_id);
       if (existing && (existing.statut === 'paye' || existing.statut === 'echec' || existing.statut === 'rembourse')) {
+        const anomalie = existing.statut === 'paye' && (existing.notes ?? '').startsWith(PREFIXE_ANOMALIE);
         res.status(200).json({
           success: existing.statut === 'paye',
-          message:
-            existing.statut === 'paye'
+          ...(anomalie && { needs_review: true }),
+          message: anomalie
+            ? MESSAGE_COMMANDE_A_REGULARISER
+            : existing.statut === 'paye'
               ? 'Le paiement a déjà été confirmé'
               : `Paiement déjà en statut ${existing.statut}`,
           status: existing.statut,
@@ -391,7 +401,16 @@ export class PaiementController {
 
       const result = await PaiementController.processPaymentVerification(bill_id, existing);
 
-      if (result.success) {
+      if (result.success && result.needsReview) {
+        // Paiement reçu mais commande non confirmée : ne pas afficher un succès générique
+        res.status(200).json({
+          success: true,
+          needs_review: true,
+          message: result.message,
+          status: result.billState,
+          transaction: result.transaction
+        });
+      } else if (result.success) {
         res.status(200).json({
           success: true,
           message: 'Le paiement a été confirmé avec succès',
@@ -713,12 +732,12 @@ export class PaiementController {
               // Le paiement est réel mais la commande n'a pas pu être confirmée (ex. stock épuisé entre-temps) :
               // on ne le présente pas comme un échec au client et on alerte l'équipe pour régulariser ou rembourser.
               await signalerCommandeARegulariser(
-                commande, transaction.id, montantPaye, confirmationError?.message ?? String(confirmationError)
+                commande, transaction, montantPaye, confirmationError?.message ?? String(confirmationError)
               );
               return {
                 success: true,
                 needsReview: true,
-                message: "Votre paiement a bien été reçu, mais votre commande n'a pas pu être confirmée (article momentanément indisponible). Notre équipe vous contacte pour la régulariser ou vous rembourser.",
+                message: MESSAGE_COMMANDE_A_REGULARISER,
                 billState: billState,
                 transaction: await TransactionModel.getTransactionById(transaction.id)
               };
@@ -833,7 +852,7 @@ export class PaiementController {
 
         if (billState === 'processed' || billState === 'paid') {
           const result = await PaiementController.processPaymentVerification(billId, transaction);
-          if (result.success) {
+          if (result.success && !result.needsReview) {
             confirmations += 1;
             logger.info(
               `[PaiementController] Réconciliation: TX ${transaction.id} confirmée (bill ${billId})`

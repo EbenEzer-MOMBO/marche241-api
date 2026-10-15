@@ -9,7 +9,11 @@ interface ProduitStockable {
   variants?: unknown;
 }
 
-function extraireTaille(nomVariant: string | undefined): string | null {
+/**
+ * Extrait la taille ou pointure du nom du variant ("Marron - Taille XL" => "XL").
+ * Partagée avec ProduitModel : contrôle à la commande et décrémentation doivent lire le même nom.
+ */
+export function extraireTaille(nomVariant: string | undefined | null): string | null {
   if (!nomVariant) return null;
   for (const separateur of [' - Taille ', ' - Pointure ']) {
     if (nomVariant.includes(separateur)) {
@@ -30,9 +34,10 @@ function stockDuVariant(variantsData: any, selection: any): number | null {
 
   // Vêtements / chaussures : stock par taille ou pointure
   if (variant.tailles && Array.isArray(variant.tailles)) {
+    // Taille introuvable : la décrémentation au paiement lèverait une erreur, on refuse dès la commande
     const taille = extraireTaille(choisi?.nom);
-    const ligne = variant.tailles.find((t: any) => t.taille === taille);
-    return ligne ? ligne.stock || 0 : null;
+    const ligne = taille ? variant.tailles.find((t: any) => t.taille === taille) : undefined;
+    return ligne ? ligne.stock || 0 : 0;
   }
   // Billets d'événement, attributs génériques : stock direct
   if (typeof variant.stock === 'number') return variant.stock;
