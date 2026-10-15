@@ -58,6 +58,10 @@ export class CronService {
         console.log(
           `[CronService] Synchro boosts : ${result.examines} examiné(s), ${result.termines} terminé(s), ${result.rejetes} rejeté(s) par Meta, ${result.erreurs} erreur(s)`
         );
+        const bilans = await BoostService.reglerBilans();
+        if (bilans.examines > 0) {
+          console.log(`[CronService] Bilans boosts : ${bilans.examines} en cours, ${bilans.finalises} finalisé(s), ${bilans.erreurs} erreur(s)`);
+        }
       } catch (error) {
         console.error('[CronService] Erreur lors de la synchro des boosts:', error);
       }
@@ -75,7 +79,8 @@ export class CronService {
   static scheduleClotureBoostsEchus(): void {
     const jobName = 'cloture-boosts-echus';
 
-    const task = cron.schedule('*/5 * * * *', async () => {
+    // 3, 8, 13… : jamais à la 20e minute, réservée à la synchro horaire (pas de double clôture)
+    const task = cron.schedule('3-58/5 * * * *', async () => {
       try {
         const { BoostService } = await import('./boost.service');
         const result = await BoostService.synchroniserTous(true);

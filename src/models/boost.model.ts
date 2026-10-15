@@ -204,9 +204,24 @@ export class BoostModel {
 
   /** Boosts en diffusion ; `echusSeulement` ne garde que ceux dont la date de fin est passée. */
   static async listerEnDiffusion(echusSeulement = false): Promise<Boost[]> {
+    // Échus : un boost dont la dernière synchro a échoué n'est retenté qu'après 30 min (pas toutes les 5 min)
     const { rows } = await query<Boost>(
       `SELECT * FROM boosts WHERE statut IN ('actif', 'en_pause') AND meta_campaign_id IS NOT NULL
-       ${echusSeulement ? 'AND date_fin IS NOT NULL AND date_fin <= NOW()' : ''} ORDER BY id`
+       ${echusSeulement ? "AND date_fin IS NOT NULL AND date_fin <= NOW() AND (meta_derniere_erreur IS NULL OR date_modification < NOW() - INTERVAL '30 minutes')" : ''}
+       ORDER BY id`
+    );
+    return rows;
+  }
+
+  /** Boosts terminés dont le bilan n'est pas encore définitif (ni remboursés, ni bilan final journalisé). */
+  static async listerBilansEnCours(): Promise<Boost[]> {
+    const { rows } = await query<Boost>(
+      `SELECT b.* FROM boosts b
+       WHERE b.statut = 'termine' AND b.meta_campaign_id IS NOT NULL AND b.date_cloture IS NOT NULL
+         AND b.date_cloture > NOW() - INTERVAL '48 hours'
+         AND b.statut_remboursement <> 'rembourse'
+         AND NOT EXISTS (SELECT 1 FROM boost_evenements e WHERE e.boost_id = b.id AND e.type_evenement = 'bilan_final')
+       ORDER BY b.id`
     );
     return rows;
   }
@@ -251,6 +266,17 @@ export class BoostModel {
 }
 
 export class BoostEvenementModel {
+  /** Montant « clôture » du dernier bilan (événement termine / bilan_provisoire), 0 s'il n'y en a pas. */
+  static async montantDerniereCloture(boostId: number): Promise<number> {
+    const { rows } = await query<{ montant: string | null }>(
+      `SELECT donnees->>'montant_a_rembourser_fcfa' AS montant FROM boost_evenements
+       WHERE boost_id = $1 AND type_evenement IN ('termine', 'bilan_provisoire')
+       ORDER BY id DESC LIMIT 1`,
+      [boostId]
+    );
+    return Number(rows[0]?.montant ?? 0) || 0;
+  }
+
   static async creer(
     boostId: number,
     typeEvenement: string,

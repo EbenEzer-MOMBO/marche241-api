@@ -12,7 +12,7 @@ import { Boost, BoostEvenement, BoostParametres, CiblageBoost, ObjectifBoost, Ty
 import { budgetJourMinimum, budgetParJour, devisDepuisTotal, estTotalDansBornes, formaterFcfa, totalMinimumPourMedia } from '../lib/boost/devis';
 import { notifier } from './telegram.service';
 import { EvenementNotification } from '../config/notifications.config';
-import { calculerCloture, fraisEncaissement, remboursementIntegral } from '../lib/boost/reliquat';
+import { bilanProvisoire, calculerCloture, DELAI_BILAN_MS, fraisEncaissement, montantApresBilan, remboursementIntegral } from '../lib/boost/reliquat';
 import { ajouterUtmBoost, estDestinationMarche241 } from '../lib/boost/utm';
 import { dateIso } from '../lib/boost/planning';
 import { estConformiteComplete } from '../config/conformite-boost.config';
@@ -651,23 +651,18 @@ export class BoostService {
     const remboursement = cloture.montant_a_rembourser_fcfa > 0 ? `À rembourser : ${formaterFcfa(cloture.montant_a_rembourser_fcfa)}` : null;
     if (vers === 'rejete_meta') {
       notifierBoost('boost_rejete_meta', resultat, 'Publicité rejetée par Meta', [`Motif : ${motif ?? 'non précisé'}`, remboursement]);
-    } else if (remboursement) {
-      notifierBoost('boost_a_rembourser', resultat, 'Boost terminé : reliquat à rembourser', [
-        `Dépensé : ${formaterFcfa(cloture.depense_fcfa)} sur ${formaterFcfa(boost.budget_media_fcfa)}`,
-        remboursement
-      ]);
     }
+    // Boost terminé : le remboursement reste provisoire 24 h (dépense Meta remontée en retard) ;
+    // la notification « à rembourser » part avec le bilan définitif (reglerBilans).
     return resultat;
   }
 
-  /** Synchronise insights + statut Meta d'un boost en diffusion, puis clôture si nécessaire. */
-  static async synchroniser(boost: Boost): Promise<'ok' | 'termine' | 'rejete_meta' | 'ignore'> {
-    if (!boost.meta_campaign_id || (boost.statut !== 'actif' && boost.statut !== 'en_pause')) return 'ignore';
+  /** Importe les insights Meta jour par jour depuis le début de la diffusion ; renvoie les totaux. */
+  static async importerInsights(boost: Boost) {
     const parametres = await BoostParametresModel.lire();
     const debut = boost.date_debut ? new Date(boost.date_debut) : new Date(boost.date_creation);
-    const aujourdhui = new Date();
     const devise = await deviseCompte();
-    const lignes = await lireInsights(boost.meta_campaign_id, dateIso(debut), dateIso(aujourdhui));
+    const lignes = await lireInsights(boost.meta_campaign_id as string, dateIso(debut), dateIso(new Date()));
     for (const ligne of lignes) {
       await BoostInsightModel.upsert(boost.id, {
         date: ligne.date,
@@ -680,7 +675,55 @@ export class BoostService {
         brut: ligne.brut
       });
     }
-    const totaux = await BoostInsightModel.totaux(boost.id);
+    return BoostInsightModel.totaux(boost.id);
+  }
+
+  /**
+   * Bilans des boosts terminés : pendant 24 h après la clôture, la dépense Meta (remontée en retard) est
+   * resynchronisée et le remboursement recalculé. Au-delà, le bilan devient définitif : événement
+   * `bilan_final` et notification « à rembourser » s'il reste un montant dû au vendeur.
+   */
+  static async reglerBilans(): Promise<{ examines: number; finalises: number; erreurs: number }> {
+    const boosts = await BoostModel.listerBilansEnCours();
+    let finalises = 0;
+    let erreurs = 0;
+    for (const boost of boosts) {
+      try {
+        const totaux = await BoostService.importerInsights(boost);
+        const cloture = calculerCloture(boost, totaux.depense_fcfa);
+        const ancienne = await BoostEvenementModel.montantDerniereCloture(boost.id);
+        const montant = montantApresBilan(boost.montant_a_rembourser_fcfa, ancienne, cloture.montant_a_rembourser_fcfa);
+        const final = !bilanProvisoire(boost);
+        if (cloture.depense_fcfa !== boost.depense_fcfa || montant !== boost.montant_a_rembourser_fcfa) {
+          await BoostModel.mettreAJour(boost.id, {
+            depense_fcfa: cloture.depense_fcfa,
+            montant_a_rembourser_fcfa: montant,
+            statut_remboursement: montant > 0 ? 'a_rembourser' : 'aucun'
+          });
+          if (!final) await BoostEvenementModel.creer(boost.id, 'bilan_provisoire', 'systeme', { ...cloture });
+        }
+        if (final) {
+          await BoostEvenementModel.creer(boost.id, 'bilan_final', 'systeme', { ...cloture, montant_total_a_rembourser_fcfa: montant });
+          finalises += 1;
+          if (montant > 0) {
+            notifierBoost('boost_a_rembourser', { ...boost, montant_a_rembourser_fcfa: montant }, 'Boost terminé : reliquat à rembourser', [
+              `Dépensé : ${formaterFcfa(cloture.depense_fcfa)} sur ${formaterFcfa(boost.budget_media_fcfa)}`,
+              `À rembourser : ${formaterFcfa(montant)}`
+            ]);
+          }
+        }
+      } catch (err: any) {
+        erreurs += 1;
+        logger.error(`[BoostService] Bilan du boost #${boost.id} en échec : ${err?.message}`);
+      }
+    }
+    return { examines: boosts.length, finalises, erreurs };
+  }
+
+  /** Synchronise insights + statut Meta d'un boost en diffusion, puis clôture si nécessaire. */
+  static async synchroniser(boost: Boost): Promise<'ok' | 'termine' | 'rejete_meta' | 'ignore'> {
+    if (!boost.meta_campaign_id || (boost.statut !== 'actif' && boost.statut !== 'en_pause')) return 'ignore';
+    const totaux = await BoostService.importerInsights(boost);
     const depense = Math.min(boost.budget_media_fcfa, totaux.depense_fcfa);
 
     let statutMeta: Awaited<ReturnType<typeof lireStatutPublicite>> | null = null;
@@ -694,6 +737,7 @@ export class BoostService {
     const misAJour = (await BoostModel.mettreAJour(boost.id, {
       depense_fcfa: depense,
       meta_statut_effectif: statutMeta?.effectiveStatus ?? boost.meta_statut_effectif,
+      meta_derniere_erreur: null,
       date_derniere_synchro: new Date()
     })) ?? boost;
 
@@ -701,8 +745,7 @@ export class BoostService {
       await BoostService.cloturer(misAJour, 'meta', 'rejete_meta', statutMeta.motif);
       return 'rejete_meta';
     }
-    const finAtteinte = boost.date_fin ? new Date(boost.date_fin).getTime() <= Date.now() : false;
-    if (finAtteinte || depense >= boost.budget_media_fcfa) {
+    if (estEchu(boost) || depense >= boost.budget_media_fcfa) {
       await BoostService.cloturer(misAJour, 'systeme', 'termine');
       return 'termine';
     }
@@ -717,8 +760,10 @@ export class BoostService {
   static async rafraichirSiPerime(boost: Boost): Promise<Boost> {
     if (!boost.meta_campaign_id || (boost.statut !== 'actif' && boost.statut !== 'en_pause')) return boost;
     const derniere = boost.date_derniere_synchro ? new Date(boost.date_derniere_synchro).getTime() : 0;
-    // Un boost échu est synchronisé (donc clôturé) à l'ouverture, même si les stats sont récentes
-    if (!estEchu(boost) && Date.now() - derniere < DELAI_FRAICHEUR_MS) return boost;
+    // Un boost échu est synchronisé (donc clôturé) à l'ouverture, même si les stats sont récentes,
+    // sauf si une synchro vient d'échouer (pas un appel Meta à chaque affichage)
+    const echecRecent = Boolean(boost.meta_derniere_erreur) && Date.now() - new Date(boost.date_modification).getTime() < DELAI_FRAICHEUR_MS;
+    if (estEchu(boost) ? echecRecent : Date.now() - derniere < DELAI_FRAICHEUR_MS) return boost;
     try {
       await BoostService.synchroniser(boost);
       return (await BoostModel.getById(boost.id)) ?? boost;
@@ -756,6 +801,14 @@ export class BoostService {
     const boost = await BoostModel.getById(boostId);
     if (!boost) throw introuvable();
     if (boost.statut_remboursement !== 'a_rembourser') throw new BoostErreur("Aucun remboursement en attente pour ce boost", 409, 'REMBOURSEMENT_INEXISTANT');
+    if (bilanProvisoire(boost)) {
+      const definitif = new Date(new Date(boost.date_cloture as unknown as string).getTime() + DELAI_BILAN_MS);
+      throw new BoostErreur(
+        `Montant provisoire : Meta peut encore ajuster la dépense jusqu'au ${definitif.toLocaleString('fr-FR', { timeZone: 'Africa/Libreville', dateStyle: 'short', timeStyle: 'short' })}. Remboursez après cette date.`,
+        409,
+        'BILAN_PROVISOIRE'
+      );
+    }
     const resultat = await BoostModel.mettreAJour(boost.id, {
       statut_remboursement: 'rembourse',
       date_remboursement: new Date(),

@@ -48,6 +48,26 @@ export function calculerCloture(montants: MontantsBoost, depenseFcfa: number): C
   };
 }
 
+/**
+ * Bilan d'un boost terminé : Meta remonte la dépense avec plusieurs heures de retard. Pendant
+ * `DELAI_BILAN_MS` après la clôture, la dépense est resynchronisée et le remboursement recalculé ;
+ * il n'est définitif (et remboursable) qu'ensuite.
+ */
+export const DELAI_BILAN_MS = 24 * 60 * 60 * 1000;
+
+export function bilanProvisoire(boost: { statut: string; date_cloture: Date | string | null }, maintenant = Date.now()): boolean {
+  if (boost.statut !== 'termine' || !boost.date_cloture) return false;
+  return maintenant - new Date(boost.date_cloture).getTime() < DELAI_BILAN_MS;
+}
+
+/**
+ * Montant total à rembourser après recalcul du bilan : la part « clôture » précédente est remplacée
+ * par la nouvelle, les autres crédits (paiement en double…) sont conservés.
+ */
+export function montantApresBilan(montantActuel: number, ancienneCloture: number, nouvelleCloture: number): number {
+  return Math.max(0, montantActuel - Math.max(0, ancienneCloture) + Math.max(0, nouvelleCloture));
+}
+
 /** Refus Marché 241 ou rejet Meta avant toute diffusion : tout est remboursé sauf les frais d'encaissement. */
 export function remboursementIntegral(montants: MontantsBoost): number {
   return Math.max(0, montants.total_fcfa - fraisRetenus(montants));
