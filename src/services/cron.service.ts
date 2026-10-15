@@ -35,6 +35,7 @@ export class CronService {
 
     // Synchronisation des boosts Meta (insights, revue Meta, clôture)
     this.scheduleSyncBoosts();
+    this.scheduleClotureBoostsEchus();
     this.scheduleRelancesBoosts();
 
     // Publicité interne : début/fin de diffusion, libération des semaines non payées
@@ -57,6 +58,10 @@ export class CronService {
         console.log(
           `[CronService] Synchro boosts : ${result.examines} examiné(s), ${result.termines} terminé(s), ${result.rejetes} rejeté(s) par Meta, ${result.erreurs} erreur(s)`
         );
+        const bilans = await BoostService.reglerBilans();
+        if (bilans.examines > 0) {
+          console.log(`[CronService] Bilans boosts : ${bilans.examines} en cours, ${bilans.finalises} finalisé(s), ${bilans.erreurs} erreur(s)`);
+        }
       } catch (error) {
         console.error('[CronService] Erreur lors de la synchro des boosts:', error);
       }
@@ -64,6 +69,31 @@ export class CronService {
 
     this.jobs.set(jobName, task);
     console.log(`[CronService] Tâche planifiée: ${jobName} - Toutes les heures`);
+  }
+
+  /**
+   * Clôture les boosts dont la date de fin est passée, toutes les 5 minutes : la synchro horaire laissait
+   * un boost « actif » chez nous jusqu'à une heure après la fin de diffusion sur Meta.
+   * Ne fait aucun appel Meta tant qu'aucun boost n'est échu.
+   */
+  static scheduleClotureBoostsEchus(): void {
+    const jobName = 'cloture-boosts-echus';
+
+    // 3, 8, 13… : jamais à la 20e minute, réservée à la synchro horaire (pas de double clôture)
+    const task = cron.schedule('3-58/5 * * * *', async () => {
+      try {
+        const { BoostService } = await import('./boost.service');
+        const result = await BoostService.synchroniserTous(true);
+        if (result.examines > 0) {
+          console.log(`[CronService] Clôture des boosts échus : ${result.examines} examiné(s), ${result.termines} terminé(s), ${result.erreurs} erreur(s)`);
+        }
+      } catch (error) {
+        console.error('[CronService] Erreur lors de la clôture des boosts échus:', error);
+      }
+    });
+
+    this.jobs.set(jobName, task);
+    console.log(`[CronService] Tâche planifiée: ${jobName} - Toutes les 5 minutes`);
   }
 
   /**

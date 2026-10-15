@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { calculerCloture, fraisEncaissement, remboursementIntegral } from './reliquat';
+import { calculerCloture, fraisEncaissement, remboursementIntegral, bilanProvisoire, montantApresBilan } from './reliquat';
 
 const montants = { total_fcfa: 30_000, budget_media_fcfa: 25_000, commission_fcfa: 5000, tva_fcfa: 0 };
 
@@ -60,4 +60,20 @@ test('dépense totale : rien à rembourser (les frais sont couverts par la commi
 
 test('boost soumis avant la règle (frais 0) : remboursement intégral inchangé', () => {
   assert.equal(remboursementIntegral({ ...montants, frais_encaissement_fcfa: 0 }), 30_000);
+});
+
+test('bilan provisoire pendant 24 h après la clôture d’un boost terminé', () => {
+  const maintenant = Date.parse('2026-10-16T12:00:00Z');
+  assert.equal(bilanProvisoire({ statut: 'termine', date_cloture: '2026-10-15T22:08:00Z' }, maintenant), true);
+  assert.equal(bilanProvisoire({ statut: 'termine', date_cloture: '2026-10-15T10:00:00Z' }, maintenant), false);
+  assert.equal(bilanProvisoire({ statut: 'rejete_meta', date_cloture: '2026-10-16T11:00:00Z' }, maintenant), false);
+  assert.equal(bilanProvisoire({ statut: 'termine', date_cloture: null }, maintenant), false);
+});
+
+test('montant après bilan : la part clôture est remplacée, les autres crédits conservés', () => {
+  // clôture provisoire 1 600 FCFA, la dépense remonte : plus rien à rembourser
+  assert.equal(montantApresBilan(1600, 1600, 0), 0);
+  // un paiement en double (3 000) reste dû, la part clôture passe de 1 600 à 400
+  assert.equal(montantApresBilan(4600, 1600, 400), 3400);
+  assert.equal(montantApresBilan(0, 0, 250), 250);
 });
