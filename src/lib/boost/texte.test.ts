@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ajouterLienBoutique, contientLienBoutique } from './texte';
+import { ajouterLienBoutique, contientLienBoutique, lienBoutiquePublic } from './texte';
 
 const lien = 'https://marche241.ga/kalia';
 
@@ -27,4 +27,15 @@ test('rien n’est ajouté si le vendeur a déjà mis le lien (avec ou sans http
 test('le lien d’une autre boutique au nom proche ne compte pas', () => {
   assert.equal(contientLienBoutique('Voir marche241.ga/kalia2', lien), false);
   assert.equal(contientLienBoutique('Voir marche241.ga/kalia-shop', lien), false);
+});
+
+test('lien public : origine Marché 241 du lien de destination, sinon le site officiel (jamais localhost)', () => {
+  assert.equal(lienBoutiquePublic('kalia', 'https://marche241.ga/kalia/produit/530?utm_source=x'), 'https://marche241.ga/kalia');
+  assert.equal(lienBoutiquePublic('kalia', 'http://localhost:3000/kalia'), 'https://marche241.ga/kalia');
+  assert.equal(lienBoutiquePublic('kalia', 'https://exemple.com/x'), 'https://marche241.ga/kalia');
+  assert.equal(lienBoutiquePublic('kalia', null), 'https://marche241.ga/kalia');
+});
+
+test('sans chemin de boutique, une simple mention du site ne compte pas', () => {
+  assert.equal(contientLienBoutique('Commandez sur marche241.ga', 'https://marche241.ga/'), false);
 });

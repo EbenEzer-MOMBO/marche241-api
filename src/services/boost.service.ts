@@ -14,7 +14,7 @@ import { notifier } from './telegram.service';
 import { EvenementNotification } from '../config/notifications.config';
 import { bilanProvisoire, calculerCloture, DELAI_BILAN_MS, fraisEncaissement, montantApresBilan, remboursementIntegral } from '../lib/boost/reliquat';
 import { ajouterUtmBoost, estDestinationMarche241 } from '../lib/boost/utm';
-import { ajouterLienBoutique } from '../lib/boost/texte';
+import { ajouterLienBoutique, lienBoutiquePublic } from '../lib/boost/texte';
 import { dateIso } from '../lib/boost/planning';
 import { estConformiteComplete } from '../config/conformite-boost.config';
 import {
@@ -478,7 +478,7 @@ export class BoostService {
       if (!boutique) throw introuvable();
       slugBoutique = boutique.slug;
       // Lien vers la boutique ajouté en fin de texte si le vendeur ne l'a pas déjà mis
-      texte = ajouterLienBoutique(texte, `${frontendUrl()}/${boutique.slug}`);
+      texte = ajouterLienBoutique(texte, lienBoutiquePublic(boutique.slug, boost.url_destination));
       try {
         page = await pagePourPublication(boutique.meta_page_id, boutique.meta_page_nom);
       } catch (err) {
@@ -557,6 +557,7 @@ export class BoostService {
       }
       await BoostEvenementModel.creer(boost.id, 'publie', 'admin', {
         valide_par: valideur,
+        lien_boutique_ajoute: Boolean(texte) && texte !== (boost.texte_principal ?? ''),
         dry_run: publication.dryRun,
         meta_campaign_id: publication.campaignId,
         meta_page_id: page?.pageId || boost.meta_page_id

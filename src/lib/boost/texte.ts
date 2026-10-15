@@ -17,9 +17,27 @@ export function contientLienBoutique(texte: string, lienBoutique: string): boole
   } catch {
     return false;
   }
+  // Sans chemin (slug vide), toute mention du site compterait : on exige le chemin de la boutique
+  if (!chemin) return false;
   // « marche241.ga/kalia » suivi d'une fin, d'un « / », « ? », « # » ou d'un espace (pas « kalia2 »)
   const motif = new RegExp(`(?:www\\.)?${echapper(hote)}${echapper(chemin)}(?![A-Za-z0-9_-])`, 'i');
   return motif.test(texte);
+}
+
+/**
+ * Lien public de la boutique : même origine que le lien de destination du boost s'il pointe vers
+ * Marché 241, sinon le site officiel. Jamais FRONTEND_URL, propre à l'environnement (localhost…).
+ */
+export function lienBoutiquePublic(slug: string, urlDestination: string | null | undefined): string {
+  let origine = 'https://marche241.ga';
+  try {
+    const url = new URL(urlDestination ?? '');
+    const hote = url.hostname.toLowerCase();
+    if (url.protocol === 'https:' && (hote === 'marche241.ga' || hote.endsWith('.marche241.ga'))) origine = url.origin;
+  } catch {
+    // lien absent ou invalide : site officiel
+  }
+  return `${origine}/${slug}`;
 }
 
 export function ajouterLienBoutique(texte: string, lienBoutique: string): string {
