@@ -153,9 +153,18 @@ export function messageBudgetInsuffisant(totalFcfa: number, dureeJours: number, 
  * Faut-il prévenir de la mise en ligne ? Uniquement au passage vers ACTIVE (pas si Meta l'était déjà
  * lors d'une synchro précédente, ex. boosts diffusés avant ce déploiement) et jamais en mode simulé.
  */
-export function doitNotifierMiseEnLigne(ancienStatutMeta: string | null | undefined, nouveauStatutMeta: string, dryRun: boolean): boolean {
-  if (dryRun) return false;
-  return normaliserStatutEffectif(nouveauStatutMeta) === 'actif' && normaliserStatutEffectif(ancienStatutMeta ?? '') !== 'actif';
+export function doitNotifierMiseEnLigne(
+  ancienStatutMeta: string | null | undefined,
+  nouveauStatutMeta: string,
+  dryRun: boolean,
+  dateValidation: Date | string | null = null,
+  maintenant = Date.now()
+): boolean {
+  if (dryRun || normaliserStatutEffectif(nouveauStatutMeta) !== 'actif') return false;
+  if (ancienStatutMeta) return normaliserStatutEffectif(ancienStatutMeta) !== 'actif';
+  // Statut jamais lu : on ne prévient que pour une pub validée il y a moins de 24 h (pas de notification
+  // tardive pour un boost en ligne depuis des jours dont la lecture du statut échouait)
+  return Boolean(dateValidation) && maintenant - new Date(dateValidation as string).getTime() < 24 * 60 * 60 * 1000;
 }
 
 type CanalNotification = 'ok' | 'simule' | 'echec' | 'sans_destinataire';
@@ -751,10 +760,11 @@ export class BoostService {
    * synchros tournent en parallèle), puis Telegram à l'équipe, e-mail et WhatsApp au vendeur au passage
    * en revue → ACTIVE. Ne lève jamais : un échec d'envoi ne bloque pas la synchro.
    */
-  static async traiterMiseEnLigne(boost: Boost, statutMeta: string): Promise<void> {
+  static async traiterMiseEnLigne(boost: Boost, statutMeta: string, depuisVerification = false): Promise<void> {
     if (normaliserStatutEffectif(statutMeta) !== 'actif') return;
+    if (!depuisVerification && normaliserStatutEffectif(boost.meta_statut_effectif ?? '') === 'actif') return;
     try {
-      const notifier = doitNotifierMiseEnLigne(boost.meta_statut_effectif, statutMeta, boost.dry_run);
+      const notifier = doitNotifierMiseEnLigne(boost.meta_statut_effectif, statutMeta, boost.dry_run, boost.date_validation);
       const evenementId = await BoostEvenementModel.marquerEnLigne(boost.id, { statut_meta: statutMeta, notifie: notifier });
       if (!evenementId || !notifier) return;
 
@@ -838,7 +848,7 @@ export class BoostService {
     for (const boost of boosts) {
       try {
         const statut = await lireStatutPublicite(boost.meta_ad_id as string);
-        await BoostService.traiterMiseEnLigne(boost, statut.effectiveStatus);
+        await BoostService.traiterMiseEnLigne(boost, statut.effectiveStatus, true);
         if (statut.effectiveStatus && statut.effectiveStatus !== boost.meta_statut_effectif) {
           await BoostModel.mettreAJour(boost.id, { meta_statut_effectif: statut.effectiveStatus });
         }
@@ -964,7 +974,11 @@ export class BoostService {
         insights,
         totaux,
         evenements: evenements
-          .filter((e) => EVENEMENTS_VENDEUR.has(e.type_evenement))
+          .filter(
+            (e) =>
+              EVENEMENTS_VENDEUR.has(e.type_evenement) &&
+              !(e.type_evenement === 'en_ligne' && (e.donnees as { notifie?: boolean } | null)?.notifie === false)
+          )
           .map(({ id, type_evenement, date_creation }) => ({ id, type_evenement, date_creation })),
         transactions: transactions.map(({ id, montant, statut, methode_paiement, date_creation, date_confirmation }) => ({
           id, montant, statut, methode_paiement, date_creation, date_confirmation

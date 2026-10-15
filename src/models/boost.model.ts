@@ -282,14 +282,21 @@ export class BoostEvenementModel {
    * créé, ou null s'il existait déjà. Appelé avant tout envoi pour qu'aucun canal ne parte deux fois.
    */
   static async marquerEnLigne(boostId: number, donnees: Record<string, unknown>): Promise<number | null> {
-    const { rows } = await query<{ id: number }>(
-      `INSERT INTO boost_evenements (boost_id, type_evenement, acteur, donnees)
-       SELECT $1, 'en_ligne', 'meta', $2::jsonb
-       WHERE NOT EXISTS (SELECT 1 FROM boost_evenements WHERE boost_id = $1 AND type_evenement = 'en_ligne')
-       RETURNING id`,
-      [boostId, JSON.stringify(donnees)]
-    );
-    return rows[0]?.id ?? null;
+    // Verrou par boost : deux synchros simultanées (tâche 5 min + ouverture du détail) ne peuvent pas
+    // insérer chacune un événement. La lecture se fait après l'attente du verrou (nouvel instantané).
+    return withTransaction(async (client) => {
+      await client.query(`SELECT pg_advisory_xact_lock(hashtext('boost_en_ligne'), $1)`, [boostId]);
+      const existe = await client.query(
+        `SELECT 1 FROM boost_evenements WHERE boost_id = $1 AND type_evenement = 'en_ligne' LIMIT 1`,
+        [boostId]
+      );
+      if (existe.rows.length) return null;
+      const { rows } = await client.query<{ id: number }>(
+        `INSERT INTO boost_evenements (boost_id, type_evenement, acteur, donnees) VALUES ($1, 'en_ligne', 'meta', $2::jsonb) RETURNING id`,
+        [boostId, JSON.stringify(donnees)]
+      );
+      return rows[0]?.id ?? null;
+    });
   }
 
   /** Complète les données d'un événement (ex. résultat des canaux de notification). */

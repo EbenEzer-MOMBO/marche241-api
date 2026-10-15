@@ -7,8 +7,12 @@ import { vendeurBoostEnLigneTemplate } from './email-templates';
 test('mise en ligne : prévenir une seule fois, au passage en revue → ACTIVE', () => {
   assert.equal(doitNotifierMiseEnLigne('PENDING_REVIEW', 'ACTIVE', false), true);
   assert.equal(doitNotifierMiseEnLigne('IN_PROCESS', 'ACTIVE', false), true);
-  // première synchro après validation : statut encore inconnu
-  assert.equal(doitNotifierMiseEnLigne(null, 'ACTIVE', false), true);
+  // première synchro après validation : statut encore inconnu, validation récente
+  const maintenant = Date.parse('2026-10-16T12:00:00Z');
+  assert.equal(doitNotifierMiseEnLigne(null, 'ACTIVE', false, '2026-10-16T10:00:00Z', maintenant), true);
+  // statut jamais lu sur un boost validé il y a 3 jours : pas de notification tardive
+  assert.equal(doitNotifierMiseEnLigne(null, 'ACTIVE', false, '2026-10-13T10:00:00Z', maintenant), false);
+  assert.equal(doitNotifierMiseEnLigne(null, 'ACTIVE', false, null, maintenant), false);
   // déjà en ligne (synchro suivante, boosts diffusés avant le déploiement) : rien
   assert.equal(doitNotifierMiseEnLigne('ACTIVE', 'ACTIVE', false), false);
   // toujours en revue, rejetée, ou mode simulé : rien
