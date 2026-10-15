@@ -87,6 +87,8 @@ export class CronService {
         if (result.examines > 0) {
           console.log(`[CronService] Clôture des boosts échus : ${result.examines} examiné(s), ${result.termines} terminé(s), ${result.erreurs} erreur(s)`);
         }
+        // Publicités validées en attente de la revue Meta : notification dès leur mise en ligne
+        await BoostService.verifierMisesEnLigne();
       } catch (error) {
         console.error('[CronService] Erreur lors de la clôture des boosts échus:', error);
       }

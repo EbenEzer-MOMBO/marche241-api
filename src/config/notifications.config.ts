@@ -17,6 +17,7 @@ export type GroupeNotification = (typeof GROUPES_NOTIFICATION)[number]['code'];
 
 export const EVENEMENTS_NOTIFICATION = [
   { code: 'boost_a_valider', groupe: 'boosts', nom: 'Boost payé à valider', emoji: '📣' },
+  { code: 'boost_en_ligne', groupe: 'boosts', nom: 'Publicité acceptée et en ligne sur Meta', emoji: '✅' },
   { code: 'boost_erreur_meta', groupe: 'boosts', nom: 'Erreur de publication Meta', emoji: '⚠️' },
   { code: 'boost_rejete_meta', groupe: 'boosts', nom: 'Publicité rejetée par Meta', emoji: '⛔' },
   { code: 'boost_a_rembourser', groupe: 'boosts', nom: 'Remboursement de boost à faire', emoji: '💸' },

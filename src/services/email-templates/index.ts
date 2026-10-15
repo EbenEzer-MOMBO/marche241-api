@@ -29,4 +29,6 @@ export { vendeurAvisVersementTemplate } from './vendeurAvisVersement';
 export type { VendeurAvisVersementData } from './vendeurAvisVersement';
 
 export { vendeurRelanceBoostsTemplate } from './vendeurRelanceBoosts';
+export { vendeurBoostEnLigneTemplate } from './vendeurBoostEnLigne';
+export type { VendeurBoostEnLigneData } from './vendeurBoostEnLigne';
 export type { VendeurRelanceBoostsData } from './vendeurRelanceBoosts';

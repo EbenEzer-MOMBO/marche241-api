@@ -213,6 +213,17 @@ export class BoostModel {
     return rows;
   }
 
+  /** Boosts publiés chez Meta pas encore constatés en ligne (aucun événement `en_ligne`). */
+  static async listerEnRevue(): Promise<Boost[]> {
+    const { rows } = await query<Boost>(
+      `SELECT b.* FROM boosts b
+       WHERE b.statut = 'actif' AND b.meta_ad_id IS NOT NULL AND b.dry_run = false
+         AND NOT EXISTS (SELECT 1 FROM boost_evenements e WHERE e.boost_id = b.id AND e.type_evenement = 'en_ligne')
+       ORDER BY b.id`
+    );
+    return rows;
+  }
+
   /** Boosts terminés dont le bilan n'est pas encore définitif (ni remboursés, ni bilan final journalisé). */
   static async listerBilansEnCours(): Promise<Boost[]> {
     const { rows } = await query<Boost>(
@@ -266,6 +277,29 @@ export class BoostModel {
 }
 
 export class BoostEvenementModel {
+  /**
+   * Journalise la mise en ligne une seule fois (insert conditionnel) : renvoie l'id de l'événement
+   * créé, ou null s'il existait déjà. Appelé avant tout envoi pour qu'aucun canal ne parte deux fois.
+   */
+  static async marquerEnLigne(boostId: number, donnees: Record<string, unknown>): Promise<number | null> {
+    const { rows } = await query<{ id: number }>(
+      `INSERT INTO boost_evenements (boost_id, type_evenement, acteur, donnees)
+       SELECT $1, 'en_ligne', 'meta', $2::jsonb
+       WHERE NOT EXISTS (SELECT 1 FROM boost_evenements WHERE boost_id = $1 AND type_evenement = 'en_ligne')
+       RETURNING id`,
+      [boostId, JSON.stringify(donnees)]
+    );
+    return rows[0]?.id ?? null;
+  }
+
+  /** Complète les données d'un événement (ex. résultat des canaux de notification). */
+  static async completer(evenementId: number, donnees: Record<string, unknown>): Promise<void> {
+    await query(`UPDATE boost_evenements SET donnees = COALESCE(donnees, '{}'::jsonb) || $2::jsonb WHERE id = $1`, [
+      evenementId,
+      JSON.stringify(donnees)
+    ]);
+  }
+
   /** Montant « clôture » du dernier bilan (événement termine / bilan_provisoire), 0 s'il n'y en a pas. */
   static async montantDerniereCloture(boostId: number): Promise<number> {
     const { rows } = await query<{ montant: string | null }>(
