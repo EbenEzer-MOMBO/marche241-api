@@ -202,9 +202,11 @@ export class BoostModel {
     return resultat;
   }
 
-  static async listerEnDiffusion(): Promise<Boost[]> {
+  /** Boosts en diffusion ; `echusSeulement` ne garde que ceux dont la date de fin est passée. */
+  static async listerEnDiffusion(echusSeulement = false): Promise<Boost[]> {
     const { rows } = await query<Boost>(
-      `SELECT * FROM boosts WHERE statut IN ('actif', 'en_pause') AND meta_campaign_id IS NOT NULL ORDER BY id`
+      `SELECT * FROM boosts WHERE statut IN ('actif', 'en_pause') AND meta_campaign_id IS NOT NULL
+       ${echusSeulement ? 'AND date_fin IS NOT NULL AND date_fin <= NOW()' : ''} ORDER BY id`
     );
     return rows;
   }

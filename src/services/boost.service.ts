@@ -142,6 +142,11 @@ export function messageBudgetInsuffisant(totalFcfa: number, dureeJours: number, 
   return `Budget publicitaire trop faible pour ${dureeJours} jours (${formaterFcfa(parJour)} par jour, minimum ${formaterFcfa(minimum)}) : augmentez le montant ou réduisez la durée`;
 }
 
+/** Date de fin de diffusion dépassée (le boost doit être clôturé sans attendre la synchro horaire). */
+export function estEchu(boost: Pick<Boost, 'date_fin'>, maintenant = Date.now()): boolean {
+  return Boolean(boost.date_fin) && new Date(boost.date_fin as unknown as string).getTime() <= maintenant;
+}
+
 /** Âge maximal des statistiques affichées avant un rafraîchissement à la demande (15 min). */
 const DELAI_FRAICHEUR_MS = 15 * 60 * 1000;
 
@@ -712,7 +717,8 @@ export class BoostService {
   static async rafraichirSiPerime(boost: Boost): Promise<Boost> {
     if (!boost.meta_campaign_id || (boost.statut !== 'actif' && boost.statut !== 'en_pause')) return boost;
     const derniere = boost.date_derniere_synchro ? new Date(boost.date_derniere_synchro).getTime() : 0;
-    if (Date.now() - derniere < DELAI_FRAICHEUR_MS) return boost;
+    // Un boost échu est synchronisé (donc clôturé) à l'ouverture, même si les stats sont récentes
+    if (!estEchu(boost) && Date.now() - derniere < DELAI_FRAICHEUR_MS) return boost;
     try {
       await BoostService.synchroniser(boost);
       return (await BoostModel.getById(boost.id)) ?? boost;
@@ -722,9 +728,13 @@ export class BoostService {
     }
   }
 
-  static async synchroniserTous(): Promise<{ examines: number; termines: number; rejetes: number; erreurs: number }> {
+  /** Synchronise les boosts en diffusion ; `echusSeulement` : clôture rapide de ceux dont la fin est passée. */
+  static async synchroniserTous(echusSeulement = false): Promise<{ examines: number; termines: number; rejetes: number; erreurs: number }> {
+    const boosts = await BoostModel.listerEnDiffusion(echusSeulement);
+    // La clôture rapide (toutes les 5 min) ne sollicite Meta que s'il y a un boost échu ; la synchro
+    // horaire vérifie la connexion dans tous les cas, comme avant.
+    if (echusSeulement && !boosts.length) return { examines: 0, termines: 0, rejetes: 0, erreurs: 0 };
     await verifierSiNecessaire();
-    const boosts = await BoostModel.listerEnDiffusion();
     let termines = 0;
     let rejetes = 0;
     let erreurs = 0;

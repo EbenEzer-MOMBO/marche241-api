@@ -60,7 +60,7 @@ Les requêtes de transactions qui joignent `commandes` excluent naturellement le
   - Plancher par jour : `budget_jour_min_fcfa` (tous objectifs) et `budget_jour_min_whatsapp_usd` (2,2 $US par défaut, converti avec `fx_xaf_par_usd`) : Meta refuse un ensemble optimisé pour les conversations WhatsApp sous 2 $US par jour (« doit être supérieur à 6,00 $US » sur 3 jours). Contrôlé au devis (`objectif`), à la soumission, au paiement et à l'approbation (`BOOST_BUDGET_INSUFFISANT`). Le budget Meta vient toujours du paiement du vendeur, marge déduite : il n'est jamais complété par Marché 241.
   - `advantage_audience: 0`.
   - Villes et centres d'intérêt : identifiants Meta **figés** et vérifiés dans `src/config/ciblage-boost.config.ts` (aucune recherche à la publication). L'estimation d'audience (`reachestimate`) utilise exactement le même ciblage. Les intérêts sont regroupés par thème (`groupes_interets` dans `GET /boosts/parametres`).
-- **Synchronisation** (`GET /cron/boosts/sync` et node-cron toutes les heures, à la 20e minute ; le détail vendeur/admin rafraîchit aussi les stats datant de plus de 15 min) :
+- **Synchronisation** (`GET /cron/boosts/sync` et node-cron toutes les heures, à la 20e minute ; clôture des boosts échus toutes les 5 min ; le détail vendeur/admin rafraîchit les stats de plus de 15 min et clôture un boost échu dès son ouverture) :
   - insights jour par jour (`time_increment=1`) depuis la date de début ;
   - lecture du statut effectif de la publicité : `DISAPPROVED` entraîne `rejete_meta` ;
   - clôture automatique à la date de fin ou quand le budget est épuisé.
