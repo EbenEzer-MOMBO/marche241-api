@@ -6,6 +6,7 @@ import { StatutCommande, StatutPaiement, MethodePaiement } from '../lib/database
 import { WhatsAppService } from '../services/whatsapp.service';
 import { PushService } from '../services/push.service';
 import { logger } from '../utils/logger';
+import { stockDisponibleSelection } from '../utils/stock-variant';
 import {
   extraireParticipantsDepuisArticle,
   isProduitEvenement,
@@ -99,45 +100,9 @@ export class CommandeController {
           if (article.variants_selectionnes && produit.variants) {
             logger.debug('[createCommande] Vérification du stock pour les variants:', article.variants_selectionnes);
             
-            // Calculer le stock disponible pour ces variants spécifiques
-            let stockDisponible = produit.quantite_stock || 0;
-            
-            const variantsData = produit.variants as any;
-            
-            // Vérifier si un variant spécifique est sélectionné (nouveau format)
-            if (article.variants_selectionnes.variant && variantsData.variants && Array.isArray(variantsData.variants)) {
-              const variantSelectionne = article.variants_selectionnes.variant;
-              logger.debug('[createCommande] Variant sélectionné (nouveau format):', variantSelectionne);
-              
-              const variantProduit = variantsData.variants.find((v: any) => v.nom === variantSelectionne.nom);
-              
-              if (variantProduit && typeof variantProduit.quantite === 'number') {
-                stockDisponible = Math.min(stockDisponible, variantProduit.quantite);
-                logger.debug(`[createCommande] Stock pour variant ${variantProduit.nom}: ${variantProduit.quantite}`);
-              }
-            } else {
-              // Support de l'ancien format pour rétrocompatibilité
-              logger.debug('[createCommande] Ancien format de variants détecté');
-              for (const [nomVariant, optionSelectionnee] of Object.entries(article.variants_selectionnes)) {
-                if (nomVariant === 'variant' || nomVariant === 'options' || nomVariant === 'participants') continue; // Skip nouveau format et fiches participants
-                
-                const variant = Array.isArray(produit.variants)
-                  ? produit.variants.find((v: any) => v.nom === nomVariant)
-                  : undefined;
-                
-                if (variant && variant.options && variant.quantites) {
-                  const indexOption = variant.options.indexOf(optionSelectionnee);
-                  
-                  if (indexOption !== -1 && variant.quantites[indexOption] !== undefined) {
-                    const quantiteVariant = variant.quantites[indexOption];
-                    stockDisponible = Math.min(stockDisponible, quantiteVariant);
-                    logger.debug(`[createCommande] Stock pour ${nomVariant}=${optionSelectionnee}: ${quantiteVariant}`);
-                  }
-                }
-              }
-            }
-            
-            logger.debug('[createCommande] Stock disponible calculé:', stockDisponible);
+          // Stock du variant choisi (champ stock des billets/tailles, ancien format quantite…) borné par le stock global
+          const stockDisponible = stockDisponibleSelection(produit, article.variants_selectionnes);
+          logger.debug('[createCommande] Stock disponible calculé:', stockDisponible);
             
             // Vérifier si la quantité demandée est disponible
             if (article.quantite > stockDisponible) {
@@ -688,44 +653,8 @@ export class CommandeController {
         if (article.variants_selectionnes && produit.variants) {
           logger.debug('[initierPaiement] Vérification du stock pour les variants:', article.variants_selectionnes);
           
-          // Calculer le stock disponible pour ces variants spécifiques
-          let stockDisponible = produit.quantite_stock || 0;
-          
-          const variantsData = produit.variants as any;
-          
-          // Vérifier si un variant spécifique est sélectionné (nouveau format)
-          if (article.variants_selectionnes.variant && variantsData.variants && Array.isArray(variantsData.variants)) {
-            const variantSelectionne = article.variants_selectionnes.variant;
-            logger.debug('[initierPaiement] Variant sélectionné (nouveau format):', variantSelectionne);
-            
-            const variantProduit = variantsData.variants.find((v: any) => v.nom === variantSelectionne.nom);
-            
-            if (variantProduit && typeof variantProduit.quantite === 'number') {
-              stockDisponible = Math.min(stockDisponible, variantProduit.quantite);
-              logger.debug(`[initierPaiement] Stock pour variant ${variantProduit.nom}: ${variantProduit.quantite}`);
-            }
-          } else {
-            // Support de l'ancien format pour rétrocompatibilité
-            logger.debug('[initierPaiement] Ancien format de variants détecté');
-            for (const [nomVariant, optionSelectionnee] of Object.entries(article.variants_selectionnes)) {
-              if (nomVariant === 'variant' || nomVariant === 'options' || nomVariant === 'participants') continue; // Skip nouveau format et fiches participants
-              
-              const variant = Array.isArray(produit.variants)
-                  ? produit.variants.find((v: any) => v.nom === nomVariant)
-                  : undefined;
-              
-              if (variant && variant.options && variant.quantites) {
-                const indexOption = variant.options.indexOf(optionSelectionnee);
-                
-                if (indexOption !== -1 && variant.quantites[indexOption] !== undefined) {
-                  const quantiteVariant = variant.quantites[indexOption];
-                  stockDisponible = Math.min(stockDisponible, quantiteVariant);
-                  logger.debug(`[initierPaiement] Stock pour ${nomVariant}=${optionSelectionnee}: ${quantiteVariant}`);
-                }
-              }
-            }
-          }
-          
+          // Stock du variant choisi (champ stock des billets/tailles, ancien format quantite…) borné par le stock global
+          const stockDisponible = stockDisponibleSelection(produit, article.variants_selectionnes);
           logger.debug('[initierPaiement] Stock disponible calculé:', stockDisponible);
           
           // Vérifier si la quantité demandée est disponible

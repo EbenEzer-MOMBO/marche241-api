@@ -37,6 +37,29 @@ function notifierEquipeCommande(commande: Commande, montantPaye: number, systeme
   })().catch(() => undefined);
 }
 
+/** Paiement reçu mais commande non confirmée : trace sur la transaction + alerte Telegram de l'équipe (jamais bloquant). */
+async function signalerCommandeARegulariser(
+  commande: Commande,
+  transactionId: number,
+  montantPaye: number,
+  raison: string
+): Promise<void> {
+  logger.error(`[PaiementController] Commande ${commande.numero_commande} payée mais non confirmée: ${raison}`);
+  await TransactionModel.updateTransaction(transactionId, {
+    notes: `ANOMALIE : paiement reçu, commande non confirmée (${raison}). Régularisation ou remboursement à faire.`
+  }).catch((err: any) => logger.error('[PaiementController] Annotation de la transaction impossible:', err?.message));
+
+  void notifier('commande_a_regulariser', {
+    titre: `Commande ${commande.numero_commande} payée mais non confirmée`,
+    lignes: [
+      `Payé : ${formaterFcfa(montantPaye)}`,
+      `Client : ${commande.client_nom} (${commande.client_telephone})`,
+      `Cause : ${raison}`
+    ],
+    lien: '/commandes'
+  }).catch(() => undefined);
+}
+
 export class PaiementController {
   private static ebillingTokenCache: { value: string; expiresAt: number } | null = null;
 
@@ -684,7 +707,22 @@ export class PaiementController {
           );
 
           if (nouveauStatutCommande !== commande.statut) {
-            await CommandeModel.updateCommandeStatus(transaction.commande_id, nouveauStatutCommande);
+            try {
+              await CommandeModel.updateCommandeStatus(transaction.commande_id, nouveauStatutCommande);
+            } catch (confirmationError: any) {
+              // Le paiement est réel mais la commande n'a pas pu être confirmée (ex. stock épuisé entre-temps) :
+              // on ne le présente pas comme un échec au client et on alerte l'équipe pour régulariser ou rembourser.
+              await signalerCommandeARegulariser(
+                commande, transaction.id, montantPaye, confirmationError?.message ?? String(confirmationError)
+              );
+              return {
+                success: true,
+                needsReview: true,
+                message: "Votre paiement a bien été reçu, mais votre commande n'a pas pu être confirmée (article momentanément indisponible). Notre équipe vous contacte pour la régulariser ou vous rembourser.",
+                billState: billState,
+                transaction: await TransactionModel.getTransactionById(transaction.id)
+              };
+            }
           }
 
           if (commande.client_telephone) {
