@@ -49,7 +49,9 @@ const input: PublicationInput = {
   texte: 'Découvrez nos nouveautés',
   titre: 'Ma boutique',
   imageUrl: 'https://cdn.marche241.ga/x.jpg',
-  fxXafParUsd: 600
+  fxXafParUsd: 600,
+  pageId: 'page_1',
+  instagramId: null
 };
 
 /** Connexion vérifiée et prête (ligne meta_connexion simulée). */
@@ -162,6 +164,39 @@ test('activation : campagne, ensemble et publicité passent en ACTIVE', async ()
   const posts = appels.filter((a) => a.method === 'POST');
   assert.deepEqual(posts.map((a) => a.path), ['c1', 's1', 'a1']);
   for (const p of posts) assert.equal(p.body.status, 'ACTIVE');
+});
+
+test('publication : page et Instagram de la boutique, pas ceux de la connexion', async () => {
+  definirMetaConfigPourTests({
+    dryRun: false,
+    appSecret: 'secret-test',
+    pageId: 'page_plateforme',
+    instagramId: 'ig_plateforme',
+    connexion: { ...connexionPrete, page_id: 'page_plateforme', instagram_id: 'ig_plateforme' }
+  });
+  installerFetch('XAF');
+  await publierBoost({ ...input, pageId: 'page_boutique', instagramId: 'ig_boutique' });
+  const creative = JSON.parse(appels.filter((a) => a.method === 'POST')[2].body.creative);
+  assert.equal(creative.object_story_spec.page_id, 'page_boutique');
+  assert.equal(creative.object_story_spec.instagram_user_id, 'ig_boutique');
+});
+
+test('publication sans Instagram sur la page : le champ est omis, promoted_object utilise la page boutique', async () => {
+  definirMetaConfigPourTests({
+    dryRun: false,
+    appSecret: 'secret-test',
+    devise: 'XAF',
+    pageId: 'page_plateforme',
+    instagramId: 'ig_plateforme',
+    connexion: { ...connexionPrete, page_id: 'page_plateforme', instagram_id: 'ig_plateforme' }
+  });
+  installerFetch('XAF');
+  await publierBoost({ ...input, objectif: 'notoriete', pageId: 'page_boutique', instagramId: null });
+  const posts = appels.filter((a) => a.method === 'POST');
+  assert.deepEqual(JSON.parse(posts[1].body.promoted_object), { page_id: 'page_boutique' });
+  const creative = JSON.parse(posts[2].body.creative);
+  assert.equal(creative.object_story_spec.page_id, 'page_boutique');
+  assert.equal(creative.object_story_spec.instagram_user_id, undefined);
 });
 
 test('publication WhatsApp : lien wa.me et promoted_object page', async () => {

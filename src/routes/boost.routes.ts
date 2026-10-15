@@ -124,7 +124,7 @@ router.put('/admin/parametres', ...admin, validate(parametresBoostSchema), Boost
  *     tags: [Boosts]
  *     security: [{ serviceKey: [] }]
  *     responses:
- *       200: { description: "{ success, decouverte: { comptes[], pages[], suggestion } }" }
+ *       200: { description: "{ success, decouverte: { comptes[], pages[], suggestion, page_defaut } }" }
  *       409: { description: META_SECRETS_MANQUANTS }
  *       502: { description: Erreur Meta (message lisible) }
  * /boosts/admin/meta/connexion:
@@ -177,7 +177,7 @@ router.get('/admin/:id', ...admin, validateParams(boostIdParamSchema), BoostCont
  * @swagger
  * /boosts/admin/{id}/approuver:
  *   post:
- *     summary: Valider un boost payé (ou republier un boost en erreur) et le publier sur Meta
+ *     summary: Valider un boost payé (ou republier un boost en erreur) et le publier sur la Page de la boutique, ou la page Marché 241
  *     tags: [Boosts]
  *     security: [{ serviceKey: [] }]
  *     parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]

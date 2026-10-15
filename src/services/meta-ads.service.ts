@@ -132,6 +132,10 @@ export interface PublicationInput {
   description?: string | null;
   imageUrl: string;
   fxXafParUsd: number;
+  /** Page qui porte la créa. Vide seulement en mode simulé, si aucune page n'est configurée. */
+  pageId: string;
+  /** Instagram de cette page. Null : la pub reste sur Facebook. */
+  instagramId: string | null;
 }
 
 export interface PublicationResult {
@@ -166,7 +170,9 @@ export async function publierBoost(input: PublicationInput): Promise<Publication
   }
 
   const config = await exigerConnexionPrete();
-  const { accessToken: token, adAccountId: actId, pageId } = config;
+  const { accessToken: token, adAccountId: actId } = config;
+  const pageId = input.pageId;
+  if (!pageId) throw new MetaGraphError('Page Facebook manquante', 'ads');
   const opts = optionsGraph(config);
   const devise = await deviseCompte(config);
   const meta = objectifMeta(input.objectif);
@@ -220,7 +226,7 @@ export async function publierBoost(input: PublicationInput): Promise<Publication
       call_to_action: { type: meta.cta, value: { link: lien } }
     }
   };
-  if (config.instagramId) objectStorySpec.instagram_user_id = config.instagramId;
+  if (input.instagramId) objectStorySpec.instagram_user_id = input.instagramId;
 
   const adId = await metaGraphPost(
     `act_${actId}/ads`,

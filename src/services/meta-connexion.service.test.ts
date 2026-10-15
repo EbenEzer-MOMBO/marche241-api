@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { configDepuis, decouvrir, evaluerConnexion, MetaConfig, normaliserDecouverte } from './meta-connexion.service';
+import { configDepuis, decouvrir, evaluerConnexion, MetaConfig, normaliserDecouverte, pagePublicationDepuisDecouverte } from './meta-connexion.service';
 import { MetaConnexion } from '../lib/database-types';
 
 const ENV = ['META_APP_ID', 'META_APP_SECRET', 'META_ACCESS_TOKEN', 'META_DRY_RUN'];
@@ -112,4 +112,18 @@ test('decouvrir : secrets manquants → 409 sans appel Meta', async () => {
   }) as typeof fetch;
   await assert.rejects(() => decouvrir(), (err: any) => err.code === 'META_SECRETS_MANQUANTS' && err.statusHttp === 409);
   assert.equal(appels, 0);
+});
+
+const pages = [
+  { id: 'plateforme', nom: 'Marché 241', instagram: { id: 'ig_p', nom: 'marche241' } },
+  { id: 'vendeur', nom: 'Chez Awa', instagram: null }
+];
+
+test('page de publication : boutique si liée, sinon page Marché 241, Instagram de cette page', () => {
+  const vendeur = pagePublicationDepuisDecouverte(pages, 'vendeur', 'plateforme');
+  assert.equal(vendeur.pageId, 'vendeur');
+  assert.equal(vendeur.instagramId, null);
+  const defaut = pagePublicationDepuisDecouverte(pages, null, 'plateforme');
+  assert.deepEqual(defaut, { pageId: 'plateforme', pageNom: 'Marché 241', instagramId: 'ig_p', instagramNom: 'marche241' });
+  assert.throws(() => pagePublicationDepuisDecouverte(pages, 'absente', 'plateforme'), (err: any) => err.code === 'PAGE_META_INDISPONIBLE');
 });
