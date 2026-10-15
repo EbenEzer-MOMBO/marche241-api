@@ -25,6 +25,7 @@ import {
   exigerConnexionPrete,
   lireInsights,
   lireStatutPublicite,
+  normaliserStatutEffectif,
   objectifMeta,
   publierBoost
 } from './meta-ads.service';
@@ -39,6 +40,10 @@ import {
 } from './meta-connexion.service';
 import { PaiementController } from '../controllers/paiement.controller';
 import { logger } from '../utils/logger';
+import { EmailService } from './email.service';
+import { WhatsAppService } from './whatsapp.service';
+import { VendeurModel } from '../models/vendeur.model';
+import { buildBoostEnLigneComponents, TEMPLATE_BOOST_EN_LIGNE } from './whatsapp-templates-boost';
 
 /**
  * Orchestration métier du boost publicitaire Meta (port du cycle de boost_meta, adapté au paiement à l'acte).
@@ -103,6 +108,7 @@ const EVENEMENTS_VENDEUR = new Set([
   'paiement_en_double',
   'paiement_hors_file',
   'publie',
+  'en_ligne',
   'refuse',
   'rejete_meta',
   'pause',
@@ -142,6 +148,29 @@ export function messageBudgetInsuffisant(totalFcfa: number, dureeJours: number, 
   }
   return `Budget publicitaire trop faible pour ${dureeJours} jours (${formaterFcfa(parJour)} par jour, minimum ${formaterFcfa(minimum)}) : augmentez le montant ou réduisez la durée`;
 }
+
+/**
+ * Faut-il prévenir de la mise en ligne ? Uniquement au passage vers ACTIVE (pas si Meta l'était déjà
+ * lors d'une synchro précédente, ex. boosts diffusés avant ce déploiement) et jamais en mode simulé.
+ */
+export function doitNotifierMiseEnLigne(
+  ancienStatutMeta: string | null | undefined,
+  nouveauStatutMeta: string,
+  dryRun: boolean,
+  dateValidation: Date | string | null = null,
+  maintenant = Date.now()
+): boolean {
+  if (dryRun || normaliserStatutEffectif(nouveauStatutMeta) !== 'actif') return false;
+  if (ancienStatutMeta) return normaliserStatutEffectif(ancienStatutMeta) !== 'actif';
+  // Statut jamais lu : on ne prévient que pour une pub validée il y a moins de 24 h (pas de notification
+  // tardive pour un boost en ligne depuis des jours dont la lecture du statut échouait)
+  return Boolean(dateValidation) && maintenant - new Date(dateValidation as string).getTime() < 24 * 60 * 60 * 1000;
+}
+
+type CanalNotification = 'ok' | 'simule' | 'echec' | 'sans_destinataire';
+
+const dateCourte = (d: Date | string | null) =>
+  d ? new Date(d).toLocaleDateString('fr-FR', { timeZone: 'Africa/Libreville', day: 'numeric', month: 'long' }) : '-';
 
 /** Date de fin de diffusion dépassée (le boost doit être clôturé sans attendre la synchro horaire). */
 export function estEchu(boost: Pick<Boost, 'date_fin'>, maintenant = Date.now()): boolean {
@@ -726,6 +755,111 @@ export class BoostService {
     return { examines: boosts.length, finalises, erreurs };
   }
 
+  /**
+   * Premier constat « en ligne » d'un boost : événement `en_ligne` (une seule fois, même si plusieurs
+   * synchros tournent en parallèle), puis Telegram à l'équipe, e-mail et WhatsApp au vendeur au passage
+   * en revue → ACTIVE. Ne lève jamais : un échec d'envoi ne bloque pas la synchro.
+   */
+  static async traiterMiseEnLigne(boost: Boost, statutMeta: string, depuisVerification = false): Promise<void> {
+    if (normaliserStatutEffectif(statutMeta) !== 'actif') return;
+    if (!depuisVerification && normaliserStatutEffectif(boost.meta_statut_effectif ?? '') === 'actif') return;
+    try {
+      const notifier = doitNotifierMiseEnLigne(boost.meta_statut_effectif, statutMeta, boost.dry_run, boost.date_validation);
+      const evenementId = await BoostEvenementModel.marquerEnLigne(boost.id, { statut_meta: statutMeta, notifie: notifier });
+      if (!evenementId || !notifier) return;
+
+      notifierBoost('boost_en_ligne', boost, 'Publicité acceptée par Meta et en ligne', [
+        `Objectif : ${LIBELLES_OBJECTIF[boost.objectif] ?? boost.objectif}`,
+        `Payé : ${formaterFcfa(boost.total_fcfa)} · budget Meta ${formaterFcfa(boost.budget_media_fcfa)}`,
+        `Diffusion : du ${dateCourte(boost.date_debut)} au ${dateCourte(boost.date_fin)}`
+      ]);
+
+      const [vendeur, boutique] = await Promise.all([
+        VendeurModel.getVendeurById(boost.vendeur_id).catch(() => null),
+        BoutiqueModel.getBoutiqueById(boost.boutique_id).catch(() => null)
+      ]);
+      const slug = boutique?.slug ?? String(boost.boutique_id);
+      const titre = boost.titre || boost.nom;
+      const canalEmail = await BoostService.envoyerEmailEnLigne(boost, vendeur?.email, vendeur?.nom, boutique?.nom ?? slug, slug, titre);
+      const canalWhatsapp = await BoostService.envoyerWhatsappEnLigne(boost, vendeur?.telephone, vendeur?.nom, slug, titre);
+      await BoostEvenementModel.completer(evenementId, { canal_email: canalEmail, canal_whatsapp: canalWhatsapp });
+    } catch (err: any) {
+      logger.error(`[BoostService] Notification de mise en ligne du boost #${boost.id} en échec : ${err?.message}`);
+    }
+  }
+
+  private static async envoyerEmailEnLigne(
+    boost: Boost,
+    email: string | null | undefined,
+    nom: string | null | undefined,
+    boutiqueNom: string,
+    slug: string,
+    titre: string
+  ): Promise<CanalNotification> {
+    if (!email) return 'sans_destinataire';
+    try {
+      await EmailService.envoyerBoostEnLigne(email, {
+        vendeurNom: nom || 'cher vendeur',
+        boutiqueNom,
+        titrePub: titre,
+        objectif: LIBELLES_OBJECTIF[boost.objectif] ?? boost.objectif,
+        budget: formaterFcfa(boost.budget_media_fcfa),
+        dateDebut: dateCourte(boost.date_debut),
+        dateFin: dateCourte(boost.date_fin),
+        lienSuivi: `${frontendUrl()}/admin/${slug}/boost/${boost.id}`
+      });
+      return process.env.RESEND_API_KEY ? 'ok' : 'simule';
+    } catch (err: any) {
+      logger.error(`[BoostService] E-mail de mise en ligne du boost #${boost.id} : ${err?.message}`);
+      return 'echec';
+    }
+  }
+
+  private static async envoyerWhatsappEnLigne(
+    boost: Boost,
+    telephone: string | null | undefined,
+    nom: string | null | undefined,
+    slug: string,
+    titre: string
+  ): Promise<CanalNotification> {
+    if (!telephone) return 'sans_destinataire';
+    if (!WhatsAppService.isMetaConfigured()) return 'simule';
+    try {
+      const id = await WhatsAppService.sendTemplateMessage(
+        telephone,
+        TEMPLATE_BOOST_EN_LIGNE.name,
+        TEMPLATE_BOOST_EN_LIGNE.language,
+        buildBoostEnLigneComponents({ vendeur: nom || 'bonjour', titre, dateFin: dateCourte(boost.date_fin), slug, boostId: boost.id })
+      );
+      return id ? 'ok' : 'echec';
+    } catch (err: any) {
+      logger.error(`[BoostService] WhatsApp de mise en ligne du boost #${boost.id} : ${err?.message}`);
+      return 'echec';
+    }
+  }
+
+  /**
+   * Vérification rapide (tâche 5 min) des boosts publiés pas encore constatés en ligne : lecture du
+   * seul statut de la publicité. Aucun appel Meta s'il n'y en a pas.
+   */
+  static async verifierMisesEnLigne(): Promise<{ examines: number; erreurs: number }> {
+    const boosts = await BoostModel.listerEnRevue();
+    let erreurs = 0;
+    for (const boost of boosts) {
+      try {
+        const statut = await lireStatutPublicite(boost.meta_ad_id as string);
+        await BoostService.traiterMiseEnLigne(boost, statut.effectiveStatus, true);
+        if (statut.effectiveStatus && statut.effectiveStatus !== boost.meta_statut_effectif) {
+          await BoostModel.mettreAJour(boost.id, { meta_statut_effectif: statut.effectiveStatus });
+        }
+      } catch (err: any) {
+        erreurs += 1;
+        logger.warn(`[BoostService] Statut Meta du boost #${boost.id} illisible : ${err?.message}`);
+      }
+    }
+    return { examines: boosts.length, erreurs };
+  }
+
   /** Synchronise insights + statut Meta d'un boost en diffusion, puis clôture si nécessaire. */
   static async synchroniser(boost: Boost): Promise<'ok' | 'termine' | 'rejete_meta' | 'ignore'> {
     if (!boost.meta_campaign_id || (boost.statut !== 'actif' && boost.statut !== 'en_pause')) return 'ignore';
@@ -740,6 +874,7 @@ export class BoostService {
         logger.warn(`[BoostService] Statut Meta du boost #${boost.id} illisible : ${err?.message}`);
       }
     }
+    if (statutMeta) await BoostService.traiterMiseEnLigne(boost, statutMeta.effectiveStatus);
     const misAJour = (await BoostModel.mettreAJour(boost.id, {
       depense_fcfa: depense,
       meta_statut_effectif: statutMeta?.effectiveStatus ?? boost.meta_statut_effectif,
@@ -839,7 +974,11 @@ export class BoostService {
         insights,
         totaux,
         evenements: evenements
-          .filter((e) => EVENEMENTS_VENDEUR.has(e.type_evenement))
+          .filter(
+            (e) =>
+              EVENEMENTS_VENDEUR.has(e.type_evenement) &&
+              !(e.type_evenement === 'en_ligne' && (e.donnees as { notifie?: boolean } | null)?.notifie === false)
+          )
           .map(({ id, type_evenement, date_creation }) => ({ id, type_evenement, date_creation })),
         transactions: transactions.map(({ id, montant, statut, methode_paiement, date_creation, date_confirmation }) => ({
           id, montant, statut, methode_paiement, date_creation, date_confirmation

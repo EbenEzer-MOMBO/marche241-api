@@ -90,6 +90,13 @@ export class CronService {
       } catch (error) {
         console.error('[CronService] Erreur lors de la clôture des boosts échus:', error);
       }
+      try {
+        // Publicités validées en attente de la revue Meta : notification dès leur mise en ligne
+        const { BoostService } = await import('./boost.service');
+        await BoostService.verifierMisesEnLigne();
+      } catch (error) {
+        console.error('[CronService] Erreur lors de la vérification des mises en ligne:', error);
+      }
     });
 
     this.jobs.set(jobName, task);

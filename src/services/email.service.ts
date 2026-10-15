@@ -11,6 +11,7 @@ import {
   vendeurEvenementPublieTemplate,
   vendeurEvenementRefuseTemplate,
   vendeurAvisVersementTemplate,
+  vendeurBoostEnLigneTemplate
 } from './email-templates';
 
 const RESEND_API_URL = 'https://api.resend.com/emails';
@@ -221,6 +222,12 @@ export class EmailService {
       motif: data.motif,
       dashboardUrl: `${frontendUrl}/admin/${data.boutiqueSlug}/evenements/${data.produitId}`,
     });
+    await this.send(email, subject, html, text);
+  }
+
+  /** Publicité acceptée par Meta et en diffusion. */
+  static async envoyerBoostEnLigne(email: string, data: Parameters<typeof vendeurBoostEnLigneTemplate>[0]): Promise<void> {
+    const { subject, html, text } = vendeurBoostEnLigneTemplate(data);
     await this.send(email, subject, html, text);
   }
 
