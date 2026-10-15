@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { BoostModel, BoostParametresModel, BoostRelanceModel } from '../models/boost.model';
+import { MetaConnexionModel } from '../models/meta-connexion.model';
 import { BoostRelanceService, verifierJeton } from '../services/boost-relance.service';
 import { PubliciteParametresModel } from '../models/publicite.model';
 import { BoutiqueModel } from '../models/boutique.model';
@@ -453,7 +454,15 @@ export class BoostController {
 
   static async decouverteMeta(_req: Request, res: Response): Promise<void> {
     try {
-      res.json({ success: true, decouverte: await decouvrir() });
+      const decouverte = await decouvrir();
+      const connexion = await MetaConnexionModel.lire();
+      res.json({
+        success: true,
+        decouverte: {
+          ...decouverte,
+          page_defaut: connexion?.page_id ? { id: connexion.page_id, nom: connexion.page_nom } : null
+        }
+      });
     } catch (err) {
       repondreErreur(res, err, 'la découverte des comptes Meta');
     }

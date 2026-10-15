@@ -169,6 +169,38 @@ export interface DecouverteMeta {
   suggestion: { ad_account_id: string | null; page_id: string | null };
 }
 
+export interface PagePublication {
+  pageId: string;
+  pageNom: string;
+  instagramId: string | null;
+  instagramNom: string | null;
+}
+
+/**
+ * Page qui portera la pub : celle de la boutique si elle est renseignée, sinon la page Marché 241.
+ * Elle doit figurer dans la découverte. L'Instagram est celui de cette page.
+ */
+export function pagePublicationDepuisDecouverte(
+  pages: PageDecouverte[],
+  pageBoutiqueId: string | null,
+  pageDefautId: string
+): PagePublication {
+  const id = pageBoutiqueId || pageDefautId;
+  const page = pages.find((p) => p.id === id);
+  if (!page) {
+    const message = pageBoutiqueId
+      ? "La Page Facebook de la boutique n'est plus accessible avec le jeton Meta. Mettez à jour la fiche boutique."
+      : "La Page Facebook Marché 241 n'est pas accessible avec le jeton Meta.";
+    throw new MetaConnexionErreur(message, 409, 'PAGE_META_INDISPONIBLE');
+  }
+  return {
+    pageId: page.id,
+    pageNom: page.nom,
+    instagramId: page.instagram?.id ?? null,
+    instagramNom: page.instagram?.nom ?? null
+  };
+}
+
 interface LigneCompte {
   id?: string;
   account_id?: string;

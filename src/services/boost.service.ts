@@ -27,7 +27,15 @@ import {
   objectifMeta,
   publierBoost
 } from './meta-ads.service';
-import { estModeSimule, MetaConnexionErreur, verifierSiNecessaire } from './meta-connexion.service';
+import {
+  chargerMetaConfig,
+  decouvrir,
+  estModeSimule,
+  MetaConnexionErreur,
+  pagePublicationDepuisDecouverte,
+  PagePublication,
+  verifierSiNecessaire
+} from './meta-connexion.service';
 import { PaiementController } from '../controllers/paiement.controller';
 import { logger } from '../utils/logger';
 
@@ -36,6 +44,27 @@ import { logger } from '../utils/logger';
  * Cycle : brouillon → en_attente_paiement → en_attente_validation → actif ⇄ en_pause → termine
  * (sorties : refuse, rejete_meta, erreur). Cf. docs/BOOST_META.md.
  */
+
+/**
+ * Page de la boutique si elle est liée, sinon la page Marché 241.
+ * En mode simulé, aucun appel Meta : on reprend les noms déjà en base.
+ */
+async function pagePourPublication(pageBoutiqueId: string | null, pageBoutiqueNom: string | null): Promise<PagePublication> {
+  const config = await chargerMetaConfig();
+  if (estModeSimule()) {
+    if (pageBoutiqueId) {
+      return { pageId: pageBoutiqueId, pageNom: pageBoutiqueNom ?? pageBoutiqueId, instagramId: null, instagramNom: null };
+    }
+    return {
+      pageId: config.pageId,
+      pageNom: config.connexion?.page_nom ?? (config.pageId ? 'Page Marché 241' : ''),
+      instagramId: config.instagramId || null,
+      instagramNom: config.connexion?.instagram_nom ?? null
+    };
+  }
+  const decouverte = await decouvrir();
+  return pagePublicationDepuisDecouverte(decouverte.pages, pageBoutiqueId, config.pageId);
+}
 
 export class BoostErreur extends Error {
   constructor(message: string, public readonly statusHttp = 400, public readonly code = 'BOOST_ERREUR') {
@@ -434,8 +463,30 @@ export class BoostService {
       }
     }
 
+    const dejaCree = Boolean(boost.meta_campaign_id && boost.meta_adset_id && boost.meta_ad_id);
+    let page: PagePublication | null = null;
+    let slugBoutique = String(boost.boutique_id);
+    if (!dejaCree) {
+      const boutique = await BoutiqueModel.getBoutiqueById(boost.boutique_id);
+      if (!boutique) throw introuvable();
+      slugBoutique = boutique.slug;
+      try {
+        page = await pagePourPublication(boutique.meta_page_id, boutique.meta_page_nom);
+      } catch (err) {
+        if (err instanceof MetaConnexionErreur) throw new BoostErreur(err.message, err.statusHttp, err.code);
+        throw err;
+      }
+    }
+    const snapshotPage: DonneesBoost = page
+      ? {
+          meta_page_id: page.pageId || null,
+          meta_page_nom: page.pageNom || null,
+          meta_instagram_id: page.instagramId,
+          meta_instagram_nom: page.instagramNom
+        }
+      : {};
+
     try {
-      const dejaCree = Boolean(boost.meta_campaign_id && boost.meta_adset_id && boost.meta_ad_id);
       const publication = dejaCree
         ? {
             dryRun: boost.dry_run,
@@ -446,7 +497,7 @@ export class BoostService {
             dateFin: boost.date_fin ? new Date(boost.date_fin) : new Date()
           }
         : await publierBoost({
-            nom: `M241 · boost_${boost.id} · ${(await BoutiqueModel.getBoutiqueById(boost.boutique_id))?.slug ?? boost.boutique_id}`,
+            nom: `M241 · boost_${boost.id} · ${slugBoutique}`,
             objectif: boost.objectif,
             budgetMediaFcfa: boost.budget_media_fcfa,
             dureeJours: boost.duree_jours,
@@ -457,7 +508,9 @@ export class BoostService {
             titre: boost.titre ?? boost.nom,
             description: boost.description,
             imageUrl: boost.image_url ?? '',
-            fxXafParUsd: parametres.fx_xaf_par_usd
+            fxXafParUsd: parametres.fx_xaf_par_usd,
+            pageId: page?.pageId ?? '',
+            instagramId: page?.instagramId ?? null
           });
       const resultat = await BoostModel.changerStatut(boost.id, ['en_attente_validation', 'erreur'], 'actif', {
         meta_campaign_id: publication.campaignId,
@@ -469,7 +522,8 @@ export class BoostService {
         date_fin: publication.dateFin,
         conformite,
         valide_par: valideur,
-        date_validation: new Date()
+        date_validation: new Date(),
+        ...snapshotPage
       });
       if (!resultat) {
         logger.error(
@@ -494,7 +548,8 @@ export class BoostService {
       await BoostEvenementModel.creer(boost.id, 'publie', 'admin', {
         valide_par: valideur,
         dry_run: publication.dryRun,
-        meta_campaign_id: publication.campaignId
+        meta_campaign_id: publication.campaignId,
+        meta_page_id: page?.pageId || boost.meta_page_id
       });
       return { boost: resultat };
     } catch (err: any) {
@@ -504,7 +559,8 @@ export class BoostService {
       const resultat = await BoostModel.changerStatut(boost.id, ['en_attente_validation', 'erreur'], 'erreur', {
         meta_derniere_erreur: message,
         conformite,
-        valide_par: valideur
+        valide_par: valideur,
+        ...snapshotPage
       });
       await BoostEvenementModel.creer(boost.id, 'erreur_publication', 'meta', { message });
       notifierBoost('boost_erreur_meta', boost, 'Publication Meta en échec', [`Erreur : ${message}`]);

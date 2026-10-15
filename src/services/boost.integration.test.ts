@@ -51,7 +51,7 @@ describe('Boost Meta — intégration HTTP (Postgres local, dry-run)', { skip: i
     sql = new Client({ connectionString: URL_BASE_TEST });
     await sql.connect();
     await sql.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
-    for (const fichier of ['tests/boost/schema-minimal.sql', 'migrations/026_create_boosts_tables.sql', 'migrations/027_extend_transactions_for_boost.sql', 'migrations/028_create_meta_connexion.sql', 'migrations/028_create_meta_connexion.sql', 'migrations/029_boost_frais_encaissement.sql', 'migrations/029_boost_frais_encaissement.sql', 'migrations/030_create_vendeur_guides.sql', 'migrations/030_create_vendeur_guides.sql', 'migrations/031_create_notifications_telegram.sql', 'migrations/031_create_notifications_telegram.sql', 'migrations/039_relances_boosts.sql']) {
+    for (const fichier of ['tests/boost/schema-minimal.sql', 'migrations/026_create_boosts_tables.sql', 'migrations/027_extend_transactions_for_boost.sql', 'migrations/028_create_meta_connexion.sql', 'migrations/028_create_meta_connexion.sql', 'migrations/029_boost_frais_encaissement.sql', 'migrations/029_boost_frais_encaissement.sql', 'migrations/030_create_vendeur_guides.sql', 'migrations/030_create_vendeur_guides.sql', 'migrations/031_create_notifications_telegram.sql', 'migrations/031_create_notifications_telegram.sql', 'migrations/039_relances_boosts.sql', 'migrations/042_boutique_page_meta.sql']) {
       await sql.query(fs.readFileSync(path.join(RACINE, fichier), 'utf8'));
     }
     const v1 = await sql.query(`INSERT INTO vendeurs (telephone, nom, email) VALUES ('24177000001', 'Awa', 'awa@test.ga') RETURNING id`);

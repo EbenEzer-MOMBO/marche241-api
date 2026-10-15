@@ -53,6 +53,10 @@ const COLONNES_AUTORISEES = [
   'meta_campaign_id',
   'meta_adset_id',
   'meta_ad_id',
+  'meta_page_id',
+  'meta_page_nom',
+  'meta_instagram_id',
+  'meta_instagram_nom',
   'meta_statut_effectif',
   'meta_derniere_erreur',
   'dry_run',
@@ -92,7 +96,9 @@ const placeholder = (colonne: string, position: number): string => {
 const valeurSql = (colonne: string, valeur: unknown): unknown =>
   COLONNES_JSON.has(colonne) && valeur !== null ? JSON.stringify(valeur) : valeur;
 
-const JOINTURE_BOUTIQUE = `(SELECT json_build_object('id', b.id, 'nom', b.nom, 'slug', b.slug, 'logo', b.logo)
+const JOINTURE_BOUTIQUE = `(SELECT json_build_object(
+     'id', b.id, 'nom', b.nom, 'slug', b.slug, 'logo', b.logo,
+     'meta_page_id', b.meta_page_id, 'meta_page_nom', b.meta_page_nom)
    FROM boutiques b WHERE b.id = bo.boutique_id) AS boutique`;
 
 type Executeur = Pick<PoolClient, 'query'>;
