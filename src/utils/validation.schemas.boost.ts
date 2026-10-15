@@ -109,7 +109,8 @@ const champsBrouillon = {
     'string.pattern.base': 'Le numéro WhatsApp doit être au format international (ex. +24177000000)'
   }),
   titre: Joi.string().trim().max(80).allow(null, '').label('Le titre'),
-  texte_principal: Joi.string().trim().max(500).allow(null, '').label('Le texte de la publicité'),
+  // 500 dans le wizard ; marge pour le lien de la boutique ajouté à la publication
+  texte_principal: Joi.string().trim().max(600).allow(null, '').label('Le texte de la publicité'),
   description: Joi.string().trim().max(200).allow(null, '').label('La description'),
   image_url: lienWeb('Le visuel').allow(null, '').messages({
     'string.uri': "Le visuel doit être une adresse d'image valide",
