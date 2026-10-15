@@ -14,6 +14,7 @@ import { notifier } from './telegram.service';
 import { EvenementNotification } from '../config/notifications.config';
 import { bilanProvisoire, calculerCloture, DELAI_BILAN_MS, fraisEncaissement, montantApresBilan, remboursementIntegral } from '../lib/boost/reliquat';
 import { ajouterUtmBoost, estDestinationMarche241 } from '../lib/boost/utm';
+import { ajouterLienBoutique } from '../lib/boost/texte';
 import { dateIso } from '../lib/boost/planning';
 import { estConformiteComplete } from '../config/conformite-boost.config';
 import {
@@ -469,12 +470,15 @@ export class BoostService {
     }
 
     const dejaCree = Boolean(boost.meta_campaign_id && boost.meta_adset_id && boost.meta_ad_id);
+    let texte = boost.texte_principal ?? '';
     let page: PagePublication | null = null;
     let slugBoutique = String(boost.boutique_id);
     if (!dejaCree) {
       const boutique = await BoutiqueModel.getBoutiqueById(boost.boutique_id);
       if (!boutique) throw introuvable();
       slugBoutique = boutique.slug;
+      // Lien vers la boutique ajouté en fin de texte si le vendeur ne l'a pas déjà mis
+      texte = ajouterLienBoutique(texte, `${frontendUrl()}/${boutique.slug}`);
       try {
         page = await pagePourPublication(boutique.meta_page_id, boutique.meta_page_nom);
       } catch (err) {
@@ -509,7 +513,7 @@ export class BoostService {
             ciblage: boost.ciblage,
             urlDestination: boost.url_destination,
             whatsappE164: boost.whatsapp_e164,
-            texte: boost.texte_principal ?? '',
+            texte,
             titre: boost.titre ?? boost.nom,
             description: boost.description,
             imageUrl: boost.image_url ?? '',
@@ -520,6 +524,7 @@ export class BoostService {
       const resultat = await BoostModel.changerStatut(boost.id, ['en_attente_validation', 'erreur'], 'actif', {
         meta_campaign_id: publication.campaignId,
         meta_adset_id: publication.adSetId,
+        texte_principal: texte || boost.texte_principal,
         meta_ad_id: publication.adId,
         meta_derniere_erreur: null,
         dry_run: publication.dryRun,
