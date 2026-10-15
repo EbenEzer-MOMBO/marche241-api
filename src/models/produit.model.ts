@@ -3,6 +3,7 @@ import { Produit } from '../lib/database-types';
 import { logger } from '../utils/logger';
 import { prixOriginalCoherent, prixPourStockage } from '../utils/prix-promo';
 import { marquerAffichageNote } from './avis.model';
+import { extraireTaille } from '../utils/stock-variant';
 
 /**
  * Jointures de la boutique et de la catégorie, sous forme d'objets JSON.
@@ -269,15 +270,7 @@ export class ProduitModel {
    * @example "Noir - Pointure 42" => "42"
    */
   private static extraireTaille(nomVariant: string): string | null {
-    if (nomVariant.includes(' - Taille ')) {
-      const parts = nomVariant.split(' - Taille ');
-      return parts[1]?.trim() || null;
-    }
-    if (nomVariant.includes(' - Pointure ')) {
-      const parts = nomVariant.split(' - Pointure ');
-      return parts[1]?.trim() || null;
-    }
-    return null;
+    return extraireTaille(nomVariant);
   }
 
   /**

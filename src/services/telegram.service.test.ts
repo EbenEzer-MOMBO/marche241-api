@@ -74,6 +74,16 @@ test('notifier : envoie uniquement si jeton, système actif, canal et événemen
   assert.equal(appels.length, 1);
 });
 
+test('notifier : un événement critique part même non coché, mais pas si le système est désactivé', async () => {
+  telegramSimule();
+  definirConfigTelegramPourTests({ actif: true, evenements: [] });
+  assert.equal(await notifier('commande_a_regulariser', { titre: 'Payée, non confirmée' }), true);
+  assert.equal(appels.length, 1);
+  definirConfigTelegramPourTests({ actif: false, evenements: [] });
+  assert.equal(await notifier('commande_a_regulariser', { titre: 'x' }), false);
+  assert.equal(appels.length, 1);
+});
+
 test('notifier ne lève jamais d’erreur (Telegram en panne)', async () => {
   globalThis.fetch = (async () => {
     throw new Error('réseau coupé');

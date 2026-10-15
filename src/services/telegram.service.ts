@@ -146,7 +146,8 @@ export async function notifier(evenement: EvenementNotification, contenu: Conten
   try {
     if (!jeton()) return false;
     const config = await chargerConfigTelegram();
-    if (!config?.actif || !config.chat_id || !config.evenements.includes(evenement)) return false;
+    const critique = (evenementParCode(evenement) as { critique?: boolean } | null)?.critique === true;
+    if (!config?.actif || !config.chat_id || !(critique || config.evenements.includes(evenement))) return false;
     await envoyerTelegram(config.chat_id, formaterMessage(evenement, contenu));
     await tracer(null);
     return true;
