@@ -1,18 +1,46 @@
+/** Décode les entités numériques et les entités nommées utiles pour masquer un schéma d'URL. */
+function decoderEntites(texte: string): string {
+  return texte
+    .replace(/&#x([0-9a-f]+);?/gi, (_, hex: string) => String.fromCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);?/g, (_, dec: string) => String.fromCodePoint(parseInt(dec, 10)))
+    .replace(/&colon;/gi, ':')
+    .replace(/&tab;/gi, '\t')
+    .replace(/&newline;/gi, '\n');
+}
+
+/** Constructions refusées dans un SVG (contrôlées après décodage des entités et retrait des blancs). */
+const MOTIFS_INTERDITS: RegExp[] = [
+  /<\s*(script|foreignobject|iframe|embed|object|handler|listener)\b/i,
+  /<!(doctype|entity)/i,
+  /attributename\s*=\s*["']?\s*(on|href|xlink:href)/i,
+  /@import/i,
+];
+
+/** Schémas d'URL interdits, cherchés aussi après retrait des blancs (« java&#9;script: »). */
+const SCHEMAS_INTERDITS: RegExp[] = [
+  /(javascript|vbscript|livescript):/i,
+  /data:(?!image\/(png|jpe?g|gif|webp);base64,)/i,
+];
+
+/** Gestionnaire d'événement, précédé d'un blanc, d'un guillemet ou d'un « / » (`<svg/onload=…>`). */
+const GESTIONNAIRE = /[\s"'/]on[a-z]+\s*=/i;
+
 /**
- * Retire les constructions dangereuses d'un SVG.
- * Retourne null si le document n'est plus un SVG après nettoyage.
+ * Vérifie qu'un SVG ne contient aucune construction exécutable.
+ * Le SVG est refusé plutôt que nettoyé : un logo exporté proprement n'en contient jamais.
+ * Retourne le SVG (sans BOM) s'il est sûr, sinon null.
  */
 export function nettoyerSvg(source: string): string | null {
-  let texte = source.replace(/^\uFEFF/, '');
-  texte = texte.replace(/<script[\s\S]*?<\/script>/gi, '');
-  texte = texte.replace(/<foreignObject[\s\S]*?<\/foreignObject>/gi, '');
-  texte = texte.replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '');
-  texte = texte.replace(/\s(?:href|xlink:href)\s*=\s*("\s*javascript:[^"]*"|'\s*javascript:[^']*')/gi, '');
-  texte = texte.replace(/<!DOCTYPE[\s\S]*?>/gi, '');
-  if (/<script|<foreignObject|\son[a-z]+\s*=|javascript:/i.test(texte)) {
+  const texte = source.replace(/^\uFEFF/, '');
+  if (!/<svg[\s>]/i.test(texte)) {
     return null;
   }
-  if (!/<svg[\s>]/i.test(texte)) {
+  const decode = decoderEntites(texte);
+  const compact = decode.replace(/[\u0000- ]+/g, '');
+  if (GESTIONNAIRE.test(decode) || MOTIFS_INTERDITS.some((motif) => motif.test(decode))) {
+    return null;
+  }
+  if (SCHEMAS_INTERDITS.some((motif) => motif.test(compact))) {
     return null;
   }
   return texte;
@@ -34,14 +62,13 @@ export function lireViewBox(svg: string): { largeur: number | null; hauteur: num
   };
 }
 
-function lireUInt32BE(buffer: Buffer, offset: number): number {
-  return buffer.readUInt32BE(offset);
-}
-
-/** Dimensions d'un PNG, JPEG, WebP ou ICO sans dépendance native. */
+/**
+ * Dimensions d'un PNG, JPEG, WebP ou ICO sans dépendance native.
+ * Retourne des valeurs nulles si la signature ne correspond pas au type annoncé.
+ */
 export function lireDimensionsRaster(buffer: Buffer, mime: string): { largeur: number | null; hauteur: number | null } {
   if (mime === 'image/png' && buffer.length >= 24 && buffer.toString('ascii', 1, 4) === 'PNG') {
-    return { largeur: lireUInt32BE(buffer, 16), hauteur: lireUInt32BE(buffer, 20) };
+    return { largeur: buffer.readUInt32BE(16), hauteur: buffer.readUInt32BE(20) };
   }
   if ((mime === 'image/jpeg' || mime === 'image/jpg') && buffer[0] === 0xff && buffer[1] === 0xd8) {
     let offset = 2;
@@ -51,27 +78,28 @@ export function lireDimensionsRaster(buffer: Buffer, mime: string): { largeur: n
       }
       const marqueur = buffer[offset + 1];
       const taille = buffer.readUInt16BE(offset + 2);
-      if (marqueur >= 0xc0 && marqueur <= 0xc3) {
+      // SOF0..SOF15 hors DHT (C4), JPG (C8) et DAC (CC)
+      if (marqueur >= 0xc0 && marqueur <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(marqueur)) {
         return { largeur: buffer.readUInt16BE(offset + 7), hauteur: buffer.readUInt16BE(offset + 5) };
       }
       offset += 2 + taille;
     }
   }
-  if (mime === 'image/webp' && buffer.toString('ascii', 0, 4) === 'RIFF' && buffer.toString('ascii', 8, 12) === 'WEBP') {
+  if (mime === 'image/webp' && buffer.length >= 30 && buffer.toString('ascii', 0, 4) === 'RIFF' && buffer.toString('ascii', 8, 12) === 'WEBP') {
     const format = buffer.toString('ascii', 12, 16);
-    if (format === 'VP8X' && buffer.length >= 30) {
-      const largeur = 1 + buffer.readUIntLE(24, 3);
-      const hauteur = 1 + buffer.readUIntLE(27, 3);
-      return { largeur, hauteur };
+    if (format === 'VP8X') {
+      return { largeur: 1 + buffer.readUIntLE(24, 3), hauteur: 1 + buffer.readUIntLE(27, 3) };
     }
-    if (format === 'VP8 ' && buffer.length >= 30) {
+    if (format === 'VP8 ') {
       return { largeur: buffer.readUInt16LE(26) & 0x3fff, hauteur: buffer.readUInt16LE(28) & 0x3fff };
     }
+    if (format === 'VP8L' && buffer[20] === 0x2f) {
+      const bits = buffer.readUInt32LE(21);
+      return { largeur: (bits & 0x3fff) + 1, hauteur: ((bits >> 14) & 0x3fff) + 1 };
+    }
   }
-  if ((mime === 'image/x-icon' || mime === 'image/vnd.microsoft.icon') && buffer.length >= 8 && buffer.readUInt16LE(0) === 0) {
-    const largeur = buffer[6] === 0 ? 256 : buffer[6];
-    const hauteur = buffer[7] === 0 ? 256 : buffer[7];
-    return { largeur, hauteur };
+  if ((mime === 'image/x-icon' || mime === 'image/vnd.microsoft.icon') && buffer.length >= 8 && buffer.readUInt16LE(0) === 0 && buffer.readUInt16LE(2) === 1) {
+    return { largeur: buffer[6] === 0 ? 256 : buffer[6], hauteur: buffer[7] === 0 ? 256 : buffer[7] };
   }
   return { largeur: null, hauteur: null };
 }

@@ -8,6 +8,7 @@ import { WebSocketService } from './services/websocket.service';
 import { MonitorService } from './services/monitor.service';
 import { CronService } from './services/cron.service';
 import { closePool } from './config/database';
+import { rafraichirLogoEmail } from './services/email-templates/layout';
 
 // Charger les variables d'environnement
 dotenv.config();
@@ -34,6 +35,9 @@ server.listen(port, '0.0.0.0', () => {
 
   // Initialiser les tâches cron
   CronService.init();
+
+  // Charger le logo des emails depuis les assets de marque
+  rafraichirLogoEmail();
 
   // Afficher l'adresse IP locale pour faciliter l'accès depuis d'autres appareils
   const nets = os.networkInterfaces();

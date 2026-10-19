@@ -1,25 +1,25 @@
 /**
  * Envoie les fichiers de marque actuels du front vers R2 et les rattache.
- * Usage : npx ts-node scripts/importer-assets-marque.ts
- * image_partage n'est pas importé (aucun visuel 1200×630).
+ * Usage : npx ts-node scripts/importer-assets-marque.ts (dépôt marche241_v2 à côté, à jour de main)
+ * Idempotent : un emplacement déjà affecté est ignoré, on peut relancer après un échec partiel.
  */
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
-import { PutObjectCommand } from '@aws-sdk/client-s3';
-import { buildPublicUrl, s3Client, storageBucket } from '../src/config/storage';
+import { buildPublicUrl } from '../src/config/storage';
+import { putObject } from '../src/utils/storage.utils';
 import { query } from '../src/config/database';
 import { lireDimensionsRaster, lireViewBox, nettoyerSvg } from '../src/services/asset-marque.utils';
 
 const frontPublic = path.resolve(__dirname, '../../marche241_v2/public');
-const frontApp = path.resolve(__dirname, '../../marche241_v2/src/app');
 
 const FICHIERS: Array<{ cle: string; chemin: string; mime: string; nom: string }> = [
   { cle: 'logo_icone', chemin: path.join(frontPublic, 'marche241_Web_without_text-01-01.svg'), mime: 'image/svg+xml', nom: 'Symbole' },
   { cle: 'logo_texte', chemin: path.join(frontPublic, 'Logo_vector_text-02.svg'), mime: 'image/svg+xml', nom: 'Texte' },
   { cle: 'logo_complet', chemin: path.join(frontPublic, 'marche241_Web_with_text-01.svg'), mime: 'image/svg+xml', nom: 'Logo complet' },
   { cle: 'logo_email', chemin: path.join(frontPublic, 'images/site-logo-mail.png'), mime: 'image/png', nom: 'Logo email' },
-  { cle: 'favicon', chemin: path.join(frontApp, 'favicon.ico'), mime: 'image/x-icon', nom: 'Favicon' },
+  { cle: 'favicon', chemin: path.join(frontPublic, 'favicon-defaut.ico'), mime: 'image/x-icon', nom: 'Favicon' },
+  { cle: 'image_partage', chemin: path.join(frontPublic, 'partage-defaut.png'), mime: 'image/png', nom: 'Image de partage' },
   { cle: 'icone_app', chemin: path.join(frontPublic, 'site-logo.png'), mime: 'image/png', nom: 'Icône application' },
   { cle: 'hero_home', chemin: path.join(frontPublic, 'home1.jpg'), mime: 'image/jpeg', nom: 'Hero accueil' },
   { cle: 'illustration_1', chemin: path.join(frontPublic, 'home1.png'), mime: 'image/png', nom: 'Illustration 1' },
@@ -31,7 +31,13 @@ const FICHIERS: Array<{ cle: string; chemin: string; mime: string; nom: string }
 ];
 
 async function importer(): Promise<void> {
+  const dejaAffectes = await query<{ cle: string }>('SELECT cle FROM assets_marque WHERE media_id IS NOT NULL');
+  const ignores = new Set(dejaAffectes.rows.map((ligne) => ligne.cle));
   for (const fichier of FICHIERS) {
+    if (ignores.has(fichier.cle)) {
+      console.log('déjà affecté', fichier.cle);
+      continue;
+    }
     if (!fs.existsSync(fichier.chemin)) {
       console.warn('absent', fichier.chemin);
       continue;
@@ -57,12 +63,7 @@ async function importer(): Promise<void> {
     }
     const ext = path.extname(fichier.chemin);
     const storagePath = `medias/import/${fichier.cle}-${crypto.randomBytes(3).toString('hex')}${ext}`;
-    await s3Client.send(new PutObjectCommand({
-      Bucket: storageBucket,
-      Key: storagePath,
-      Body: corps,
-      ContentType: mime,
-    }));
+    await putObject(storagePath, corps, mime);
     const url = buildPublicUrl(storagePath);
     const insere = await query<{ id: number }>(
       `INSERT INTO medias (nom, url, storage_path, mime_type, taille_octets, largeur, hauteur, cree_par)

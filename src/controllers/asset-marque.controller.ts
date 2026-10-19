@@ -1,21 +1,14 @@
 import { Request, Response } from 'express';
 import crypto from 'crypto';
 import path from 'path';
-import { AssetMarqueModel, CLES_ASSETS } from '../models/asset-marque.model';
+import { AssetMarqueModel, type CleAsset } from '../models/asset-marque.model';
 import { revaliderFront } from '../services/asset-marque-revalidation';
 import { lireDimensionsRaster, lireViewBox, nettoyerSvg } from '../services/asset-marque.utils';
-import { PutObjectCommand } from '@aws-sdk/client-s3';
-import { buildPublicUrl, s3Client, storageBucket } from '../config/storage';
+import { rafraichirLogoEmail } from '../services/email-templates/layout';
+import { buildPublicUrl } from '../config/storage';
+import { deleteFile, putObject } from '../utils/storage.utils';
+import { TYPES_MEDIA } from '../utils/validation.schemas.asset-marque';
 import { logger } from '../utils/logger';
-
-const MIME_AUTORISES = new Set([
-  'image/png',
-  'image/jpeg',
-  'image/webp',
-  'image/x-icon',
-  'image/vnd.microsoft.icon',
-  'image/svg+xml',
-]);
 
 const EXTENSIONS: Record<string, string> = {
   'image/png': '.png',
@@ -26,6 +19,16 @@ const EXTENSIONS: Record<string, string> = {
   'image/svg+xml': '.svg',
 };
 
+/** Erreur de validation sur le champ `fichier`, au format VALIDATION_ERROR. */
+function refuserFichier(res: Response, code: string, message: string): void {
+  res.status(400).json({
+    success: false,
+    code: 'VALIDATION_ERROR',
+    message,
+    errors: [{ field: 'fichier', code, message }],
+  });
+}
+
 export class AssetMarqueController {
   static async publics(_req: Request, res: Response): Promise<void> {
     const assets = await AssetMarqueModel.cartePublique();
@@ -34,22 +37,21 @@ export class AssetMarqueController {
   }
 
   static async listerMedias(req: Request, res: Response): Promise<void> {
-    const recherche = String(req.query.recherche || '').slice(0, 150);
-    const type = String(req.query.type || '');
-    const page = Math.max(1, Number(req.query.page) || 1);
-    const resultat = await AssetMarqueModel.listerMedias(recherche, type, page, 24);
-    res.json({ success: true, ...resultat, page });
+    const { recherche, type, page, limite } = (req as any).validatedQuery as {
+      recherche?: string;
+      type?: string;
+      page: number;
+      limite: number;
+    };
+    const resultat = await AssetMarqueModel.listerMedias(recherche || '', type || '', page, limite);
+    res.json({ success: true, ...resultat, page, limite });
   }
 
   static async envoyerMedia(req: Request, res: Response): Promise<void> {
     const fichier = req.file;
-    const nom = String(req.body?.nom || '').trim();
-    if (!fichier || !nom) {
-      res.status(400).json({ success: false, code: 'VALIDATION_ERROR', message: 'Le fichier et le nom sont obligatoires' });
-      return;
-    }
-    if (nom.length > 150) {
-      res.status(400).json({ success: false, code: 'VALIDATION_ERROR', message: 'Le nom dépasse 150 caractères' });
+    const { nom } = (req as any).validatedBody as { nom: string };
+    if (!fichier) {
+      refuserFichier(res, 'FIELD_REQUIRED', 'Le fichier est obligatoire');
       return;
     }
 
@@ -62,21 +64,22 @@ export class AssetMarqueController {
     if (sembleSvg) {
       const propre = nettoyerSvg(corps.toString('utf8'));
       if (!propre) {
-        res.status(400).json({ success: false, message: 'SVG invalide ou dangereux' });
+        refuserFichier(res, 'SVG_REFUSE', 'Ce SVG contient du code exécutable ou des références interdites');
         return;
       }
       corps = Buffer.from(propre, 'utf8');
       mime = 'image/svg+xml';
-      const dimensions = lireViewBox(propre);
-      largeur = dimensions.largeur;
-      hauteur = dimensions.hauteur;
-    } else if (!MIME_AUTORISES.has(mime)) {
-      res.status(400).json({ success: false, message: `Type non accepté : ${mime}` });
-      return;
+      ({ largeur, hauteur } = lireViewBox(propre));
     } else {
-      const dimensions = lireDimensionsRaster(corps, mime);
-      largeur = dimensions.largeur;
-      hauteur = dimensions.hauteur;
+      if (!(TYPES_MEDIA as readonly string[]).includes(mime)) {
+        refuserFichier(res, 'TYPE_REFUSE', `Type non accepté : ${mime} (PNG, JPEG, WebP, ICO ou SVG)`);
+        return;
+      }
+      ({ largeur, hauteur } = lireDimensionsRaster(corps, mime));
+      if (largeur === null || hauteur === null) {
+        refuserFichier(res, 'FICHIER_ILLISIBLE', 'Le contenu du fichier ne correspond pas à son type');
+        return;
+      }
     }
 
     const maintenant = new Date();
@@ -84,12 +87,7 @@ export class AssetMarqueController {
     const base = path.basename(fichier.originalname, path.extname(fichier.originalname)).replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 40) || 'media';
     const storagePath = `${dossier}/${base}-${crypto.randomBytes(4).toString('hex')}${EXTENSIONS[mime]}`;
 
-    await s3Client.send(new PutObjectCommand({
-      Bucket: storageBucket,
-      Key: storagePath,
-      Body: corps,
-      ContentType: mime,
-    }));
+    await putObject(storagePath, corps, mime);
 
     const media = await AssetMarqueModel.creerMedia({
       nom,
@@ -105,19 +103,22 @@ export class AssetMarqueController {
   }
 
   static async supprimerMedia(req: Request, res: Response): Promise<void> {
-    const id = Number(req.params.id);
+    const { id } = (req as any).validatedParams as { id: number };
     const media = await AssetMarqueModel.trouverMedia(id);
     if (!media) {
       res.status(404).json({ success: false, message: 'Média introuvable' });
       return;
     }
-    if (await AssetMarqueModel.estUtilise(id)) {
+    // La ligne d'abord : la FK RESTRICT protège un média affecté entre-temps, le fichier n'est supprimé qu'ensuite
+    const supprime = await AssetMarqueModel.supprimerMedia(id);
+    if (!supprime) {
       res.status(409).json({ success: false, code: 'MEDIA_UTILISE', message: 'Ce média est affecté à un emplacement' });
       return;
     }
-    const { deleteFile } = await import('../utils/storage.utils');
-    await deleteFile(media.storage_path);
-    await AssetMarqueModel.supprimerMedia(id);
+    const resultat = await deleteFile(media.storage_path);
+    if (!resultat.success) {
+      logger.warn('Fichier R2 orphelin après suppression du média', media.storage_path, resultat.error);
+    }
     res.json({ success: true });
   }
 
@@ -127,12 +128,8 @@ export class AssetMarqueController {
   }
 
   static async affecter(req: Request, res: Response): Promise<void> {
-    const cle = String(req.params.cle);
-    if (!CLES_ASSETS.includes(cle as (typeof CLES_ASSETS)[number])) {
-      res.status(404).json({ success: false, message: 'Emplacement inconnu' });
-      return;
-    }
-    const mediaId = req.body.media_id as number | null;
+    const { cle } = (req as any).validatedParams as { cle: CleAsset };
+    const { media_id: mediaId } = (req as any).validatedBody as { media_id: number | null };
     if (mediaId !== null) {
       const media = await AssetMarqueModel.trouverMedia(mediaId);
       if (!media) {
@@ -142,12 +139,20 @@ export class AssetMarqueController {
       const emplacement = await AssetMarqueModel.trouverEmplacement(cle);
       const formats = (emplacement?.formats || '').split(',');
       if (!formats.includes(media.mime_type)) {
-        res.status(400).json({ success: false, message: 'Ce type de fichier n\'est pas accepté pour cet emplacement' });
+        res.status(400).json({
+          success: false,
+          code: 'VALIDATION_ERROR',
+          message: 'Ce type de fichier n\'est pas accepté pour cet emplacement',
+          errors: [{ field: 'media_id', code: 'FORMAT_REFUSE', message: `Formats acceptés : ${formats.join(', ')}` }],
+        });
         return;
       }
     }
     await AssetMarqueModel.affecter(cle, mediaId);
-    void revaliderFront().catch((error) => logger.warn('revalidation', error));
+    if (cle === 'logo_email') {
+      rafraichirLogoEmail(true);
+    }
+    void revaliderFront();
     res.json({ success: true });
   }
 }

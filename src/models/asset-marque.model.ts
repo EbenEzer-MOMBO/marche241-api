@@ -95,16 +95,17 @@ export const AssetMarqueModel = {
     return resultat.rows[0] ?? null;
   },
 
-  async estUtilise(id: number): Promise<boolean> {
-    const resultat = await query<{ existe: boolean }>(
-      'SELECT EXISTS(SELECT 1 FROM assets_marque WHERE media_id = $1) AS existe',
-      [id]
-    );
-    return Boolean(resultat.rows[0]?.existe);
-  },
-
-  async supprimerMedia(id: number): Promise<void> {
-    await query('DELETE FROM medias WHERE id = $1', [id]);
+  /** Supprime le média ; retourne false s'il est affecté à un emplacement (FK RESTRICT). */
+  async supprimerMedia(id: number): Promise<boolean> {
+    try {
+      await query('DELETE FROM medias WHERE id = $1', [id]);
+      return true;
+    } catch (error) {
+      if (['23001', '23503'].includes((error as { code?: string }).code ?? '')) {
+        return false;
+      }
+      throw error;
+    }
   },
 
   async listerEmplacements(): Promise<Array<Record<string, unknown>>> {
@@ -113,7 +114,8 @@ export const AssetMarqueModel = {
               m.nom AS media_nom, m.url AS media_url, m.mime_type AS media_mime, m.largeur, m.hauteur
        FROM assets_marque a
        LEFT JOIN medias m ON m.id = a.media_id
-       ORDER BY a.cle`
+       ORDER BY array_position($1::text[], a.cle::text), a.cle`,
+      [CLES_ASSETS]
     );
     return resultat.rows;
   },

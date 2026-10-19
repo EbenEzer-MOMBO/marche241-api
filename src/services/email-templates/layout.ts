@@ -89,8 +89,13 @@ function mailLogoUrlRepli(): string {
 let logoEmailCache: { url: string; expire: number } | null = null;
 let logoEmailEnCours: Promise<void> | null = null;
 
-function rafraichirLogoEmail(): void {
-  if (logoEmailCache && logoEmailCache.expire > Date.now()) {
+/**
+ * Charge le logo des emails depuis l'emplacement `logo_email` (cache de 5 min).
+ * Appelé au démarrage du serveur et après une affectation : tant qu'il n'a jamais été appelé
+ * (tests unitaires, scripts), le rendu des emails n'interroge pas la base.
+ */
+export function rafraichirLogoEmail(forcer = false): void {
+  if (!forcer && logoEmailCache && logoEmailCache.expire > Date.now()) {
     return;
   }
   if (logoEmailEnCours) {
@@ -110,11 +115,14 @@ function rafraichirLogoEmail(): void {
 }
 
 function mailLogoUrl(): string {
-  rafraichirLogoEmail();
-  if (logoEmailCache && logoEmailCache.expire > Date.now()) {
-    return logoEmailCache.url;
+  if (!logoEmailCache) {
+    return mailLogoUrlRepli();
   }
-  return mailLogoUrlRepli();
+  if (logoEmailCache.expire <= Date.now()) {
+    // Rafraîchit en arrière-plan ; l'URL connue reste valable en attendant
+    rafraichirLogoEmail();
+  }
+  return logoEmailCache.url;
 }
 
 /**
