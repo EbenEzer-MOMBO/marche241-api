@@ -1,8 +1,12 @@
 /** Décode les entités numériques et les entités nommées utiles pour masquer un schéma d'URL. */
+function caractere(code: number): string {
+  return Number.isInteger(code) && code >= 0 && code <= 0x10ffff ? String.fromCodePoint(code) : '�';
+}
+
 function decoderEntites(texte: string): string {
   return texte
-    .replace(/&#x([0-9a-f]+);?/gi, (_, hex: string) => String.fromCodePoint(parseInt(hex, 16)))
-    .replace(/&#(\d+);?/g, (_, dec: string) => String.fromCodePoint(parseInt(dec, 10)))
+    .replace(/&#x([0-9a-f]+);?/gi, (_, hex: string) => caractere(parseInt(hex, 16)))
+    .replace(/&#(\d+);?/g, (_, dec: string) => caractere(parseInt(dec, 10)))
     .replace(/&colon;/gi, ':')
     .replace(/&tab;/gi, '\t')
     .replace(/&newline;/gi, '\n');
@@ -16,13 +20,13 @@ const MOTIFS_INTERDITS: RegExp[] = [
   /@import/i,
 ];
 
-/** Schémas d'URL interdits, cherchés aussi après retrait des blancs (« java&#9;script: »). */
+/** Schémas d'URL interdits dans les valeurs d'attributs et les feuilles de style, blancs retirés (« java&#9;script: »). */
 const SCHEMAS_INTERDITS: RegExp[] = [
   /(javascript|vbscript|livescript):/i,
   /data:(?!image\/(png|jpe?g|gif|webp);base64,)/i,
 ];
 
-/** Gestionnaire d'événement, précédé d'un blanc, d'un guillemet ou d'un « / » (`<svg/onload=…>`). */
+/** Gestionnaire d'événement dans une balise, précédé d'un blanc, d'un guillemet ou d'un « / » (`<svg/onload=…>`). */
 const GESTIONNAIRE = /[\s"'/]on[a-z]+\s*=/i;
 
 /**
@@ -36,11 +40,20 @@ export function nettoyerSvg(source: string): string | null {
     return null;
   }
   const decode = decoderEntites(texte);
-  const compact = decode.replace(/[\u0000- ]+/g, '');
-  if (GESTIONNAIRE.test(decode) || MOTIFS_INTERDITS.some((motif) => motif.test(decode))) {
+  if (MOTIFS_INTERDITS.some((motif) => motif.test(decode))) {
     return null;
   }
-  if (SCHEMAS_INTERDITS.some((motif) => motif.test(compact))) {
+  // Seuls les balises, les valeurs d'attributs et les feuilles de style sont contrôlés : le texte affiché reste libre
+  const balises = decode.match(/<[^>]*>/g) ?? [];
+  if (balises.some((balise) => GESTIONNAIRE.test(balise))) {
+    return null;
+  }
+  const valeurs = balises.flatMap((balise) =>
+    [...balise.matchAll(/=\s*("[^"]*"|'[^']*'|[^\s>]+)/g)].map((m) => m[1])
+  );
+  const styles = [...decode.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)].map((m) => m[1]);
+  const aControler = [...valeurs, ...styles].map((valeur) => valeur.replace(/[\u0000- ]+/g, ''));
+  if (aControler.some((valeur) => SCHEMAS_INTERDITS.some((motif) => motif.test(valeur)))) {
     return null;
   }
   return texte;

@@ -35,6 +35,15 @@ const uploadMultipleConfig = multer({
   fileFilter: fileFilter
 });
 
+/** Refus au format VALIDATION_ERROR (docs/ERREURS_VALIDATION.md), rattaché au champ du fichier. */
+const refuserFichier = (res: Response, field: string, code: string, message: string) =>
+  res.status(400).json({
+    success: false,
+    code: 'VALIDATION_ERROR',
+    message,
+    errors: [{ field, code, message }]
+  });
+
 /**
  * Middleware pour l'upload d'un seul fichier image
  * @param fieldName Nom du champ de fichier dans le formulaire
@@ -53,21 +62,12 @@ export const uploadImage = (fieldName: string) => {
         logger.debug('[UploadMiddleware] Erreur Multer:', err.code, err.message);
         // Erreur Multer
         if (err.code === 'LIMIT_FILE_SIZE') {
-          return res.status(400).json({
-            success: false,
-            message: 'La taille du fichier dépasse la limite autorisée (5MB)'
-          });
+          return refuserFichier(res, fieldName, 'FILE_TOO_LARGE', 'La taille du fichier dépasse la limite autorisée (5MB)');
         }
-        return res.status(400).json({
-          success: false,
-          message: `Erreur d'upload: ${err.message}`
-        });
+        return refuserFichier(res, fieldName, 'UPLOAD_ERROR', `Erreur d'upload: ${err.message}`);
       } else if (err) {
         // Autre erreur
-        return res.status(400).json({
-          success: false,
-          message: err.message
-        });
+        return refuserFichier(res, fieldName, 'FILE_TYPE_INVALID', err.message);
       }
       
       // Si aucun fichier n'a été uploadé, continuer sans erreur

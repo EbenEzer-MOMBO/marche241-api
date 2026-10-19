@@ -28,6 +28,11 @@ export const listeMediasQuerySchema = fr(
   Joi.object({
     recherche: Joi.string().trim().allow('').max(150).label('La recherche'),
     type: Joi.string().allow('').valid(...TYPES_MEDIA).label('Le type'),
+    formats: Joi.string()
+      .allow('')
+      .pattern(/^image\/[a-z0-9.+-]+(,image\/[a-z0-9.+-]+)*$/)
+      .label('Les formats')
+      .messages({ 'string.pattern.base': 'Les formats doivent être des types MIME séparés par des virgules' }),
     page: Joi.number().integer().min(1).default(1).label('La page'),
     limite: Joi.number().integer().min(1).max(200).default(24).label('La limite'),
   })

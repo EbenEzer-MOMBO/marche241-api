@@ -1,6 +1,6 @@
-import { NextFunction, Request, Response, Router } from 'express';
+import { Router } from 'express';
 import { AssetMarqueController } from '../controllers/asset-marque.controller';
-import { authOrServiceKey } from '../middlewares/service-auth.middleware';
+import { authOrServiceKey, exigerCleService } from '../middlewares/service-auth.middleware';
 import { uploadImage } from '../middlewares/upload.middleware';
 import { validate, validateParams, validateQuery } from '../middlewares/validation.middleware';
 import {
@@ -12,14 +12,6 @@ import {
 } from '../utils/validation.schemas.asset-marque';
 
 const router = Router();
-
-const exigerCleService = (req: Request, res: Response, next: NextFunction): void => {
-  if (!req.isAdmin || req.vendeur) {
-    res.status(403).json({ success: false, message: 'Accès réservé au back-office Marché 241' });
-    return;
-  }
-  next();
-};
 
 const admin = [authOrServiceKey, exigerCleService];
 
@@ -79,6 +71,7 @@ router.get('/', AssetMarqueController.publics);
  *     parameters:
  *       - { in: query, name: recherche, schema: { type: string } }
  *       - { in: query, name: type, schema: { type: string, enum: [image/png, image/jpeg, image/webp, image/x-icon, image/vnd.microsoft.icon, image/svg+xml] } }
+ *       - { in: query, name: formats, description: 'Types MIME acceptés, séparés par des virgules (sélecteur d''un emplacement)', schema: { type: string, example: 'image/svg+xml,image/png' } }
  *       - { in: query, name: page, schema: { type: integer, default: 1 } }
  *       - { in: query, name: limite, schema: { type: integer, default: 24, maximum: 200 } }
  *     responses:

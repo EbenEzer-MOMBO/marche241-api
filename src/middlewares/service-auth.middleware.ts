@@ -23,3 +23,15 @@ export const authOrServiceKey = (req: Request, res: Response, next: NextFunction
 
   jwtAuth(req, res, next);
 };
+
+/**
+ * À chaîner après `authOrServiceKey` : réserve la route à la clé de service du back-office
+ * (refuse un JWT vendeur, même admin).
+ */
+export const exigerCleService = (req: Request, res: Response, next: NextFunction): void => {
+  if (!req.isAdmin || req.vendeur) {
+    res.status(403).json({ success: false, message: 'Accès réservé au back-office Marché 241' });
+    return;
+  }
+  next();
+};

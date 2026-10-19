@@ -37,13 +37,15 @@ export class AssetMarqueController {
   }
 
   static async listerMedias(req: Request, res: Response): Promise<void> {
-    const { recherche, type, page, limite } = (req as any).validatedQuery as {
+    const { recherche, type, formats, page, limite } = (req as any).validatedQuery as {
       recherche?: string;
       type?: string;
+      formats?: string;
       page: number;
       limite: number;
     };
-    const resultat = await AssetMarqueModel.listerMedias(recherche || '', type || '', page, limite);
+    const listeFormats = formats ? formats.split(',') : [];
+    const resultat = await AssetMarqueModel.listerMedias(recherche || '', type || '', page, limite, listeFormats);
     res.json({ success: true, ...resultat, page, limite });
   }
 

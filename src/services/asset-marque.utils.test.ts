@@ -29,6 +29,18 @@ describe('nettoyerSvg', () => {
     });
   }
 
+  it('accepte du texte qui ressemble à un motif interdit', () => {
+    assert.ok(nettoyerSvg('<svg><title>Metadata: logo</title><text>a/one = 1</text></svg>'));
+  });
+
+  it('ne plante pas sur une entité hors plage', () => {
+    assert.ok(nettoyerSvg('<svg><text>&#99999999;&#x110000;</text></svg>'));
+  });
+
+  it('refuse un javascript: dans une feuille de style', () => {
+    assert.equal(nettoyerSvg('<svg><style>.a{background:url(javascript:alert(1))}</style></svg>'), null);
+  });
+
   it('refuse un document qui n\'est pas un svg', () => {
     assert.equal(nettoyerSvg('<html><body/></html>'), null);
   });

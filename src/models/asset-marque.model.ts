@@ -42,6 +42,11 @@ export const CLES_ASSETS = [
 
 export type CleAsset = (typeof CLES_ASSETS)[number];
 
+/** Violation de la FK `ON DELETE RESTRICT` (Postgres renvoie 23001, ou 23503 selon la contrainte). */
+export function estMediaReference(error: unknown): boolean {
+  return ['23001', '23503'].includes((error as { code?: string })?.code ?? '');
+}
+
 export const AssetMarqueModel = {
   async cartePublique(): Promise<Record<string, string | null>> {
     const resultat = await query<{ cle: string; url: string | null }>(
@@ -59,7 +64,13 @@ export const AssetMarqueModel = {
     return carte;
   },
 
-  async listerMedias(recherche: string, type: string, page: number, limite: number): Promise<{ medias: MediaLigne[]; total: number }> {
+  async listerMedias(
+    recherche: string,
+    type: string,
+    page: number,
+    limite: number,
+    formats: string[] = []
+  ): Promise<{ medias: MediaLigne[]; total: number }> {
     const conditions: string[] = [];
     const params: unknown[] = [];
     if (recherche) {
@@ -69,6 +80,10 @@ export const AssetMarqueModel = {
     if (type) {
       params.push(type);
       conditions.push(`mime_type = $${params.length}`);
+    }
+    if (formats.length > 0) {
+      params.push(formats);
+      conditions.push(`mime_type = ANY($${params.length}::text[])`);
     }
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
     const total = await query<{ count: string }>(`SELECT COUNT(*)::text AS count FROM medias ${where}`, params);
@@ -101,7 +116,7 @@ export const AssetMarqueModel = {
       await query('DELETE FROM medias WHERE id = $1', [id]);
       return true;
     } catch (error) {
-      if (['23001', '23503'].includes((error as { code?: string }).code ?? '')) {
+      if (estMediaReference(error)) {
         return false;
       }
       throw error;
