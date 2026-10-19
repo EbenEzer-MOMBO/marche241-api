@@ -976,6 +976,45 @@ export interface DisponibiliteSemaine {
   libre: boolean;
 }
 
+export type CleAssetMarque =
+  | 'logo_icone'
+  | 'logo_texte'
+  | 'logo_complet'
+  | 'logo_email'
+  | 'favicon'
+  | 'icone_app'
+  | 'image_partage'
+  | 'hero_home'
+  | 'illustration_1'
+  | 'illustration_2'
+  | 'illustration_3'
+  | 'fond_billetterie'
+  | 'image_boutique_defaut'
+  | 'image_produit_defaut';
+
+export interface Media {
+  id: number;
+  nom: string;
+  url: string;
+  storage_path: string;
+  mime_type: string;
+  taille_octets: number;
+  largeur: number | null;
+  hauteur: number | null;
+  cree_par: string | null;
+  created_at: Date;
+}
+
+export interface AssetMarque {
+  cle: CleAssetMarque;
+  media_id: number | null;
+  libelle: string;
+  description: string | null;
+  formats: string;
+  dimensions_conseillees: string | null;
+  updated_at: Date;
+}
+
 /** Bannière telle que servie aux pages publiques. */
 export interface BannierePubliciteDiffusee {
   id: number;

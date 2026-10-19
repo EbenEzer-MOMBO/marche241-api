@@ -20,6 +20,7 @@ import publiciteRoutes from './publicite.routes';
 import notificationRoutes from './notification.routes';
 import vueRoutes from './vue.routes';
 import avisRoutes from './avis.routes';
+import assetMarqueRoutes from './asset-marque.routes';
 import { CronController } from '../controllers/cron.controller';
 import { requireCronSecret } from '../middlewares/cron-auth.middleware';
 
@@ -90,6 +91,9 @@ router.use(`${apiPrefix}/vues`, vueRoutes);
 
 // Routes pour les avis produits vérifiés
 router.use(`${apiPrefix}/avis`, avisRoutes);
+
+// Assets de marque (public + back-office)
+router.use(`${apiPrefix}/assets-marque`, assetMarqueRoutes);
 
 // Routes pour les tâches cron
 router.use(`${apiPrefix}/cron`, cronRoutes);

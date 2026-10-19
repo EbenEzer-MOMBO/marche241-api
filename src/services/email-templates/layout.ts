@@ -77,13 +77,44 @@ export interface EmailLayoutOptions {
   lienDesinscription?: string;
 }
 
-function mailLogoUrl(): string {
+function mailLogoUrlRepli(): string {
   const base = (
     process.env.MAIL_ASSETS_URL ||
     process.env.FRONTEND_URL ||
     'https://marche241.ga'
   ).replace(/\/$/, '');
   return `${base}/images/site-logo-mail.png`;
+}
+
+let logoEmailCache: { url: string; expire: number } | null = null;
+let logoEmailEnCours: Promise<void> | null = null;
+
+function rafraichirLogoEmail(): void {
+  if (logoEmailCache && logoEmailCache.expire > Date.now()) {
+    return;
+  }
+  if (logoEmailEnCours) {
+    return;
+  }
+  logoEmailEnCours = (async () => {
+    try {
+      const { AssetMarqueModel } = await import('../../models/asset-marque.model');
+      const url = await AssetMarqueModel.urlLogoEmail();
+      logoEmailCache = { url: url || mailLogoUrlRepli(), expire: Date.now() + 5 * 60 * 1000 };
+    } catch {
+      logoEmailCache = { url: mailLogoUrlRepli(), expire: Date.now() + 60 * 1000 };
+    } finally {
+      logoEmailEnCours = null;
+    }
+  })();
+}
+
+function mailLogoUrl(): string {
+  rafraichirLogoEmail();
+  if (logoEmailCache && logoEmailCache.expire > Date.now()) {
+    return logoEmailCache.url;
+  }
+  return mailLogoUrlRepli();
 }
 
 /**
