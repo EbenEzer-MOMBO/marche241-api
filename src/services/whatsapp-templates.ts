@@ -221,7 +221,7 @@ export function buildInvitationAvisComponents(data: {
 /**
  * Template `relance_boosts_vendeur` (catégorie Marketing) :
  * corps {{1}} vendeur, {{2}} boutique, {{3}} résumé ;
- * bouton 0 = slug boutique, bouton 1 = jeton de désinscription.
+ * bouton 0 = suffixe `slug/boost` (URL Meta `…/admin/{{1}}`), bouton 1 = jeton.
  */
 export function buildRelanceBoostsComponents(data: {
   vendeur: string;
@@ -239,7 +239,7 @@ export function buildRelanceBoostsComponents(data: {
       type: 'button',
       sub_type: 'url',
       index: 0,
-      parameters: textParams(data.slug),
+      parameters: textParams(`${data.slug}/boost`),
     },
     {
       type: 'button',
