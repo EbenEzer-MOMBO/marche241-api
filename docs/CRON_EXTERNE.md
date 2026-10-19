@@ -1,6 +1,6 @@
 # Tâches planifiées pilotées par cron-job.org
 
-L'API lance elle-même 7 tâches (`CronService.init()`, node-cron). Pour les piloter depuis
+L'API lance elle-même 8 tâches (`CronService.init()`, node-cron). Pour les piloter depuis
 cron-job.org, **couper d'abord les tâches internes** (`CRON_INTERNE_ACTIVE=false`, puis
 redémarrer l'API), sinon chaque tâche s'exécute deux fois.
 
@@ -14,7 +14,7 @@ redémarrer l'API), sinon chaque tâche s'exécute deux fois.
   cron-job.org mais l'API va au bout de son traitement.
 - L'API ne verrouille pas les tâches : deux appels simultanés d'une même route s'exécutent en
   parallèle. Désactiver les nouvelles tentatives automatiques de cron-job.org sur les jobs qui
-  appellent Meta ou eBilling (`boosts/sync`, `expirer-transactions/execute`) et ne pas rapprocher
+  appellent Meta, eBilling ou envoient des messages (`boosts/sync`, `boosts/relances`, `expirer-transactions/execute`) et ne pas rapprocher
   leurs fréquences.
 
 ## Jobs de l'API
@@ -30,12 +30,18 @@ d'importance (la tâche ne retire que les badges de plus de 7 jours), mais à v�
 | Annulation des commandes orphelines | toutes les 30 min | `/api/v1/cron/annuler-commandes-orphelines` |
 | Statuts des publicités | toutes les heures, minute 5 | `/api/v1/cron/publicites/statuts` |
 | Synchronisation des boosts Meta | toutes les heures, minute 20 | `/api/v1/cron/boosts/sync` |
+| Relances des boosts non finalisés | toutes les heures, minute 40 | `/api/v1/cron/boosts/relances` |
 | Retrait du badge « nouveau » | chaque jour à 03:00 | `/api/v1/cron/retirer-statut-nouveau` |
 | Agrégation des statistiques d'audience | chaque jour à 00:15 | `/api/v1/cron/agreger-statistiques` |
 | Nettoyage des vues (> 90 jours) | chaque jour à 00:45 | `/api/v1/cron/nettoyer-vues` |
 | Santé (optionnel, remplace l'auto-ping) | toutes les 10 min | `/health` (sans clé) |
 
 L'agrégation (00:15) doit passer **avant** le nettoyage (00:45).
+
+Les relances de boosts tournent toutes les heures, mais l'envoi n'a lieu qu'à l'heure de Libreville
+réglée dans l'admin (`relance_heure_envoi`) ; les autres appels sont sans effet. Ne pas lancer deux fois
+la route dans la même heure : l'API ne verrouille pas la tâche (un doublon est toutefois évité par le
+garde-fou « un message par boutique et par intervalle »).
 
 Si cron-job.org garde le serveur éveillé via `/health`, mettre `MONITOR_AUTOPING_ACTIVE=false`.
 
