@@ -1,7 +1,7 @@
-import { NextFunction, Request, Response, Router } from 'express';
+import { Router } from 'express';
 import { AvisController } from '../controllers/avis.controller';
 import { auth } from '../middlewares/auth.middleware';
-import { authOrServiceKey } from '../middlewares/service-auth.middleware';
+import { authOrServiceKey, exigerCleService } from '../middlewares/service-auth.middleware';
 import { validate, validateParams, validateQuery } from '../middlewares/validation.middleware';
 import { avisJetonLimiter, avisSoumissionLimiter, standardLimiter } from '../middlewares/rate-limit.middleware';
 import { validateTurnstile } from '../middlewares/captcha.middleware';
@@ -22,14 +22,6 @@ import {
 
 const router = Router();
 
-/** Routes de modération : clé de service du back-office uniquement (pas de JWT vendeur). */
-const exigerCleService = (req: Request, res: Response, next: NextFunction): void => {
-  if (!req.isAdmin || req.vendeur) {
-    res.status(403).json({ success: false, message: 'Accès réservé au back-office Marché 241' });
-    return;
-  }
-  next();
-};
 const admin = [authOrServiceKey, exigerCleService];
 
 /**

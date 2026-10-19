@@ -77,13 +77,57 @@ export interface EmailLayoutOptions {
   lienDesinscription?: string;
 }
 
-function mailLogoUrl(): string {
+function mailLogoUrlRepli(): string {
   const base = (
     process.env.MAIL_ASSETS_URL ||
     process.env.FRONTEND_URL ||
     'https://marche241.ga'
   ).replace(/\/$/, '');
   return `${base}/images/site-logo-mail.png`;
+}
+
+let logoEmailCache: { url: string; expire: number } | null = null;
+let logoEmailEnCours: Promise<void> | null = null;
+let logoEmailGeneration = 0;
+
+/**
+ * Charge le logo des emails depuis l'emplacement `logo_email` (cache de 5 min).
+ * Appelé au démarrage du serveur et après une affectation : tant qu'il n'a jamais été appelé
+ * (tests unitaires, scripts), le rendu des emails n'interroge pas la base.
+ */
+export function rafraichirLogoEmail(forcer = false): void {
+  if (!forcer && logoEmailCache && logoEmailCache.expire > Date.now()) {
+    return;
+  }
+  if (forcer) {
+    // Une lecture lancée avant l'affectation ne doit pas écraser la nouvelle valeur
+    logoEmailGeneration += 1;
+  } else if (logoEmailEnCours) {
+    return;
+  }
+  const generation = logoEmailGeneration;
+  logoEmailEnCours = (async () => {
+    try {
+      const { AssetMarqueModel } = await import('../../models/asset-marque.model');
+      const url = await AssetMarqueModel.urlLogoEmail();
+      if (generation === logoEmailGeneration) logoEmailCache = { url: url || mailLogoUrlRepli(), expire: Date.now() + 5 * 60 * 1000 };
+    } catch {
+      if (generation === logoEmailGeneration) logoEmailCache = { url: mailLogoUrlRepli(), expire: Date.now() + 60 * 1000 };
+    } finally {
+      if (generation === logoEmailGeneration) logoEmailEnCours = null;
+    }
+  })();
+}
+
+function mailLogoUrl(): string {
+  if (!logoEmailCache) {
+    return mailLogoUrlRepli();
+  }
+  if (logoEmailCache.expire <= Date.now()) {
+    // Rafraîchit en arrière-plan ; l'URL connue reste valable en attendant
+    rafraichirLogoEmail();
+  }
+  return logoEmailCache.url;
 }
 
 /**

@@ -76,7 +76,7 @@ const detectMimeType = async (buffer: Buffer): Promise<string> => {
  * @param body Contenu du fichier
  * @param mimeType Type MIME du fichier
  */
-const putObject = async (storagePath: string, body: Buffer, mimeType: string): Promise<void> => {
+export const putObject = async (storagePath: string, body: Buffer, mimeType: string): Promise<void> => {
   await s3Client.send(new PutObjectCommand({
     Bucket: storageBucket,
     Key: storagePath,

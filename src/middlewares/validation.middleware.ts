@@ -12,11 +12,11 @@ import { logger } from '../utils/logger';
 export const validate = (schema: any) => {
   return (req: Request, res: Response, next: NextFunction) => {
     try {
-      if (req.body.delimitation && typeof req.body.delimitation === 'string' && req.body.delimitation.length > 100) {
+      if (req.body?.delimitation && typeof req.body.delimitation === 'string' && req.body.delimitation.length > 100) {
         req.body.delimitation = req.body.delimitation.substring(0, 100);
       }
 
-      const { error, value } = schema.validate(req.body, {
+      const { error, value } = schema.validate(req.body ?? {}, {
         abortEarly: false,
         stripUnknown: true
       });
