@@ -218,25 +218,36 @@ test('erreur Meta remontée avec le message lisible', async () => {
   await assert.rejects(() => publierBoost(input), /Budget trop faible/);
 });
 
-test('insights : time_range + time_increment=1 et parsing', async () => {
+test('insights : time_range + time_increment=1, deux requêtes fusionnées par date', async () => {
   configurerMetaReel();
   globalThis.fetch = (async (url: string | URL) => {
-    appels.push({ method: 'GET', path: String(url), body: {}, query: Object.fromEntries(new URL(String(url)).searchParams) });
-    return new Response(
-      JSON.stringify({
-        data: [
-          { date_start: '2026-10-01', spend: '1200', impressions: '3000', reach: '2500', inline_link_clicks: '40' },
-          { date_start: '2026-10-02', spend: '800', impressions: '2000', reach: '1800', clicks: '30', actions: [{ action_type: 'onsite_conversion.messaging_conversation_started_7d', value: '5' }] }
+    const query = Object.fromEntries(new URL(String(url)).searchParams);
+    appels.push({ method: 'GET', path: String(url), body: {}, query });
+    const data = query.fields.includes('actions')
+      ? [
+          { date_start: '2026-10-02', spend: '0', impressions: '0', actions: [{ action_type: 'onsite_conversion.messaging_conversation_started_7d', value: '5' }] },
+          { date_start: '2026-10-01', spend: '0', impressions: '0', inline_link_clicks: '40' }
         ]
-      }),
-      { status: 200 }
-    );
+      : [
+          { date_start: '2026-10-01', spend: '1200', impressions: '3000', reach: '2500', clicks: '50' },
+          { date_start: '2026-10-02', spend: '800', impressions: '2000', reach: '1800', clicks: '30' }
+        ];
+    return new Response(JSON.stringify({ data }), { status: 200 });
   }) as typeof fetch;
   const rows = await lireInsights('cmp_1', '2026-10-01', '2026-10-02');
-  assert.equal(appels[0].query.time_increment, '1');
-  assert.deepEqual(JSON.parse(appels[0].query.time_range), { since: '2026-10-01', until: '2026-10-02' });
+  assert.equal(appels.length, 2);
+  for (const appel of appels) {
+    assert.equal(appel.query.time_increment, '1');
+    assert.deepEqual(JSON.parse(appel.query.time_range), { since: '2026-10-01', until: '2026-10-02' });
+  }
+  const champsDiffusion = appels.find((a) => a.query.fields.includes('spend'))?.query.fields ?? '';
+  assert.doesNotMatch(champsDiffusion, /inline_link_clicks|actions/);
   assert.equal(rows.length, 2);
+  assert.equal(rows[0].date, '2026-10-01');
+  assert.equal(rows[0].depense, 1200);
   assert.equal(rows[0].clics, 40);
+  assert.equal(rows[1].depense, 800);
+  assert.equal(rows[1].impressions, 2000);
   assert.equal(rows[1].messages, 5);
 });
 

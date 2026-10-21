@@ -301,22 +301,32 @@ export function parserInsights(data: LigneInsight[] | undefined): InsightJour[] 
     });
 }
 
-/** Insights jour par jour entre deux dates (incluses). */
+/**
+ * Insights jour par jour entre deux dates (incluses).
+ * Deux requêtes fusionnées par date : avec `time_increment=1`, Meta renvoie spend/impressions/reach
+ * à "0" dès que `inline_link_clicks` ou `actions` figurent dans les mêmes champs (constaté le 19/10/2026).
+ */
 export async function lireInsights(metaCampaignId: string, depuis: string, jusqua: string): Promise<InsightJour[]> {
   if (estModeSimule() || metaCampaignId.startsWith('dry_')) return [];
   const config = await chargerMetaConfig();
-  const json = await metaGraphGet<{ data?: LigneInsight[] }>(
-    `${metaCampaignId}/insights`,
-    {
-      fields: 'spend,impressions,reach,clicks,inline_link_clicks,actions',
-      time_range: { since: depuis, until: jusqua },
-      time_increment: 1,
-      limit: 100
-    },
-    config.accessToken,
-    optionsGraph(config)
-  );
-  return parserInsights(json.data);
+  const lire = (fields: string) =>
+    metaGraphGet<{ data?: LigneInsight[] }>(
+      `${metaCampaignId}/insights`,
+      { fields, time_range: { since: depuis, until: jusqua }, time_increment: 1, limit: 100 },
+      config.accessToken,
+      optionsGraph(config)
+    );
+  const [diffusion, engagement] = await Promise.all([
+    lire('spend,impressions,reach,clicks'),
+    lire('inline_link_clicks,actions')
+  ]);
+  const parDate = new Map<string, LigneInsight>();
+  // La requête de diffusion passe en dernier : ses montants priment sur d'éventuels zéros de l'autre.
+  for (const row of [...(engagement.data ?? []), ...(diffusion.data ?? [])]) {
+    if (!row.date_start) continue;
+    parDate.set(row.date_start, { ...parDate.get(row.date_start), ...row });
+  }
+  return parserInsights([...parDate.values()].sort((a, b) => String(a.date_start).localeCompare(String(b.date_start))));
 }
 
 export type StatutRevueMeta = 'actif' | 'en_revue' | 'en_pause' | 'rejete' | 'termine' | 'autre';
