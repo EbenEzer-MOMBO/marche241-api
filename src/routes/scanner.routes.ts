@@ -167,7 +167,7 @@ const lotSchema = Joi.object({
  *                       ouverture_scan: { type: string, format: date-time, nullable: true }
  *                       fermeture_scan: { type: string, format: date-time, nullable: true }
  *                       etat_scan: { type: string, enum: [ouvert, a_venir, termine, sans_date] }
- *                       billets_vendus: { type: integer }
+ *                       billets_vendus: { type: integer, description: Billets valides (commande payée, ni annulée ni remboursée) }
  *                       billets_scannes: { type: integer }
  *       401:
  *         description: Non authentifié

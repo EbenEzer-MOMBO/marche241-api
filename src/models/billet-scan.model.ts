@@ -111,10 +111,19 @@ export class BilletScanModel {
     const { rows } = await query<EvenementVendeur>(
       `SELECT p.id, p.nom, p.statut, p.variants, p.image_principale, p.images,
               bo.id AS boutique_id, bo.nom AS boutique_nom, bo.slug AS boutique_slug,
-              (SELECT COUNT(*)::int FROM billets b WHERE b.produit_id = p.id) AS billets_vendus,
-              (SELECT COUNT(*)::int FROM billets b WHERE b.produit_id = p.id AND b.scanne_le IS NOT NULL) AS billets_scannes
+              v.billets_vendus, v.billets_scannes
          FROM produits p
          JOIN boutiques bo ON bo.id = p.boutique_id
+         -- Billets valides seulement (même règle que estCommandeValide) : ce sont les entrées attendues
+         CROSS JOIN LATERAL (
+           SELECT COUNT(*)::int AS billets_vendus,
+                  COUNT(*) FILTER (WHERE b.scanne_le IS NOT NULL)::int AS billets_scannes
+             FROM billets b
+             JOIN commandes c ON c.id = b.commande_id
+            WHERE b.produit_id = p.id
+              AND c.statut_paiement = 'paye'
+              AND c.statut NOT IN ('annulee', 'remboursee')
+         ) v
         WHERE bo.vendeur_id = $1
           AND p.variants->>'type' = 'evenement'
           AND p.statut <> 'archive'
