@@ -75,19 +75,22 @@ export class BilletScanModel {
   }
 
   /**
-   * Validation atomique : seul le premier appel renseigne `scanne_le`.
-   * Renvoie null si le billet était déjà scanné (ou a disparu).
+   * Validation atomique : seul le premier appel renseigne `scanne_le`, et seulement si la commande
+   * est encore valide au même instant (une annulation concurrente ne laisse pas passer le billet).
+   * Renvoie null si le billet était déjà scanné ou si la commande n'est plus valide.
    */
   static async validerSiNonScanne(id: number, instant: Date): Promise<Date | null> {
     const { rows } = await query<{ scanne_le: Date }>(
-      `UPDATE billets SET scanne_le = $2 WHERE id = $1 AND scanne_le IS NULL RETURNING scanne_le`,
+      `UPDATE billets b SET scanne_le = $2
+         FROM commandes c
+        WHERE b.id = $1
+          AND b.scanne_le IS NULL
+          AND c.id = b.commande_id
+          AND c.statut_paiement = 'paye'
+          AND c.statut NOT IN ('annulee', 'remboursee')
+        RETURNING b.scanne_le`,
       [id, instant]
     );
-    return rows[0]?.scanne_le ?? null;
-  }
-
-  static async scanneLe(id: number): Promise<Date | null> {
-    const { rows } = await query<{ scanne_le: Date | null }>(`SELECT scanne_le FROM billets WHERE id = $1`, [id]);
     return rows[0]?.scanne_le ?? null;
   }
 
@@ -96,15 +99,24 @@ export class BilletScanModel {
     const params: unknown[] = [produitId];
     let filtre = '';
     if (depuis) {
-      // Synchro différentielle : billets émis, scannés ou dont la commande a changé depuis
+      // Synchro différentielle : billets émis, dont la commande a changé, ou contrôlés depuis.
+      // Le journal (recu_le) couvre les scans hors-ligne synchronisés (scanne_le = heure de l'appareil,
+      // antérieure à `depuis`) et les annulations du dashboard (scanne_le remis à NULL).
       params.push(depuis);
-      filtre = ` AND (b.date_creation > $2 OR b.scanne_le > $2 OR c.date_modification > $2)`;
+      filtre = ` AND (b.date_creation > $2 OR b.scanne_le > $2 OR c.date_modification > $2
+                  OR EXISTS (SELECT 1 FROM billets_scans s WHERE s.billet_id = b.id AND s.recu_le > $2))`;
     }
     const { rows } = await query<BilletControle>(
       `${SELECT_BILLET_CONTROLE} WHERE b.produit_id = $1${filtre} ORDER BY b.numero`,
       params
     );
     return rows;
+  }
+
+  /** Identifiants de tous les billets d'un événement (la PWA retire de son cache ceux qui ont disparu). */
+  static async idsBillets(produitId: number): Promise<number[]> {
+    const { rows } = await query<{ id: string }>(`SELECT id FROM billets WHERE produit_id = $1`, [produitId]);
+    return rows.map((r) => Number(r.id));
   }
 
   static async evenementsVendeur(vendeurId: number): Promise<EvenementVendeur[]> {

@@ -203,6 +203,11 @@ router.get('/evenements', auth, scannerLimiter, ScannerController.evenements);
  *                 success: { type: boolean }
  *                 genere_le: { type: string, format: date-time }
  *                 complet: { type: boolean, description: false pour une synchro différentielle }
+ *                 ids_billets:
+ *                   type: array
+ *                   nullable: true
+ *                   items: { type: integer }
+ *                   description: Synchro différentielle seulement — tous les billets existants (retirer du cache les autres)
  *                 fenetre:
  *                   type: object
  *                   nullable: true
@@ -242,7 +247,7 @@ router.get(
  * /scanner/scan:
  *   post:
  *     summary: Contrôler un billet (QR ou saisie manuelle)
- *     description: Validation atomique (un billet n'est validé qu'une fois, même scanné en parallèle). Toute tentative est journalisée. Un refus métier répond 200 avec success=false et un code.
+ *     description: Validation atomique (un billet n'est validé qu'une fois, même scanné en parallèle, et seulement si sa commande est valide au même instant). Toute tentative est journalisée. Un refus métier répond 200 avec success=false et un code. En saisie manuelle, un billet d'un autre événement répond BILLET_INTROUVABLE.
  *     tags: [Scanner]
  *     security:
  *       - bearerAuth: []

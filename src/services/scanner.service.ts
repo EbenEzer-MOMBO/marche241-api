@@ -140,10 +140,15 @@ export class ScannerService {
   static async billetsCache(produit: { id: number; variants?: any }, depuis?: Date) {
     const genereLe = new Date();
     const fenetre = fenetreScan(metaProduit(produit));
-    const billets = await BilletScanModel.billetsCache(produit.id, depuis);
+    const [billets, ids] = await Promise.all([
+      BilletScanModel.billetsCache(produit.id, depuis),
+      depuis ? BilletScanModel.idsBillets(produit.id) : Promise.resolve(null)
+    ]);
     return {
       genere_le: genereLe,
       complet: !depuis,
+      // Synchro différentielle : liste des billets existants, pour retirer du cache ceux qui ont disparu
+      ids_billets: ids,
       fenetre: fenetre
         ? { ouverture: fenetre.ouverture, fermeture: fenetre.fermeture, fin_par_defaut: fenetre.fin_par_defaut }
         : null,
@@ -188,7 +193,9 @@ export class ScannerService {
 
     if (ctx.billetId !== undefined) {
       billet = await BilletScanModel.findControleById(ctx.billetId);
-      if (!billet) {
+      // Saisie manuelle : un billet d'un autre événement répond comme un billet inexistant,
+      // sinon les identifiants séquentiels permettraient de sonder les ventes des autres vendeurs
+      if (!billet || billet.produit_id !== ctx.produit.id) {
         return { success: false, code: 'BILLET_INTROUVABLE', message: 'Billet introuvable' };
       }
     } else {
@@ -248,9 +255,12 @@ export class ScannerService {
 
     const scanneLe = await BilletScanModel.validerSiNonScanne(billet.id, instant);
     if (!scanneLe) {
-      // Un autre appareil vient de valider ce billet
-      const existant = await BilletScanModel.scanneLe(billet.id);
-      return this.dejaScanne(affiche, existant);
+      // Un autre appareil vient de valider ce billet, ou la commande vient d'être annulée
+      const relu = await BilletScanModel.findControleById(billet.id);
+      if (relu && !relu.scanne_le && !estCommandeValide(relu)) {
+        return { success: false, code: 'COMMANDE_NON_VALIDE', message: 'Billet refusé : commande annulée ou non payée', billet: affiche };
+      }
+      return this.dejaScanne(affiche, relu?.scanne_le ?? null);
     }
 
     return {
