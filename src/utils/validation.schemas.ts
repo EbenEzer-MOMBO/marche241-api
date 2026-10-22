@@ -90,10 +90,10 @@ export const verificationCodeSchema = Joi.object({
   'object.missing': 'L\'adresse email ou le numéro de téléphone est obligatoire'
 });
 
+// Email facultatif : sans email, options « découvrables » (le navigateur propose lui-même la passkey)
 export const passkeyLoginOptionsSchema = Joi.object({
-  email: Joi.string().email().required().messages({
-    'string.email': 'L\'adresse email n\'est pas valide',
-    'any.required': 'L\'adresse email est obligatoire'
+  email: Joi.string().email().messages({
+    'string.email': 'L\'adresse email n\'est pas valide'
   })
 });
 

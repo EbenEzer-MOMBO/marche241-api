@@ -118,7 +118,8 @@ export class PasskeyController {
     try {
       const { email } = req.body as { email?: string };
       if (!email) {
-        res.status(400).json({ success: false, message: 'L\'adresse email est obligatoire' });
+        const options = await PasskeyService.createDiscoverableAuthenticationOptions();
+        res.status(200).json({ success: true, options });
         return;
       }
 

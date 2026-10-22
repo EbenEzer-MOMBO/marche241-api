@@ -6,7 +6,7 @@ import { guideParamSchema, guideStatutSchema } from '../utils/validation.schemas
 import { auth, isAdmin, isSelfVendeur } from '../middlewares/auth.middleware';
 import { validate, validateParams, validateQuery } from '../middlewares/validation.middleware';
 import { validateTurnstile } from '../middlewares/captcha.middleware';
-import { registrationLimiter } from '../middlewares/rate-limit.middleware';
+import { passkeyOptionsLimiter, registrationLimiter } from '../middlewares/rate-limit.middleware';
 import {
   createVendeurSchema,
   updateVendeurSchema,
@@ -93,7 +93,7 @@ router.post('/me/passkeys/register/options', auth, PasskeyController.registerOpt
 router.post('/me/passkeys/register/verify', auth, validate(passkeyVerifySchema), PasskeyController.registerVerify);
 router.get('/me/passkeys', auth, PasskeyController.list);
 router.delete('/me/passkeys/:id', auth, validateParams(passkeyIdParamSchema), PasskeyController.revoke);
-router.post('/passkeys/login/options', registrationLimiter, validate(passkeyLoginOptionsSchema), PasskeyController.loginOptions);
+router.post('/passkeys/login/options', passkeyOptionsLimiter, validate(passkeyLoginOptionsSchema), PasskeyController.loginOptions);
 router.post('/passkeys/login/verify', registrationLimiter, validate(passkeyVerifySchema), PasskeyController.loginVerify);
 
 /**
