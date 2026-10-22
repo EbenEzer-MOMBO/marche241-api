@@ -46,7 +46,8 @@ export class PasskeyService {
    */
   static async createDiscoverableAuthenticationOptions() {
     const { rpID } = getWebAuthnConfig();
-    const options = await generateAuthenticationOptions({ rpID, userVerification: 'preferred' });
+    // Seul facteur (pas d'email) : la vérification de l'utilisateur (biométrie / code) est exigée
+    const options = await generateAuthenticationOptions({ rpID, userVerification: 'required' });
 
     await VendeurPasskeyModel.saveChallenge({
       vendeur_id: null,
@@ -175,7 +176,8 @@ export class PasskeyService {
       expectedChallenge: consumed.challenge,
       expectedOrigin: origin,
       expectedRPID: rpID,
-      requireUserVerification: false,
+      // Défi découvrable (sans vendeur) : vérification de l'utilisateur obligatoire
+      requireUserVerification: consumed.vendeur_id === null,
       credential: {
         id: passkey.credential_id,
         publicKey: new Uint8Array(passkey.public_key),

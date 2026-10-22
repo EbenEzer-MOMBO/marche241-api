@@ -93,7 +93,8 @@ export const verificationCodeSchema = Joi.object({
 // Email facultatif : sans email, options « découvrables » (le navigateur propose lui-même la passkey)
 export const passkeyLoginOptionsSchema = Joi.object({
   email: Joi.string().email().messages({
-    'string.email': 'L\'adresse email n\'est pas valide'
+    'string.email': 'L\'adresse email n\'est pas valide',
+    'string.empty': 'L\'adresse email est vide : omettez-la pour une connexion sans email'
   })
 });
 

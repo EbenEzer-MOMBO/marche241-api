@@ -173,7 +173,7 @@ export const scannerLimiter = rateLimit({
 });
 
 /**
- * Options de connexion par passkey : sans email, la PWA scanner les demande à chaque ouverture
+ * Connexion par passkey (options + vérification) : sans email, la PWA scanner demande les options à chaque ouverture
  * de l'écran de connexion (proposition automatique). Simple défi, sans envoi ni création de compte.
  */
 export const passkeyOptionsLimiter = rateLimit({
