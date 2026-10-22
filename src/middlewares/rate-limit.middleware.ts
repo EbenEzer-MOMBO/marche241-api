@@ -171,3 +171,19 @@ export const scannerLimiter = rateLimit({
     code: 'TOO_MANY_REQUESTS'
   }
 });
+
+/**
+ * Connexion par passkey (options + vérification) : sans email, la PWA scanner demande les options à chaque ouverture
+ * de l'écran de connexion (proposition automatique). Simple défi, sans envoi ni création de compte.
+ */
+export const passkeyOptionsLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Trop de tentatives de connexion par clé d\'accès, veuillez réessayer dans quelques minutes.',
+    code: 'TOO_MANY_REQUESTS'
+  }
+});

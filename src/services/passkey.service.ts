@@ -30,7 +30,35 @@ function getWebAuthnConfig() {
   return { rpID, rpName, origin: origins.length > 1 ? origins : origins[0] };
 }
 
+function lireDefi(response: AuthenticationResponseJSON): string {
+  try {
+    const clientData = JSON.parse(Buffer.from(response.response.clientDataJSON, 'base64url').toString('utf8'));
+    return typeof clientData.challenge === 'string' ? clientData.challenge : '';
+  } catch {
+    return '';
+  }
+}
+
 export class PasskeyService {
+  /**
+   * Options sans compte ciblé (passkeys « découvrables ») : le navigateur propose les passkeys
+   * enregistrées pour le domaine, par exemple dans l'autoremplissage du champ email.
+   */
+  static async createDiscoverableAuthenticationOptions() {
+    const { rpID } = getWebAuthnConfig();
+    // Seul facteur (pas d'email) : la vérification de l'utilisateur (biométrie / code) est exigée
+    const options = await generateAuthenticationOptions({ rpID, userVerification: 'required' });
+
+    await VendeurPasskeyModel.saveChallenge({
+      vendeur_id: null,
+      challenge: options.challenge,
+      type: 'login',
+      expires_at: new Date(Date.now() + CHALLENGE_TTL_MS)
+    });
+
+    return options;
+  }
+
   static async createRegistrationOptions(vendeur: Vendeur) {
     const { rpID, rpName } = getWebAuthnConfig();
     const existantes = await VendeurPasskeyModel.listByVendeurId(vendeur.id);
@@ -137,8 +165,9 @@ export class PasskeyService {
       throw new Error('Clé d\'accès inconnue');
     }
 
-    const consumed = await VendeurPasskeyModel.consumeLatestForVendeur(passkey.vendeur_id, 'login');
-    if (!consumed || Number(consumed.vendeur_id) !== Number(passkey.vendeur_id)) {
+    // Le défi signé est relu dans clientDataJSON : il couvre les options ciblées (vendeur) et découvrables (sans vendeur)
+    const consumed = await VendeurPasskeyModel.consumeChallenge(lireDefi(response), 'login');
+    if (!consumed || (consumed.vendeur_id !== null && Number(consumed.vendeur_id) !== Number(passkey.vendeur_id))) {
       throw new Error('Défi de clé d\'accès invalide ou expiré');
     }
 
@@ -147,7 +176,8 @@ export class PasskeyService {
       expectedChallenge: consumed.challenge,
       expectedOrigin: origin,
       expectedRPID: rpID,
-      requireUserVerification: false,
+      // Défi découvrable (sans vendeur) : vérification de l'utilisateur obligatoire
+      requireUserVerification: consumed.vendeur_id === null,
       credential: {
         id: passkey.credential_id,
         publicKey: new Uint8Array(passkey.public_key),

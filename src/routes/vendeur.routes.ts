@@ -6,7 +6,7 @@ import { guideParamSchema, guideStatutSchema } from '../utils/validation.schemas
 import { auth, isAdmin, isSelfVendeur } from '../middlewares/auth.middleware';
 import { validate, validateParams, validateQuery } from '../middlewares/validation.middleware';
 import { validateTurnstile } from '../middlewares/captcha.middleware';
-import { registrationLimiter } from '../middlewares/rate-limit.middleware';
+import { passkeyOptionsLimiter, registrationLimiter } from '../middlewares/rate-limit.middleware';
 import {
   createVendeurSchema,
   updateVendeurSchema,
@@ -93,8 +93,57 @@ router.post('/me/passkeys/register/options', auth, PasskeyController.registerOpt
 router.post('/me/passkeys/register/verify', auth, validate(passkeyVerifySchema), PasskeyController.registerVerify);
 router.get('/me/passkeys', auth, PasskeyController.list);
 router.delete('/me/passkeys/:id', auth, validateParams(passkeyIdParamSchema), PasskeyController.revoke);
-router.post('/passkeys/login/options', registrationLimiter, validate(passkeyLoginOptionsSchema), PasskeyController.loginOptions);
-router.post('/passkeys/login/verify', registrationLimiter, validate(passkeyVerifySchema), PasskeyController.loginVerify);
+/**
+ * @swagger
+ * /vendeurs/passkeys/login/options:
+ *   post:
+ *     summary: Options WebAuthn de connexion par passkey
+ *     description: >
+ *       Avec email : options ciblées sur les passkeys du compte.
+ *       Sans email : options « découvrables » (le navigateur propose les passkeys du domaine, par exemple
+ *       dans l'autoremplissage du champ email) ; la vérification de l'utilisateur est alors exigée.
+ *       Défi à usage unique, valable 5 minutes.
+ *     tags: [Vendeurs]
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               email: { type: string, format: email, description: Facultatif }
+ *     responses:
+ *       200:
+ *         description: Options à passer à navigator.credentials.get
+ *       400:
+ *         description: Email invalide (VALIDATION_ERROR)
+ *       404:
+ *         description: Aucune passkey pour ce compte
+ *       429:
+ *         description: Trop de tentatives
+ * /vendeurs/passkeys/login/verify:
+ *   post:
+ *     summary: Vérifier une assertion WebAuthn et ouvrir la session vendeur
+ *     description: Le défi signé (clientDataJSON) doit avoir été émis par /passkeys/login/options et ne sert qu'une fois.
+ *     tags: [Vendeurs]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [response]
+ *             properties:
+ *               response: { type: object, description: AuthenticationResponseJSON }
+ *     responses:
+ *       200:
+ *         description: Connexion réussie (vendeur, token)
+ *       400:
+ *         description: Passkey inconnue, défi invalide ou expiré, vérification refusée
+ *       429:
+ *         description: Trop de tentatives
+ */
+router.post('/passkeys/login/options', passkeyOptionsLimiter, validate(passkeyLoginOptionsSchema), PasskeyController.loginOptions);
+router.post('/passkeys/login/verify', passkeyOptionsLimiter, validate(passkeyVerifySchema), PasskeyController.loginVerify);
 
 /**
  * @swagger
