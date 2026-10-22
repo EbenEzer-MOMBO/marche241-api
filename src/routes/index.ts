@@ -21,6 +21,7 @@ import notificationRoutes from './notification.routes';
 import vueRoutes from './vue.routes';
 import avisRoutes from './avis.routes';
 import assetMarqueRoutes from './asset-marque.routes';
+import scannerRoutes from './scanner.routes';
 import { CronController } from '../controllers/cron.controller';
 import { requireCronSecret } from '../middlewares/cron-auth.middleware';
 
@@ -73,6 +74,9 @@ router.use(`${apiPrefix}/emails`, emailRoutes);
 
 // Consultation publique des billets événement (jeton)
 router.use(`${apiPrefix}/billets`, billetRoutes);
+
+// Scanner de billets (PWA marche241_scan, vendeur JWT)
+router.use(`${apiPrefix}/scanner`, scannerRoutes);
 
 // Boost publicitaire Meta Ads (vendeur JWT + back-office x-service-key)
 router.use(`${apiPrefix}/boosts`, boostRoutes);
