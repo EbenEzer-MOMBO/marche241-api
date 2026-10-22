@@ -20,7 +20,14 @@ function getWebAuthnConfig() {
     process.env.FRONTEND_URL ||
     'http://localhost:3000';
 
-  return { rpID, rpName, origin: origin.replace(/\/$/, '') };
+  // WEBAUTHN_ORIGIN : une ou plusieurs origines séparées par des virgules (front + scanner).
+  // Elles doivent toutes partager le domaine WEBAUTHN_RP_ID pour réutiliser les mêmes passkeys.
+  const origins = origin
+    .split(',')
+    .map((o) => o.trim().replace(/\/$/, ''))
+    .filter(Boolean);
+
+  return { rpID, rpName, origin: origins.length > 1 ? origins : origins[0] };
 }
 
 export class PasskeyService {

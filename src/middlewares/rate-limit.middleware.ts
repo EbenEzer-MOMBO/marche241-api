@@ -1,4 +1,4 @@
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 
 /**
  * Limiteur de débit global standard (500 requêtes par 15 minutes par IP)
@@ -151,6 +151,23 @@ export const avisSoumissionLimiter = rateLimit({
   message: {
     success: false,
     message: "Trop d'envois d'avis depuis cette connexion, veuillez réessayer plus tard.",
+    code: 'TOO_MANY_REQUESTS'
+  }
+});
+
+/**
+ * Limiteur du scanner de billets (PWA marche241_scan) : large, car une entrée d'événement
+ * enchaîne les scans, mais compté par vendeur (plusieurs appareils sur le même réseau du lieu).
+ */
+export const scannerLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 600,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => (req.vendeur ? `vendeur:${req.vendeur.id}` : ipKeyGenerator(req.ip ?? '')),
+  message: {
+    success: false,
+    message: 'Trop de scans en peu de temps, veuillez patienter quelques secondes.',
     code: 'TOO_MANY_REQUESTS'
   }
 });

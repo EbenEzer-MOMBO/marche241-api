@@ -29,7 +29,9 @@ app.set('trust proxy', Number.parseInt(process.env.TRUST_PROXY_HOPS ?? '1', 10) 
 // Middlewares
 app.use(cors({
   origin: [
-    process.env.CORS_ORIGIN || '*',
+    // CORS_ORIGIN : une ou plusieurs origines séparées par des virgules (front, scanner scan.marche241.ga…)
+    ...(process.env.CORS_ORIGIN || '*').split(',').map((o) => o.trim()).filter(Boolean),
+    'http://localhost:3002',
     'http://localhost:3000',
     'http://127.0.0.1:3000',
     'http://192.168.1.7:3000',

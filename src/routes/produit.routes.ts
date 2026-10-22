@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { ProduitController } from '../controllers/produit.controller';
 import { BilletController } from '../controllers/billet.controller';
+import { ScannerController } from '../controllers/scanner.controller';
 import { auth, optionalAuth } from '../middlewares/auth.middleware';
 import { authOrServiceKey } from '../middlewares/service-auth.middleware';
 import { validate, validateParams, validateQuery } from '../middlewares/validation.middleware';
@@ -895,5 +896,88 @@ router.get('/:id/stats', auth, validateParams(idParamSchema), ProduitController.
  *         description: Produit non trouvé
  */
 router.get('/:id/participants', authOrServiceKey, validateParams(idParamSchema), BilletController.participantsParProduit);
+
+const journalScansQuerySchema = Joi.object({
+  page: Joi.number().integer().min(1).default(1).messages({
+    'number.base': 'La page doit être un nombre',
+    'number.integer': 'La page doit être un entier',
+    'number.min': 'La page doit être au moins 1'
+  }),
+  limite: Joi.number().integer().min(1).max(200).default(50).messages({
+    'number.base': 'La limite doit être un nombre',
+    'number.integer': 'La limite doit être un entier',
+    'number.min': 'La limite doit être au moins 1',
+    'number.max': 'La limite ne peut pas dépasser 200'
+  }),
+  resultat: Joi.string()
+    .valid('valide', 'deja_scanne', 'introuvable', 'mauvais_evenement', 'commande_non_valide', 'hors_fenetre', 'qr_invalide', 'annule')
+    .messages({ 'any.only': 'Résultat de scan inconnu' })
+});
+
+/**
+ * @swagger
+ * /produits/{id}/scans:
+ *   get:
+ *     summary: Journal des contrôles de billets d'un événement
+ *     description: Toutes les tentatives (scanner, saisie manuelle, dashboard), y compris les refus. Réservé au vendeur propriétaire ou au back-office (clé de service).
+ *     tags: [Produits, Scanner]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, default: 1 }
+ *       - in: query
+ *         name: limite
+ *         schema: { type: integer, default: 50, maximum: 200 }
+ *       - in: query
+ *         name: resultat
+ *         schema:
+ *           type: string
+ *           enum: [valide, deja_scanne, introuvable, mauvais_evenement, commande_non_valide, hors_fenetre, qr_invalide, annule]
+ *     responses:
+ *       200:
+ *         description: Journal paginé
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean }
+ *                 scans:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id: { type: integer }
+ *                       billet_id: { type: integer, nullable: true }
+ *                       vendeur_id: { type: integer, nullable: true }
+ *                       resultat: { type: string }
+ *                       mode: { type: string, enum: [qr, manuel, dashboard] }
+ *                       source: { type: string, enum: [en_ligne, hors_ligne] }
+ *                       appareil_id: { type: string, nullable: true }
+ *                       scanne_a: { type: string, format: date-time }
+ *                       recu_le: { type: string, format: date-time }
+ *                       numero: { type: integer, nullable: true }
+ *                       type_billet: { type: string, nullable: true }
+ *                       titulaire: { type: string, nullable: true }
+ *                 total: { type: integer }
+ *                 resume: { type: object, additionalProperties: { type: integer }, description: Nombre de tentatives par résultat + hors_ligne }
+ *                 page: { type: integer }
+ *                 limite: { type: integer }
+ *       400:
+ *         description: Paramètres invalides (VALIDATION_ERROR)
+ *       401:
+ *         description: Non authentifié
+ *       403:
+ *         description: Événement d'un autre vendeur
+ *       404:
+ *         description: Événement introuvable
+ */
+router.get('/:id/scans', authOrServiceKey, validateParams(idParamSchema), validateQuery(journalScansQuerySchema), ScannerController.journal);
 
 export default router;

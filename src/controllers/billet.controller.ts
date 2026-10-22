@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { BilletService } from '../services/billet.service';
 import { BilletModel } from '../models/billet.model';
+import { BilletScanModel } from '../models/billet-scan.model';
 import { ProduitModel } from '../models/produit.model';
 import { CommandeModel } from '../models/commande.model';
 import { HtmlToPdfService } from '../services/htmltopdf.service';
@@ -67,7 +68,20 @@ export class BilletController {
         return;
       }
 
-      const misAJour = await BilletModel.setScanne(billetId, req.body.scanne === true);
+      const scanne = req.body.scanne === true;
+      const misAJour = await BilletModel.setScanne(billetId, scanne);
+      if (misAJour && (scanne ? !billet.scanne_le : !!billet.scanne_le)) {
+        // Cochage depuis le dashboard : tracé dans le même journal que le scanner
+        await BilletScanModel.journaliser({
+          produit_id: billet.produit_id,
+          billet_id: billetId,
+          vendeur_id: req.vendeur?.id ?? null,
+          resultat: scanne ? 'valide' : 'annule',
+          mode: 'dashboard',
+          source: 'en_ligne',
+          scanne_a: new Date()
+        }).catch((error) => logger.error('[BilletController] Journal du scan:', error.message));
+      }
       res.json({ success: true, billet: misAJour });
     } catch (error: any) {
       logger.error('[BilletController] Scan billet:', error.message);

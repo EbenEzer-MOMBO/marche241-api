@@ -277,6 +277,32 @@ export interface Billet {
   date_creation: Date;
 }
 
+// Table billets_scans (journal des contrôles à l'entrée, scanner PWA)
+export type ResultatScan =
+  | 'valide'
+  | 'deja_scanne'
+  | 'introuvable'
+  | 'mauvais_evenement'
+  | 'commande_non_valide'
+  | 'hors_fenetre'
+  | 'qr_invalide'
+  | 'annule';
+export type ModeScan = 'qr' | 'manuel' | 'dashboard';
+export type SourceScan = 'en_ligne' | 'hors_ligne';
+
+export interface BilletScan {
+  id: number;
+  produit_id: number;
+  billet_id: number | null; // NULL si le QR ne correspond à aucun billet
+  vendeur_id: number | null; // NULL pour une action du back-office
+  resultat: ResultatScan;
+  mode: ModeScan;
+  source: SourceScan;
+  appareil_id: string | null;
+  scanne_a: Date; // horodatage côté appareil
+  recu_le: Date;
+}
+
 // Table transactions
 export interface Transaction {
   id: number;
