@@ -337,9 +337,27 @@ describe('Boost Meta — intégration HTTP (Postgres local, dry-run)', { skip: i
     assert.equal(d.json.totaux.impressions, 50000);
     assert.equal(d.json.insights.length, 2);
 
-    const remb = await appel('POST', `/boosts/admin/${boostId}/rembourse`, { cle: CLE_SERVICE, corps: { note: 'Versement Airtel 3712' } });
+    const transfert = { moyen: 'airtel_money', telephone: '074000000', reference: 'tx-it-1' };
+    const remb = await appel('POST', `/boosts/admin/${boostId}/rembourse`, { cle: CLE_SERVICE, corps: { note: 'Versement Airtel 3712', transfert } });
     assert.equal(remb.json.boost.statut_remboursement, 'rembourse');
     assert.equal((await appel('POST', `/boosts/admin/${boostId}/rembourse`, { cle: CLE_SERVICE, corps: {} })).status, 409);
+    const evt = await sql.query(`SELECT donnees FROM boost_evenements WHERE boost_id = $1 AND type_evenement = 'rembourse'`, [boostId]);
+    assert.equal(evt.rows.length, 1, 'un seul événement de remboursement');
+    assert.deepEqual(evt.rows[0].donnees.transfert, transfert);
+
+    // Paiement en double après remboursement : seul ce paiement est dû (pas les 3712 déjà versés)
+    await sql.query(
+      `INSERT INTO transactions (boost_id, reference_transaction, montant, methode_paiement, statut, type_paiement, date_creation, date_modification)
+       VALUES ($1, 'IT-DOUBLE-1', 7500, 'airtel_money', 'paye', 'boost', NOW(), NOW())`,
+      [boostId]
+    );
+    const { rows: [tx] } = await sql.query(`SELECT id FROM transactions WHERE reference_transaction = 'IT-DOUBLE-1'`);
+    const { BoostEvenementModel } = await import('../models/boost.model');
+    assert.equal(await BoostEvenementModel.crediterRemboursementPaiement(boostId, tx.id, 7500, 'paiement_en_double', 'double', 'paye'), true);
+    const { rows: [apres] } = await sql.query(`SELECT statut_remboursement, montant_a_rembourser_fcfa FROM boosts WHERE id = $1`, [boostId]);
+    assert.equal(apres.statut_remboursement, 'a_rembourser');
+    assert.equal(apres.montant_a_rembourser_fcfa, 7500);
+    assert.equal(await BoostEvenementModel.paiementsEnTropDepuisDernierRemboursement(boostId), 7500);
   });
 
   test('refus admin : remboursement intégral hors frais d’encaissement', async () => {

@@ -38,15 +38,32 @@ test('boost refusé : remboursement intégral hors frais, motif de la revue repr
 });
 
 test('paiement en double ajouté au reliquat', () => {
-  const e = expliquerRemboursement(boost({ montant_a_rembourser_fcfa: 156 + 5200 }));
+  const e = expliquerRemboursement(boost({ montant_a_rembourser_fcfa: 156 + 5200 }), 5200);
   assert.equal(somme(e.lignes), 5356);
   assert.deepEqual(e.lignes.at(-1), { libelle: 'Paiement en double remboursé', montant: 5200 });
   assert.match(e.motif, /double/);
 });
 
 test('boost encore ouvert : seul un paiement en trop est remboursé', () => {
-  const e = expliquerRemboursement(boost({ statut: 'actif', montant_a_rembourser_fcfa: 5200 }));
+  const e = expliquerRemboursement(boost({ statut: 'actif', montant_a_rembourser_fcfa: 5200 }), 5200);
   assert.deepEqual(e.lignes, [{ libelle: 'Paiement en trop', montant: 5200 }]);
+});
+
+test('reliquat déjà remboursé puis paiement en double : seul le paiement en trop est expliqué', () => {
+  const e = expliquerRemboursement(boost({ montant_a_rembourser_fcfa: 5200 }), 5200);
+  assert.deepEqual(e.lignes, [{ libelle: 'Paiement en trop', montant: 5200 }]);
+  assert.doesNotMatch(e.motif, /terminée/);
+});
+
+test('montant ajusté à la main : pas de détail incohérent, les lignes totalisent le montant', () => {
+  const e = expliquerRemboursement(boost({ montant_a_rembourser_fcfa: 100 }));
+  assert.deepEqual(e.lignes, [{ libelle: 'Remboursement', montant: 100 }]);
+});
+
+test('TVA conservée sur une ligne distincte de la commission', () => {
+  const e = expliquerRemboursement(boost({ tva_fcfa: 900, total_fcfa: 6100, montant_a_rembourser_fcfa: 6100 - 3780 - 1134 - 851 - 130 }));
+  assert.ok(e.lignes.some((l) => l.libelle === 'TVA sur la commission' && l.montant === -851));
+  assert.equal(somme(e.lignes), e.montant);
 });
 
 test('e-mail de remboursement : HTML échappé, transfert et version texte', () => {
@@ -57,8 +74,7 @@ test('e-mail de remboursement : HTML échappé, transfert et version texte', () 
     montant: '156 FCFA',
     motif: 'La diffusion est terminée.',
     lignes: [{ libelle: 'Montant payé', montant: '5 200 FCFA' }],
-    transfert: { moyen: 'Airtel Money', telephone: '074000000', reference: 'tx-1' },
-    dateRemboursement: '24 octobre',
+    transfert: { moyen: 'Airtel Money', telephone: '074000000', reference: 'tx-1', date: '24 octobre' },
     lienSuivi: 'https://marche241.ga/admin/kalia/boost/15'
   });
   assert.match(subject, /156 FCFA/);
@@ -75,8 +91,8 @@ test('e-mail de remboursement : HTML échappé, transfert et version texte', () 
     motif: 'x',
     lignes: [],
     transfert: null,
-    dateRemboursement: '24 octobre',
     lienSuivi: 'https://marche241.ga'
   });
-  assert.match(sansTransfert.text, /Versement effectué par l'équipe Marché 241/);
+  assert.match(sansTransfert.text, /Versement effectué par l'équipe Marché 241\./);
+  assert.ok(!sansTransfert.html.includes('>Date<'), 'date réelle inconnue hors application : non affichée');
 });

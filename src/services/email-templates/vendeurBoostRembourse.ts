@@ -8,9 +8,11 @@ export interface VendeurBoostRembourseData {
   motif: string;
   /** Détail du calcul, montants déjà formatés (négatifs pour les retenues). */
   lignes: { libelle: string; montant: string }[];
-  /** Transfert mobile money effectué par Marché 241 ; absent si le remboursement a été fait hors application. */
-  transfert?: { moyen: string; telephone: string; reference: string } | null;
-  dateRemboursement: string;
+  /**
+   * Transfert mobile money effectué par Marché 241. Absent si le remboursement a été fait hors
+   * application : sa date réelle est alors inconnue et n'est pas affichée.
+   */
+  transfert?: { moyen: string; telephone: string; reference: string; date: string } | null;
   lienSuivi: string;
 }
 
@@ -42,12 +44,9 @@ export function vendeurBoostRembourseTemplate(data: VendeurBoostRembourseData): 
         ? [
             { label: 'Versé sur', value: `${echapper(transfert.moyen)} · ${echapper(transfert.telephone)}` },
             { label: 'Référence', value: echapper(transfert.reference) },
-            { label: 'Date', value: echapper(data.dateRemboursement) }
+            { label: 'Date', value: echapper(transfert.date) }
           ]
-        : [
-            { label: 'Versement', value: 'Effectué par l’équipe Marché 241' },
-            { label: 'Date', value: echapper(data.dateRemboursement) }
-          ]
+        : [{ label: 'Versement', value: 'Effectué par l’équipe Marché 241' }]
     ),
     spacer(20),
     ctaButton(data.lienSuivi, 'Voir ma publicité'),
@@ -59,8 +58,8 @@ export function vendeurBoostRembourseTemplate(data: VendeurBoostRembourseData): 
 
   const detail = data.lignes.map((l) => `- ${l.libelle} : ${l.montant}`).join('\n');
   const versement = transfert
-    ? `Versé sur ${transfert.moyen} (${transfert.telephone}), référence ${transfert.reference}, le ${data.dateRemboursement}.`
-    : `Versement effectué par l'équipe Marché 241 le ${data.dateRemboursement}.`;
+    ? `Versé sur ${transfert.moyen} (${transfert.telephone}), référence ${transfert.reference}, le ${transfert.date}.`
+    : `Versement effectué par l'équipe Marché 241.`;
 
   return {
     subject: `Remboursement de ${data.montant} pour votre publicité « ${data.titrePub} »`,

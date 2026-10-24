@@ -41,7 +41,7 @@ import {
 } from './meta-connexion.service';
 import { PaiementController } from '../controllers/paiement.controller';
 import { logger } from '../utils/logger';
-import { EmailService } from './email.service';
+import { EmailService, LIBELLES_MOYEN_VERSEMENT } from './email.service';
 import { WhatsAppService } from './whatsapp.service';
 import { VendeurModel } from '../models/vendeur.model';
 import { buildBoostEnLigneComponents, TEMPLATE_BOOST_EN_LIGNE } from './whatsapp-templates-boost';
@@ -177,10 +177,9 @@ export interface TransfertRemboursement {
   reference: string;
 }
 
-const LIBELLES_MOYEN_TRANSFERT: Record<TransfertRemboursement['moyen'], string> = {
-  airtel_money: 'Airtel Money',
-  moov_money: 'Moov Money'
-};
+/** Montant encore dû au vendeur (0 si le dernier montant a déjà été remboursé). */
+const resteDu = (boost: Pick<Boost, 'statut_remboursement' | 'montant_a_rembourser_fcfa'>) =>
+  boost.statut_remboursement === 'a_rembourser' ? boost.montant_a_rembourser_fcfa : 0;
 
 const dateCourte = (d: Date | string | null) =>
   d ? new Date(d).toLocaleDateString('fr-FR', { timeZone: 'Africa/Libreville', day: 'numeric', month: 'long' }) : '-';
@@ -629,7 +628,7 @@ export class BoostService {
       valide_par: valideur,
       date_validation: new Date(),
       statut_remboursement: 'a_rembourser',
-      montant_a_rembourser_fcfa: remboursementIntegral(boost)
+      montant_a_rembourser_fcfa: resteDu(boost) + remboursementIntegral(boost)
     });
     if (!resultat) throw new BoostErreur("Ce boost n'est pas en attente de validation", 409, 'BOOST_NON_VALIDABLE');
     await BoostEvenementModel.creer(boost.id, 'refuse', 'admin', { note, valide_par: valideur });
@@ -690,8 +689,8 @@ export class BoostService {
     const resultat = await BoostModel.changerStatut(boost.id, ['actif', 'en_pause'], vers, {
       depense_fcfa: cloture.depense_fcfa,
       date_cloture: new Date(),
-      statut_remboursement: cloture.montant_a_rembourser_fcfa > 0 ? 'a_rembourser' : 'aucun',
-      montant_a_rembourser_fcfa: boost.montant_a_rembourser_fcfa + cloture.montant_a_rembourser_fcfa,
+      statut_remboursement: resteDu(boost) + cloture.montant_a_rembourser_fcfa > 0 ? 'a_rembourser' : 'aucun',
+      montant_a_rembourser_fcfa: resteDu(boost) + cloture.montant_a_rembourser_fcfa,
       note_revue: vers === 'rejete_meta' ? motif ?? 'Publicité refusée par Meta' : undefined
     });
     if (!resultat) throw new BoostErreur('Statut modifié entre-temps', 409, 'BOOST_NON_DIFFUSE');
@@ -968,24 +967,29 @@ export class BoostService {
         'BILAN_PROVISOIRE'
       );
     }
-    const resultat = await BoostModel.mettreAJour(boost.id, {
-      statut_remboursement: 'rembourse',
-      date_remboursement: new Date(),
-      note_remboursement: note ?? boost.note_remboursement
-    });
-    const canalEmail = await BoostService.envoyerEmailRembourse(boost, transfert);
-    await BoostEvenementModel.creer(boost.id, 'rembourse', 'admin', {
+    // Les crédits « en trop » se lisent avant l'événement « rembourse » qui les solde.
+    const paiementsEnTrop = await BoostEvenementModel.paiementsEnTropDepuisDernierRemboursement(boost.id);
+    const resultat = await BoostModel.marquerRembourse(boost.id, note);
+    if (!resultat) throw new BoostErreur('Ce remboursement vient déjà d’être enregistré', 409, 'REMBOURSEMENT_INEXISTANT');
+    const evenementId = await BoostEvenementModel.creer(boost.id, 'rembourse', 'admin', {
       montant: boost.montant_a_rembourser_fcfa,
       note,
       admin,
-      transfert: transfert ?? undefined,
-      canal_email: canalEmail
+      transfert: transfert ?? undefined
     });
-    return resultat ?? boost;
+    // E-mail en arrière-plan : la réponse à l'admin n'attend pas le fournisseur d'e-mail.
+    void BoostService.envoyerEmailRembourse(boost, transfert, paiementsEnTrop).then((canal) =>
+      evenementId ? BoostEvenementModel.completer(evenementId, { canal_email: canal }).catch(() => undefined) : undefined
+    );
+    return resultat;
   }
 
   /** E-mail explicatif au vendeur (motif, détail du calcul, transfert). Ne lève jamais. */
-  private static async envoyerEmailRembourse(boost: Boost, transfert: TransfertRemboursement | null): Promise<CanalNotification> {
+  private static async envoyerEmailRembourse(
+    boost: Boost,
+    transfert: TransfertRemboursement | null,
+    paiementsEnTrop: number
+  ): Promise<CanalNotification> {
     try {
       const [vendeur, boutique] = await Promise.all([
         VendeurModel.getVendeurById(boost.vendeur_id).catch(() => null),
@@ -993,7 +997,7 @@ export class BoostService {
       ]);
       if (!vendeur?.email) return 'sans_destinataire';
       const slug = boutique?.slug ?? String(boost.boutique_id);
-      const explication = expliquerRemboursement(boost);
+      const explication = expliquerRemboursement(boost, paiementsEnTrop);
       await EmailService.envoyerBoostRembourse(vendeur.email, {
         vendeurNom: vendeur.nom || 'cher vendeur',
         boutiqueNom: boutique?.nom ?? slug,
@@ -1005,9 +1009,13 @@ export class BoostService {
           montant: l.montant < 0 ? `- ${formaterFcfa(-l.montant)}` : formaterFcfa(l.montant)
         })),
         transfert: transfert
-          ? { moyen: LIBELLES_MOYEN_TRANSFERT[transfert.moyen], telephone: transfert.telephone, reference: transfert.reference }
+          ? {
+              moyen: LIBELLES_MOYEN_VERSEMENT[transfert.moyen],
+              telephone: transfert.telephone,
+              reference: transfert.reference,
+              date: dateCourte(new Date())
+            }
           : null,
-        dateRemboursement: dateCourte(new Date()),
         lienSuivi: `${frontendUrl()}/admin/${slug}/boost/${boost.id}`
       });
       return process.env.RESEND_API_KEY ? 'ok' : 'simule';

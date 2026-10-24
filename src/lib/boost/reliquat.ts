@@ -27,7 +27,8 @@ export function fraisEncaissement(totalFcfa: number, fraisBps: number): number {
   return Math.max(0, Math.round((Math.max(0, totalFcfa) * Math.max(0, fraisBps)) / 10_000));
 }
 
-function fraisRetenus(montants: MontantsBoost): number {
+/** Frais d'encaissement retenus (jamais plus que le total payé). */
+export function fraisRetenus(montants: MontantsBoost): number {
   return Math.min(Math.max(0, montants.frais_encaissement_fcfa ?? 0), Math.max(0, montants.total_fcfa));
 }
 
