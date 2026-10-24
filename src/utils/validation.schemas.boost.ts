@@ -223,7 +223,14 @@ export const refuserBoostSchema = fr(
 export const remboursementBoostSchema = fr(
   Joi.object({
     note: Joi.string().trim().max(1000).allow(null, '').label('La note'),
-    valide_par: valideur
+    valide_par: valideur,
+    transfert: Joi.object({
+      moyen: Joi.string().valid('airtel_money', 'moov_money').required().label("L'opérateur du transfert"),
+      telephone: Joi.string().trim().max(20).required().label('Le numéro du transfert'),
+      reference: Joi.string().trim().max(100).required().label('La référence du transfert')
+    })
+      .allow(null)
+      .label('Le transfert')
   })
 );
 

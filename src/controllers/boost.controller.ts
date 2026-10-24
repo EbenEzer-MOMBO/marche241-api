@@ -403,8 +403,8 @@ export class BoostController {
 
   static async marquerRembourse(req: Request, res: Response): Promise<void> {
     try {
-      const { note, valide_par } = corps(req);
-      res.json({ success: true, boost: await BoostService.marquerRembourse(Number(params(req).id), note || null, valide_par) });
+      const { note, valide_par, transfert } = corps(req);
+      res.json({ success: true, boost: await BoostService.marquerRembourse(Number(params(req).id), note || null, valide_par, transfert ?? null) });
     } catch (err) {
       repondreErreur(res, err, 'le marquage du remboursement');
     }

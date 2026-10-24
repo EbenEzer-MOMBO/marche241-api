@@ -14,6 +14,7 @@ import { notifier } from './telegram.service';
 import { EvenementNotification } from '../config/notifications.config';
 import { bilanProvisoire, calculerCloture, DELAI_BILAN_MS, fraisEncaissement, montantApresBilan, remboursementIntegral } from '../lib/boost/reliquat';
 import { ajouterUtmBoost, estDestinationMarche241 } from '../lib/boost/utm';
+import { expliquerRemboursement } from '../lib/boost/remboursement';
 import { ajouterLienBoutique, lienBoutiquePublic } from '../lib/boost/texte';
 import { dateIso } from '../lib/boost/planning';
 import { estConformiteComplete } from '../config/conformite-boost.config';
@@ -168,6 +169,18 @@ export function doitNotifierMiseEnLigne(
 }
 
 type CanalNotification = 'ok' | 'simule' | 'echec' | 'sans_destinataire';
+
+/** Transfert mobile money fait par l'admin (SHAP / eBilling), repris dans l'e-mail au vendeur. */
+export interface TransfertRemboursement {
+  moyen: 'airtel_money' | 'moov_money';
+  telephone: string;
+  reference: string;
+}
+
+const LIBELLES_MOYEN_TRANSFERT: Record<TransfertRemboursement['moyen'], string> = {
+  airtel_money: 'Airtel Money',
+  moov_money: 'Moov Money'
+};
 
 const dateCourte = (d: Date | string | null) =>
   d ? new Date(d).toLocaleDateString('fr-FR', { timeZone: 'Africa/Libreville', day: 'numeric', month: 'long' }) : '-';
@@ -938,7 +951,12 @@ export class BoostService {
     return { examines: boosts.length, termines, rejetes, erreurs };
   }
 
-  static async marquerRembourse(boostId: number, note: string | null, admin: string): Promise<Boost> {
+  static async marquerRembourse(
+    boostId: number,
+    note: string | null,
+    admin: string,
+    transfert: TransfertRemboursement | null = null
+  ): Promise<Boost> {
     const boost = await BoostModel.getById(boostId);
     if (!boost) throw introuvable();
     if (boost.statut_remboursement !== 'a_rembourser') throw new BoostErreur("Aucun remboursement en attente pour ce boost", 409, 'REMBOURSEMENT_INEXISTANT');
@@ -955,8 +973,48 @@ export class BoostService {
       date_remboursement: new Date(),
       note_remboursement: note ?? boost.note_remboursement
     });
-    await BoostEvenementModel.creer(boost.id, 'rembourse', 'admin', { montant: boost.montant_a_rembourser_fcfa, note, admin });
+    const canalEmail = await BoostService.envoyerEmailRembourse(boost, transfert);
+    await BoostEvenementModel.creer(boost.id, 'rembourse', 'admin', {
+      montant: boost.montant_a_rembourser_fcfa,
+      note,
+      admin,
+      transfert: transfert ?? undefined,
+      canal_email: canalEmail
+    });
     return resultat ?? boost;
+  }
+
+  /** E-mail explicatif au vendeur (motif, détail du calcul, transfert). Ne lève jamais. */
+  private static async envoyerEmailRembourse(boost: Boost, transfert: TransfertRemboursement | null): Promise<CanalNotification> {
+    try {
+      const [vendeur, boutique] = await Promise.all([
+        VendeurModel.getVendeurById(boost.vendeur_id).catch(() => null),
+        BoutiqueModel.getBoutiqueById(boost.boutique_id).catch(() => null)
+      ]);
+      if (!vendeur?.email) return 'sans_destinataire';
+      const slug = boutique?.slug ?? String(boost.boutique_id);
+      const explication = expliquerRemboursement(boost);
+      await EmailService.envoyerBoostRembourse(vendeur.email, {
+        vendeurNom: vendeur.nom || 'cher vendeur',
+        boutiqueNom: boutique?.nom ?? slug,
+        titrePub: boost.titre || boost.nom,
+        montant: formaterFcfa(explication.montant),
+        motif: explication.motif,
+        lignes: explication.lignes.map((l) => ({
+          libelle: l.libelle,
+          montant: l.montant < 0 ? `- ${formaterFcfa(-l.montant)}` : formaterFcfa(l.montant)
+        })),
+        transfert: transfert
+          ? { moyen: LIBELLES_MOYEN_TRANSFERT[transfert.moyen], telephone: transfert.telephone, reference: transfert.reference }
+          : null,
+        dateRemboursement: dateCourte(new Date()),
+        lienSuivi: `${frontendUrl()}/admin/${slug}/boost/${boost.id}`
+      });
+      return process.env.RESEND_API_KEY ? 'ok' : 'simule';
+    } catch (err: any) {
+      logger.error(`[BoostService] E-mail de remboursement du boost #${boost.id} : ${err?.message}`);
+      return 'echec';
+    }
   }
 
   static async detail(boost: Boost, pourVendeur: boolean) {
