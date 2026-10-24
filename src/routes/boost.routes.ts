@@ -218,7 +218,31 @@ router.post('/admin/:id/refuser', ...admin, validateParams(boostIdParamSchema), 
  * /boosts/admin/{id}/cloturer:
  *   post: { summary: Clôturer un boost (synchro puis calcul du reliquat à rembourser), tags: [Boosts], security: [{ serviceKey: [] }], parameters: [{ in: path, name: id, required: true, schema: { type: integer } }], responses: { 200: { description: OK } } }
  * /boosts/admin/{id}/rembourse:
- *   post: { summary: Marquer le remboursement comme effectué (versement), tags: [Boosts], security: [{ serviceKey: [] }], parameters: [{ in: path, name: id, required: true, schema: { type: integer } }], responses: { 200: { description: OK } } }
+ *   post:
+ *     summary: Marquer le remboursement comme effectué (versement) et envoyer l'e-mail explicatif au vendeur
+ *     tags: [Boosts]
+ *     security: [{ serviceKey: [] }]
+ *     parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               note: { type: string }
+ *               valide_par: { type: string }
+ *               transfert:
+ *                 type: object
+ *                 nullable: true
+ *                 description: Transfert mobile money fait par l'admin (repris dans l'e-mail) ; absent pour un versement hors application
+ *                 required: [moyen, telephone, reference]
+ *                 properties:
+ *                   moyen: { type: string, enum: [airtel_money, moov_money] }
+ *                   telephone: { type: string, example: '074000000' }
+ *                   reference: { type: string, example: TX-8F2K91 }
+ *     responses:
+ *       200: { description: Boost marqué remboursé }
+ *       409: { description: Aucun remboursement en attente ou bilan provisoire }
  */
 router.post('/admin/:id/pause', ...admin, validateParams(boostIdParamSchema), BoostController.pauseAdmin);
 router.post('/admin/:id/reprendre', ...admin, validateParams(boostIdParamSchema), BoostController.reprendreAdmin);

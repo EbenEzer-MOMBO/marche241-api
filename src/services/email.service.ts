@@ -11,12 +11,16 @@ import {
   vendeurEvenementPublieTemplate,
   vendeurEvenementRefuseTemplate,
   vendeurAvisVersementTemplate,
-  vendeurBoostEnLigneTemplate
+  vendeurBoostEnLigneTemplate,
+  vendeurBoostRembourseTemplate
 } from './email-templates';
 
 const RESEND_API_URL = 'https://api.resend.com/emails';
 
-const LIBELLES_MOYEN_VERSEMENT: Record<string, string> = {
+/** Délai maximal d'un appel à Resend : un fournisseur lent ne doit pas bloquer l'appelant. */
+const DELAI_ENVOI_MS = 15_000;
+
+export const LIBELLES_MOYEN_VERSEMENT: Record<string, string> = {
   moov_money: 'Moov Money',
   airtel_money: 'Airtel Money',
 };
@@ -71,6 +75,7 @@ export class EmailService {
           text,
           ...(headers ? { headers } : {}),
         }),
+        signal: AbortSignal.timeout(DELAI_ENVOI_MS),
       });
 
       const body = (await response.json().catch(() => ({}))) as ResendEmailResponse;
@@ -228,6 +233,11 @@ export class EmailService {
   /** Publicité acceptée par Meta et en diffusion. */
   static async envoyerBoostEnLigne(email: string, data: Parameters<typeof vendeurBoostEnLigneTemplate>[0]): Promise<void> {
     const { subject, html, text } = vendeurBoostEnLigneTemplate(data);
+    await this.send(email, subject, html, text);
+  }
+
+  static async envoyerBoostRembourse(email: string, data: Parameters<typeof vendeurBoostRembourseTemplate>[0]): Promise<void> {
+    const { subject, html, text } = vendeurBoostRembourseTemplate(data);
     await this.send(email, subject, html, text);
   }
 

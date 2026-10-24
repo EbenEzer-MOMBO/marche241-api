@@ -270,6 +270,21 @@ export class BoostModel {
     return rows[0] ?? null;
   }
 
+  /**
+   * Passe le remboursement à « remboursé » uniquement s'il est encore « à rembourser » (verrou
+   * optimiste) : renvoie null si un autre appel l'a déjà marqué.
+   */
+  static async marquerRembourse(id: number, note: string | null): Promise<Boost | null> {
+    const { rows } = await query<Boost>(
+      `UPDATE boosts SET statut_remboursement = 'rembourse'::statut_remboursement_boost, date_remboursement = NOW(),
+              note_remboursement = COALESCE($2, note_remboursement), date_modification = NOW()
+       WHERE id = $1 AND statut_remboursement = 'a_rembourser'::statut_remboursement_boost
+       RETURNING *`,
+      [id, note]
+    );
+    return rows[0] ?? null;
+  }
+
   static async supprimerBrouillon(id: number): Promise<boolean> {
     const { rowCount } = await query(`DELETE FROM boosts WHERE id = $1 AND statut = 'brouillon'::statut_boost`, [id]);
     return (rowCount ?? 0) > 0;
@@ -324,11 +339,23 @@ export class BoostEvenementModel {
     acteur: BoostEvenement['acteur'] = 'systeme',
     donnees: Record<string, unknown> | null = null,
     executeur: Executeur = executeurParDefaut
-  ): Promise<void> {
-    await executeur.query(
-      `INSERT INTO boost_evenements (boost_id, type_evenement, acteur, donnees) VALUES ($1, $2, $3, $4::jsonb)`,
+  ): Promise<number | null> {
+    const { rows } = await executeur.query<{ id: number }>(
+      `INSERT INTO boost_evenements (boost_id, type_evenement, acteur, donnees) VALUES ($1, $2, $3, $4::jsonb) RETURNING id`,
       [boostId, typeEvenement, acteur, donnees ? JSON.stringify(donnees) : null]
     );
+    return rows[0]?.id ?? null;
+  }
+
+  /** Paiements en double / hors file crédités depuis le dernier remboursement (FCFA). */
+  static async paiementsEnTropDepuisDernierRemboursement(boostId: number): Promise<number> {
+    const { rows } = await query<{ total: string | null }>(
+      `SELECT COALESCE(SUM((donnees->>'montant')::numeric), 0) AS total FROM boost_evenements
+       WHERE boost_id = $1 AND type_evenement IN ('paiement_en_double', 'paiement_hors_file')
+         AND id > COALESCE((SELECT MAX(id) FROM boost_evenements WHERE boost_id = $1 AND type_evenement = 'rembourse'), 0)`,
+      [boostId]
+    );
+    return Math.round(Number(rows[0]?.total ?? 0)) || 0;
   }
 
   /**
@@ -357,7 +384,8 @@ export class BoostEvenementModel {
        )
        UPDATE boosts SET
          statut_remboursement = 'a_rembourser'::statut_remboursement_boost,
-         montant_a_rembourser_fcfa = montant_a_rembourser_fcfa + $5,
+         -- Montant déjà remboursé : on repart de zéro (sinon il serait remboursé une seconde fois)
+         montant_a_rembourser_fcfa = CASE WHEN statut_remboursement = 'rembourse' THEN $5 ELSE montant_a_rembourser_fcfa + $5 END,
          note_remboursement = $6,
          date_modification = NOW()
        WHERE id = $1 AND EXISTS (SELECT 1 FROM ins)
