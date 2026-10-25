@@ -11,7 +11,8 @@ import {
   extraireParticipantsDepuisArticle,
   isProduitEvenement,
   MESSAGE_MIX_PANIER,
-  validerEtNormaliserParticipants
+  validerEtNormaliserParticipants,
+  isEvenementTermine
 } from '../utils/produit-evenement';
 
 const STATUT_PUSH_LABELS: Record<string, string> = {
@@ -85,11 +86,11 @@ export class CommandeController {
             hasAutre = true;
           }
 
-          if (produit.statut !== 'actif') {
+          if (produit.statut !== 'actif' || isEvenementTermine(produit)) {
             produitsIndisponibles.push({
               produit_id: article.produit_id,
               nom: produit.nom,
-              raison: 'Produit non disponible'
+              raison: isEvenementTermine(produit) ? 'Événement terminé' : 'Produit non disponible'
             });
             continue;
           }
@@ -639,10 +640,10 @@ export class CommandeController {
         }
         
         // Vérifier si le produit est actif
-        if (produit.statut !== 'actif') {
+        if (produit.statut !== 'actif' || isEvenementTermine(produit)) {
           produitsIndisponibles.push({
             nom: article.nom_produit,
-            raison: 'Produit non disponible'
+            raison: isEvenementTermine(produit) ? 'Événement terminé' : 'Produit non disponible'
           });
           continue;
         }

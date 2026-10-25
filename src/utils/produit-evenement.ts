@@ -301,6 +301,29 @@ export function dateEvenementEnMs(valeur: unknown): number | null {
   return Number.isNaN(ms) ? null : ms;
 }
 
+/** Fin par défaut d'un événement sans `date_fin` valide : début + 12 h (même règle que le scanner). */
+const DUREE_PAR_DEFAUT_EVENEMENT_MS = 12 * 60 * 60 * 1000;
+
+/**
+ * Un événement est terminé quand sa fin (`date_fin` postérieure au début, sinon début + 12 h)
+ * est dépassée. Un produit qui n'est pas un événement, ou sans date exploitable, n'est jamais terminé.
+ * Miroir TypeScript de `CONDITION_EVENEMENT_TERMINE` (produit.model.ts).
+ */
+export function isEvenementTermine(
+  produit: { variants?: unknown } | null | undefined,
+  maintenantMs: number = Date.now()
+): boolean {
+  if (!isProduitEvenement(produit)) return false;
+  const meta = ((produit?.variants || {}) as VariantsEvenement).meta || {};
+  const debut = dateEvenementEnMs(meta.date_debut);
+  const finSaisie = dateEvenementEnMs(meta.date_fin);
+  const finValide = finSaisie !== null && (debut === null || finSaisie > debut) ? finSaisie : null;
+  const fin = finValide ?? (debut !== null ? debut + DUREE_PAR_DEFAUT_EVENEMENT_MS : null);
+  return fin !== null && fin <= maintenantMs;
+}
+
+export const MESSAGE_EVENEMENT_TERMINE = 'Cet événement est terminé : les billets ne sont plus en vente.';
+
 /**
  * Cohérence des dates d'un événement : à la création, le début doit être dans le futur ;
  * la fin, si elle est renseignée, doit toujours être postérieure au début.

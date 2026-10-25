@@ -122,6 +122,35 @@ const CONDITION_EVENEMENT = `(COALESCE(p.variants->>'type', '') = 'evenement'
   OR EXISTS (SELECT 1 FROM categories ce WHERE ce.id = p.categorie_id AND ce.slug = 'evenements'))`;
 
 /**
+ * Date d'événement (`variants.meta.<cle>`) en timestamptz : une saisie « AAAA-MM-JJTHH:mm » sans
+ * fuseau est une heure locale du Gabon (UTC+1) ; une date avec fuseau explicite est lue telle quelle ;
+ * toute autre valeur donne NULL (jamais d'erreur de cast).
+ */
+const dateMetaSql = (cle: string) => {
+  const brut = `(p.variants->'meta'->>'${cle}')`;
+  return `(CASE
+    WHEN ${brut} ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}(:[0-9]{2}([.][0-9]+)?)?$' THEN (${brut} || '+01')::timestamptz
+    WHEN ${brut} ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}(:[0-9]{2}([.][0-9]+)?)?(Z|[+-][0-9]{2}(:?[0-9]{2})?)$' THEN ${brut}::timestamptz
+  END)`;
+};
+
+/**
+ * Événement terminé : fin (`date_fin` postérieure au début, sinon début + 12 h) dépassée.
+ * Miroir SQL de `isEvenementTermine` (utils/produit-evenement.ts) ; à n'appliquer
+ * qu'aux requêtes publiques.
+ */
+const CONDITION_EVENEMENT_TERMINE = `(COALESCE(p.variants->>'type', '') = 'evenement'
+  AND COALESCE(
+    CASE WHEN ${dateMetaSql('date_fin')} IS NOT NULL
+         AND (${dateMetaSql('date_debut')} IS NULL OR ${dateMetaSql('date_fin')} > ${dateMetaSql('date_debut')})
+      THEN ${dateMetaSql('date_fin')} END,
+    ${dateMetaSql('date_debut')} + INTERVAL '12 hours'
+  ) <= NOW())`;
+
+/** Filtre public : produit actif et, pour un événement, non terminé. */
+const CONDITION_PUBLIC = `p.statut = 'actif' AND NOT COALESCE(${CONDITION_EVENEMENT_TERMINE}, FALSE)`;
+
+/**
  * Échappe %, _ et \ pour une recherche ILIKE sûre.
  */
 function echapperIlike(terme: string): string {
@@ -144,7 +173,7 @@ function construireWhereListeProduits(
   }
 
   if (options.onlyActive)
-    conditions.push(`p.statut = 'actif'`);
+    conditions.push(CONDITION_PUBLIC);
 
   const motCle = filtres.q?.trim();
   if (motCle) {
@@ -713,7 +742,7 @@ export class ProduitModel {
     const { rows } = await query<Produit>(
       `SELECT p.*, ${JOINTURES}
        FROM produits p
-       WHERE p.categorie_id = $1 AND p.statut = 'actif'
+       WHERE p.categorie_id = $1 AND ${CONDITION_PUBLIC}
        ORDER BY p.note_moyenne DESC
        LIMIT $2`,
       [categorieId, limite]
@@ -733,7 +762,7 @@ export class ProduitModel {
     let categoriesAvecProduits: Set<number> | undefined;
     if (boutiqueId) {
       const { rows: produitsBoutique } = await query<{ categorie_id: number }>(
-        `SELECT DISTINCT categorie_id FROM produits WHERE boutique_id = $1 AND statut = 'actif'`,
+        `SELECT DISTINCT p.categorie_id FROM produits p WHERE p.boutique_id = $1 AND ${CONDITION_PUBLIC}`,
         [boutiqueId]
       );
 
@@ -770,7 +799,7 @@ export class ProduitModel {
                  SELECT c.id, c.nom, c.slug FROM categories c WHERE c.id = p.categorie_id
                ) c) AS categorie
        FROM produits p
-       WHERE p.categorie_id = ANY($1) AND p.statut = 'actif' ${filtreBoutique}
+       WHERE p.categorie_id = ANY($1) AND ${CONDITION_PUBLIC} ${filtreBoutique}
        ORDER BY
          CASE WHEN p.en_stock IS TRUE THEN 0 ELSE 1 END,
          p.note_moyenne DESC,
@@ -1063,7 +1092,7 @@ export class ProduitModel {
                  SELECT c.id, c.nom, c.slug FROM categories c WHERE c.id = p.categorie_id
                ) c) AS categorie
        FROM produits p
-       WHERE p.boutique_id = $1 AND p.statut = 'actif'
+       WHERE p.boutique_id = $1 AND ${CONDITION_PUBLIC}
        ORDER BY p.nombre_vues DESC
        LIMIT $2`,
       [boutiqueId, limite]
