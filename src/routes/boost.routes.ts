@@ -19,7 +19,8 @@ import {
   parametresBoostSchema,
   prefillQuerySchema,
   refuserBoostSchema,
-  remboursementBoostSchema
+  remboursementBoostSchema,
+  urlVideoUploadSchema
 } from '../utils/validation.schemas.boost';
 
 const router = Router();
@@ -332,6 +333,30 @@ router.post('/estimation/impressions', auth, validate(estimationImpressionsSchem
 
 /**
  * @swagger
+ * /boosts/video/upload-url:
+ *   post:
+ *     summary: URL présignée (PUT, 10 min) pour téléverser une vidéo de boost vers R2
+ *     tags: [Boosts]
+ *     security: [{ bearerAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [boutique_id, content_type, taille]
+ *             properties:
+ *               boutique_id: { type: integer }
+ *               content_type: { type: string, enum: [video/mp4, video/quicktime] }
+ *               taille: { type: integer, description: "Octets, maximum 50 Mo" }
+ *     responses:
+ *       200: { description: "{ success, upload_url, url, path, expire_en_sec }" }
+ *       400: { description: Type ou poids hors limites }
+ */
+router.post('/video/upload-url', auth, validate(urlVideoUploadSchema), isBoutiqueOwner, BoostController.urlUploadVideo);
+
+/**
+ * @swagger
  * /boosts/boutique/{boutiqueId}:
  *   get:
  *     summary: Boosts d'une boutique (brouillons compris)
@@ -367,6 +392,9 @@ router.get('/boutique/:boutiqueId', auth, validateParams(boutiqueIdParamSchema),
  *               titre: { type: string }
  *               texte_principal: { type: string }
  *               image_url: { type: string }
+ *               media_type: { type: string, enum: [image, video] }
+ *               video_url: { type: string }
+ *               video_duree_sec: { type: integer }
  *     responses:
  *       201: { description: "{ success, boost }" }
  */

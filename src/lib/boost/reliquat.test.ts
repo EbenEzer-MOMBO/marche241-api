@@ -77,3 +77,28 @@ test('montant après bilan : la part clôture est remplacée, les autres crédit
   assert.equal(montantApresBilan(4600, 1600, 400), 3400);
   assert.equal(montantApresBilan(0, 0, 250), 250);
 });
+
+const video = { total_fcfa: 7500, budget_media_fcfa: 5417, commission_fcfa: 1083, tva_fcfa: 0, frais_video_fcfa: 1000, frais_encaissement_fcfa: 188 };
+
+test('frais vidéo : rien dépensé (refus, rejet Meta sans dépense) = remboursé, hors frais d’encaissement', () => {
+  assert.equal(remboursementIntegral(video), 7500 - 188);
+  const c = calculerCloture(video, 0);
+  assert.equal(c.frais_video_conserve_fcfa, 0);
+  assert.equal(c.montant_a_rembourser_fcfa, 7500 - 188);
+});
+
+test('frais vidéo : dès qu’il y a eu de la diffusion, conservé en entier', () => {
+  const c = calculerCloture(video, 1000);
+  assert.equal(c.frais_video_conserve_fcfa, 1000);
+  assert.equal(c.commission_conservee_fcfa, Math.round(1083 * (1000 / 5417)));
+  assert.equal(c.montant_a_rembourser_fcfa, 7500 - 1000 - c.commission_conservee_fcfa - 188 - 1000);
+  assert.ok(c.montant_a_rembourser_fcfa >= 0);
+});
+
+test('frais vidéo : dépense totale, rien à rembourser', () => {
+  assert.equal(calculerCloture(video, 5417).montant_a_rembourser_fcfa, 0);
+});
+
+test('boost image (sans frais vidéo) : calcul inchangé', () => {
+  assert.equal(calculerCloture(montants, 10_000).frais_video_conserve_fcfa, 0);
+});

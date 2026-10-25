@@ -11,7 +11,8 @@ import {
   modifierBoostSchema,
   paiementBoostSchema,
   parametresBoostSchema,
-  refuserBoostSchema
+  refuserBoostSchema,
+  urlVideoUploadSchema
 } from './validation.schemas.boost';
 
 /** Toutes les erreurs d'une validation (comme le middleware : abortEarly false). */
@@ -81,6 +82,18 @@ test('devis, estimations et paiement : messages français', () => {
   verifierFrancais(messages(paiementBoostSchema, { mode: 'cheque' }));
   verifierFrancais(messages(paiementBoostSchema, { mode: 'mobile', operateur: 'orange', msisdn: '12', email: 'x' }));
   verifierFrancais(messages(paiementBoostSchema, { mode: 'carte', return_url: 'nope' }));
+});
+
+test('vidéo : type, taille, URL de stockage et durée', () => {
+  process.env.STORAGE_PUBLIC_URL = 'https://cdn.test';
+  verifierFrancais(messages(urlVideoUploadSchema, { boutique_id: 'x', content_type: 'video/avi', taille: 80_000_000 }));
+  assert.equal(messages(urlVideoUploadSchema, { boutique_id: 1, content_type: 'video/mp4', taille: 1000 }).content_type, undefined);
+  assert.match(messages(urlVideoUploadSchema, { boutique_id: 1, content_type: 'image/jpeg', taille: 1000 }).content_type, /MP4 et MOV/);
+  assert.match(messages(urlVideoUploadSchema, { boutique_id: 1, content_type: 'video/mp4', taille: 60 * 1024 * 1024 }).taille, /50 Mo/);
+  assert.match(messages(modifierBoostSchema, { media_type: 'gif' }).media_type, /image ou vidéo/);
+  assert.match(messages(modifierBoostSchema, { video_url: 'https://autre.test/v.mp4' }).video_url, /stockage Marché 241/);
+  assert.deepEqual(messages(modifierBoostSchema, { video_url: 'https://cdn.test/boosts/x/v.mp4', video_duree_sec: 30, media_type: 'video' }), {});
+  assert.match(messages(modifierBoostSchema, { video_duree_sec: 90 }).video_duree_sec, /60 secondes/);
 });
 
 test('back-office : messages français', () => {

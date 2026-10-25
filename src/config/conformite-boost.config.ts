@@ -7,7 +7,9 @@ export const CONFORMITE_BOOST = [
   { id: 'interdit', libelle: 'Aucun produit interdit par Meta (armes, tabac, médicaments, contrefaçons, etc.)' },
   { id: 'allegations', libelle: 'Aucune allégation trompeuse (prix, promotions, résultats garantis)' },
   { id: 'ciblage', libelle: 'Ciblage non sensible (santé, politique, religion, mineurs)' },
-  { id: 'visuel', libelle: 'Visuel net, peu de texte, cohérent avec la boutique ou le produit' }
+  { id: 'visuel', libelle: 'Visuel net (image ou miniature vidéo), peu de texte, cohérent avec la boutique ou le produit' },
+  { id: 'lisible', libelle: 'Texte de la publicité lisible (sous-titres si la vidéo parle)' },
+  { id: 'musique', libelle: 'Droits musicaux : pas de musique protégée sans licence' }
 ] as const;
 
 export type ConformiteId = (typeof CONFORMITE_BOOST)[number]['id'];

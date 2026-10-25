@@ -1,9 +1,11 @@
 import { PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import { Request } from 'express';
 import { s3Client, storageBucket, buildPublicUrl } from '../config/storage';
+import { URL_PUT_VIDEO_EXPIRE_SEC, extensionVideo } from '../config/boost-video.config';
 
 // Interface pour les options d'upload
 export interface UploadOptions {
@@ -233,6 +235,30 @@ export const uploadFromRequest = async (
  * @param filePath Chemin du fichier dans le bucket
  * @returns Résultat de la suppression
  */
+/** URL PUT présignée (10 min) pour un upload vidéo direct navigateur → R2. */
+export const creerUrlTeleversementVideo = async (
+  slug: string,
+  contentType: string
+): Promise<{ urlPut: string; urlPublique: string; chemin: string; expireEnSec: number }> => {
+  const ext = extensionVideo(contentType);
+  const chemin = `boosts/${slug}/video_${Date.now()}_${crypto.randomBytes(4).toString('hex')}${ext}`;
+  const urlPut = await getSignedUrl(
+    s3Client,
+    new PutObjectCommand({
+      Bucket: storageBucket,
+      Key: chemin,
+      ContentType: contentType
+    }),
+    { expiresIn: URL_PUT_VIDEO_EXPIRE_SEC }
+  );
+  return {
+    urlPut,
+    urlPublique: buildPublicUrl(chemin),
+    chemin,
+    expireEnSec: URL_PUT_VIDEO_EXPIRE_SEC
+  };
+};
+
 export const deleteFile = async (filePath: string): Promise<{success: boolean, error?: string}> => {
   try {
     await s3Client.send(new DeleteObjectCommand({

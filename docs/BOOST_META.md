@@ -67,12 +67,13 @@ Les requêtes de transactions qui joignent `commandes` excluent naturellement le
   - lecture du statut effectif de la publicité : `DISAPPROVED` entraîne `rejete_meta` ;
   - clôture automatique à la date de fin ou quand le budget est épuisé.
 - **Estimations** : audience via `reachestimate`. Impressions par jour à partir du CPM du compte sur 90 jours, sinon avec la fourchette CPM des paramètres.
+- **Vidéo** (migration 046) : `media_type`, `video_url`, `video_duree_sec`, `meta_video_id`. Upload direct navigateur → R2 via `POST /boosts/video/upload-url` (PUT présigné 10 min). À l'approbation, `advideos` puis `video_data` **avant** la campagne. Si Meta n'a pas fini en 40 s : `409 VIDEO_EN_TRAITEMENT` (reprise sans re-téléverser). **CORS du bucket R2** : autoriser `PUT` et `HEAD` depuis les origines du front, en-tête `Content-Type`. Sans cette règle, l'upload direct échoue.
 
 ## Routes
 
 | Accès | Routes |
 |---|---|
-| Vendeur (JWT, propriétaire de la boutique) | `GET /boosts/parametres`, `GET /boosts/prefill`, `POST /boosts/devis`, `POST /boosts/estimation/{audience,impressions}`, `GET /boosts/boutique/:boutiqueId`, `POST /boosts`, `GET\|PUT\|DELETE /boosts/:id`, `POST /boosts/:id/{soumettre,annuler-soumission,paiement,pause,reprendre}` |
+| Vendeur (JWT, propriétaire de la boutique) | `GET /boosts/parametres`, `GET /boosts/prefill`, `POST /boosts/devis`, `POST /boosts/estimation/{audience,impressions}`, `POST /boosts/video/upload-url`, `GET /boosts/boutique/:boutiqueId`, `POST /boosts`, `GET\|PUT\|DELETE /boosts/:id`, `POST /boosts/:id/{soumettre,annuler-soumission,paiement,pause,reprendre}` |
 | Back-office (`x-service-key` seule, sans JWT) | `GET /boosts/admin`, `GET /boosts/admin/stats`, `GET /boosts/admin/:id`, `POST /boosts/admin/:id/{approuver,refuser,pause,reprendre,cloturer,rembourse,relancer}`, `GET\|PUT /boosts/admin/parametres`, `GET /boosts/admin/meta/{sante,decouverte}`, `PUT /boosts/admin/meta/connexion`, `POST /boosts/admin/meta/verifier` |
 | Cron (`CRON_SECRET_KEY`) | `GET /cron/boosts/sync` |
 

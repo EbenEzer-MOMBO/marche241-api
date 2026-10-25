@@ -57,6 +57,7 @@ export function expliquerRemboursement(boost: BoostARembourser, paiementsEnTrop 
       { libelle: 'Dépensé sur Facebook & Instagram', montant: -cloture.depense_fcfa },
       { libelle: 'Commission Marché 241 sur la dépense', montant: -cloture.commission_conservee_fcfa },
       { libelle: 'TVA sur la commission', montant: -cloture.tva_conservee_fcfa },
+      { libelle: 'Frais vidéo Marché 241 (publicité diffusée)', montant: -cloture.frais_video_conserve_fcfa },
       { libelle: FRAIS, montant: -cloture.frais_encaissement_fcfa }
     ];
   }

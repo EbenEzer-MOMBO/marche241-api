@@ -1,5 +1,13 @@
 import Joi from 'joi';
 import { CLES_VILLES, CODES_INTERETS, CODES_PAYS, LOCALES } from '../config/ciblage-boost.config';
+import {
+  DUREE_MAX_VIDEO_BOOST_SEC,
+  DUREE_MIN_VIDEO_BOOST_SEC,
+  TAILLE_MAX_VIDEO_BOOST,
+  TYPES_VIDEO_BOOST,
+  estTypeVideoAutorise,
+  estUrlStockagePublic
+} from '../config/boost-video.config';
 import { IDS_CONFORMITE } from '../config/conformite-boost.config';
 
 /**
@@ -115,8 +123,60 @@ const champsBrouillon = {
   image_url: lienWeb('Le visuel').allow(null, '').messages({
     'string.uri': "Le visuel doit être une adresse d'image valide",
     'string.uriCustomScheme': "Le visuel doit être une adresse d'image commençant par http:// ou https://"
-  })
+  }),
+  media_type: Joi.string().valid('image', 'video').label('Le type de média').messages({
+    'any.only': 'Le type de média doit être image ou vidéo'
+  }),
+  video_url: lienWeb('La vidéo')
+    .allow(null, '')
+    .custom((valeur, helpers) => {
+      if (!valeur) return valeur;
+      if (!estUrlStockagePublic(valeur)) {
+        return helpers.error('any.invalid');
+      }
+      return valeur;
+    })
+    .messages({
+      'any.invalid': 'La vidéo doit être hébergée sur le stockage Marché 241',
+      'string.uri': 'La vidéo doit être une adresse web valide',
+      'string.uriCustomScheme': 'La vidéo doit être une adresse commençant par http:// ou https://'
+    }),
+  video_duree_sec: Joi.number()
+    .integer()
+    .min(DUREE_MIN_VIDEO_BOOST_SEC)
+    .max(DUREE_MAX_VIDEO_BOOST_SEC)
+    .allow(null)
+    .label('La durée de la vidéo')
+    .messages({
+      'number.min': `La vidéo doit durer au moins ${DUREE_MIN_VIDEO_BOOST_SEC} seconde`,
+      'number.max': `La vidéo ne doit pas dépasser ${DUREE_MAX_VIDEO_BOOST_SEC} secondes`
+    })
 };
+
+export const urlVideoUploadSchema = fr(
+  Joi.object({
+    boutique_id: id("L'ID de la boutique").required(),
+    content_type: Joi.string()
+      .valid(...TYPES_VIDEO_BOOST)
+      .required()
+      .label('Le type de fichier')
+      .custom((valeur, helpers) => (estTypeVideoAutorise(valeur) ? valeur : helpers.error('any.only')))
+      .messages({
+        'any.only': 'Seuls les fichiers MP4 et MOV sont acceptés',
+        'any.required': 'Le type de fichier est obligatoire'
+      }),
+    taille: Joi.number()
+      .integer()
+      .positive()
+      .max(TAILLE_MAX_VIDEO_BOOST)
+      .required()
+      .label('La taille')
+      .messages({
+        'any.required': 'La taille du fichier est obligatoire',
+        'number.max': 'La vidéo ne doit pas dépasser 50 Mo'
+      })
+  })
+);
 
 export const creerBoostSchema = fr(
   Joi.object({
@@ -145,7 +205,8 @@ export const devisSchema = fr(
       'number.base': 'Le montant doit être un nombre'
     }),
     duree_jours: Joi.number().integer().min(1).max(60).default(7).label('La durée'),
-    objectif: Joi.string().valid('trafic', 'whatsapp', 'notoriete').label("L'objectif")
+    objectif: Joi.string().valid('trafic', 'whatsapp', 'notoriete').label("L'objectif"),
+    media_type: Joi.string().valid('image', 'video').default('image').label('Le type de visuel')
   })
 );
 
@@ -156,7 +217,8 @@ export const estimationImpressionsSchema = fr(
     totaux_fcfa: Joi.array().items(Joi.number().integer().positive().label('Le montant')).min(1).max(10).required().label('Les montants').messages({
       'any.required': 'Au moins un montant est requis'
     }),
-    duree_jours: Joi.number().integer().min(1).max(60).required().label('La durée')
+    duree_jours: Joi.number().integer().min(1).max(60).required().label('La durée'),
+    media_type: Joi.string().valid('image', 'video').default('image').label('Le type de visuel')
   })
 );
 
@@ -252,6 +314,7 @@ export const parametresBoostSchema = fr(
     commission_min_fcfa: Joi.number().integer().min(0).label('La commission minimum'),
     tva_bps: Joi.number().integer().min(0).max(5000).label('La TVA'),
     frais_encaissement_bps: Joi.number().integer().min(0).max(1000).label("Les frais d'encaissement"),
+    frais_video_fcfa: Joi.number().integer().min(0).max(50_000).label('Les frais vidéo'),
     total_min_fcfa: Joi.number().integer().min(500).label('Le montant minimum'),
     total_max_fcfa: Joi.number().integer().min(500).label('Le montant maximum'),
     duree_min_jours: Joi.number().integer().min(1).max(60).label('La durée minimum'),
