@@ -21,7 +21,7 @@ import {
   PAYS_CIBLAGE,
   VILLES_GABON
 } from '../config/ciblage-boost.config';
-import { CONFORMITE_BOOST } from '../config/conformite-boost.config';
+import { CONFORMITE_BOOST, conformiteRequise } from '../config/conformite-boost.config';
 import { logger } from '../utils/logger';
 import { creerUrlTeleversementVideo } from '../utils/storage.utils';
 import { estTypeVideoAutorise, TAILLE_MAX_VIDEO_BOOST } from '../config/boost-video.config';
@@ -380,7 +380,7 @@ export class BoostController {
         success: true,
         ...(await BoostService.detail(await BoostService.rafraichirSiPerime(boost), false)),
         relances: await BoostRelanceModel.suivi(boost.id),
-        conformite_items: CONFORMITE_BOOST
+        conformite_items: conformiteRequise(boost.media_type)
       });
     } catch (err) {
       repondreErreur(res, err, 'la récupération du boost');

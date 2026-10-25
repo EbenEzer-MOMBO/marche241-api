@@ -297,7 +297,7 @@ export class BoostModel {
   static async listerVideosAPurger(joursBrouillon: number, joursTermine: number, limite = 200): Promise<Array<Pick<Boost, 'id' | 'video_url'>>> {
     const { rows } = await query<Pick<Boost, 'id' | 'video_url'>>(
       `SELECT id, video_url FROM boosts
-       WHERE media_type = 'video' AND video_url IS NOT NULL
+       WHERE video_url IS NOT NULL
          AND (
            (statut = 'brouillon'::statut_boost AND date_modification < NOW() - make_interval(days => $1))
            OR (statut IN ('refuse'::statut_boost, 'rejete_meta'::statut_boost, 'termine'::statut_boost)

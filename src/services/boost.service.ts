@@ -623,9 +623,11 @@ export class BoostService {
   static async approuver(boostId: number, conformite: string[], valideur: string): Promise<{ boost: Boost; erreur?: string }> {
     const parametres = await BoostParametresModel.lire();
     if (parametres.kill_switch) throw new BoostErreur('Kill switch actif : publications coupées', 409, 'KILL_SWITCH');
-    if (!estConformiteComplete(conformite)) throw new BoostErreur('Checklist de conformité incomplète', 400, 'CONFORMITE_INCOMPLETE');
     const boost = await BoostModel.getById(boostId);
     if (!boost) throw introuvable();
+    if (!estConformiteComplete(conformite, boost.media_type)) {
+      throw new BoostErreur('Checklist de conformité incomplète', 400, 'CONFORMITE_INCOMPLETE');
+    }
     if (boost.statut !== 'en_attente_validation' && boost.statut !== 'erreur') {
       throw new BoostErreur("Ce boost n'est pas en attente de validation", 409, 'BOOST_NON_VALIDABLE');
     }
