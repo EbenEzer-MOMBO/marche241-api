@@ -235,10 +235,15 @@ export const uploadFromRequest = async (
  * @param filePath Chemin du fichier dans le bucket
  * @returns Résultat de la suppression
  */
-/** URL PUT présignée (10 min) pour un upload vidéo direct navigateur → R2. */
+/**
+ * URL PUT présignée (10 min) pour un upload vidéo direct navigateur → R2.
+ * `taille` (content-length) et `contentType` sont signés : R2 refuse tout fichier de taille ou de type
+ * différents, les limites (50 Mo, MP4/MOV) ne dépendent donc pas de valeurs seulement déclarées par le client.
+ */
 export const creerUrlTeleversementVideo = async (
   slug: string,
-  contentType: string
+  contentType: string,
+  taille: number
 ): Promise<{ urlPut: string; urlPublique: string; chemin: string; expireEnSec: number }> => {
   const ext = extensionVideo(contentType);
   const chemin = `boosts/${slug}/video_${Date.now()}_${crypto.randomBytes(4).toString('hex')}${ext}`;
@@ -247,9 +252,12 @@ export const creerUrlTeleversementVideo = async (
     new PutObjectCommand({
       Bucket: storageBucket,
       Key: chemin,
-      ContentType: contentType
+      ContentType: contentType,
+      ContentLength: taille
     }),
-    { expiresIn: URL_PUT_VIDEO_EXPIRE_SEC }
+    // Le presigner exclut content-type de la signature par défaut : sans cela, le client choisirait le type
+    // servi par le CDN (ex. text/html) au lieu du type validé (MP4/MOV).
+    { expiresIn: URL_PUT_VIDEO_EXPIRE_SEC, signableHeaders: new Set(['content-type']) }
   );
   return {
     urlPut,

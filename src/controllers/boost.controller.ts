@@ -225,7 +225,7 @@ export class BoostController {
         res.status(404).json({ success: false, message: 'Boutique introuvable', code: 'BOUTIQUE_INTROUVABLE' });
         return;
       }
-      const urls = await creerUrlTeleversementVideo(boutique.slug, String(content_type));
+      const urls = await creerUrlTeleversementVideo(boutique.slug, String(content_type), Number(taille));
       res.json({
         success: true,
         upload_url: urls.urlPut,
@@ -628,6 +628,14 @@ export class BoostController {
       res.json({ success: true, resultat: await BoostService.synchroniserTous() });
     } catch (err) {
       repondreErreur(res, err, 'la synchronisation des boosts');
+    }
+  }
+
+  static async nettoyerVideosCron(_req: Request, res: Response): Promise<void> {
+    try {
+      res.json({ success: true, resultat: await BoostService.nettoyerVideos() });
+    } catch (err) {
+      repondreErreur(res, err, 'le nettoyage des vidéos de boosts');
     }
   }
 

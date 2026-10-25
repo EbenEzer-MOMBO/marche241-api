@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { BoostErreur, preparerVideoPourPublication, BoostService, fraisVideoPour, messageBudgetInsuffisant } from './boost.service';
+import { BoostErreur, preparerVideoPourPublication, BoostService, fraisVideoPour, messageBudgetInsuffisant, supprimerVideoR2 } from './boost.service';
+import { BoostModel } from '../models/boost.model';
 import { Boost, BoostParametres } from '../lib/database-types';
 
 const parametres = {
@@ -169,3 +170,116 @@ test('soumission vidéo : le devis figé contient le frais vidéo, jamais pour u
   );
   assert.ok(!erreursImage.some((e) => /frais vidéo/.test(e.message)));
 });
+
+test("vidéo rejetée par Meta : l'identifiant est effacé, la relance renvoie le fichier", async () => {
+  const efface: number[] = [];
+  const sauves: string[] = [];
+  let versBase: string | null = 'vid_rejetee';
+  const deps = {
+    attendre: async (videoId: string) => (videoId === 'vid_rejetee' ? ('error' as const) : ('ready' as const)),
+    televerser: async () => 'vid_neuve',
+    sauverId: async (_id: number, videoId: string) => {
+      versBase = videoId;
+      sauves.push(videoId);
+    },
+    effacerId: async (id: number) => {
+      efface.push(id);
+      versBase = null;
+    }
+  };
+  await assert.rejects(
+    () => preparerVideoPourPublication(boost({ id: 9, media_type: 'video', video_url: 'https://cdn.test/boosts/x/v.mp4', meta_video_id: versBase }), deps),
+    (err: any) => err.name === 'MetaGraphError' || /rejeté/.test(err.message)
+  );
+  assert.deepEqual(efface, [9]);
+  assert.equal(versBase, null);
+
+  // Deuxième tentative de l'admin : l'identifiant n'existe plus, la vidéo est téléversée de nouveau
+  const id = await preparerVideoPourPublication(boost({ id: 9, media_type: 'video', video_url: 'https://cdn.test/boosts/x/v.mp4', meta_video_id: versBase }), deps);
+  assert.equal(id, 'vid_neuve');
+  assert.deepEqual(sauves, ['vid_neuve']);
+});
+
+test("vidéo encore en traitement : l'identifiant est conservé (reprise sans re-téléverser)", async () => {
+  const efface: number[] = [];
+  await assert.rejects(
+    () =>
+      preparerVideoPourPublication(boost({ id: 4, media_type: 'video', video_url: 'https://cdn.test/boosts/x/v.mp4', meta_video_id: 'vid_en_cours' }), {
+        attendre: async () => 'processing',
+        effacerId: async (id) => {
+          efface.push(id);
+        }
+      }),
+    (err: any) => err instanceof BoostErreur && err.code === 'VIDEO_EN_TRAITEMENT'
+  );
+  assert.deepEqual(efface, []);
+});
+
+async function avecBaseStockage<T>(fn: () => Promise<T>): Promise<T> {
+  const avant = process.env.STORAGE_PUBLIC_URL;
+  process.env.STORAGE_PUBLIC_URL = 'https://cdn.test';
+  try {
+    return await fn();
+  } finally {
+    if (avant === undefined) delete process.env.STORAGE_PUBLIC_URL;
+    else process.env.STORAGE_PUBLIC_URL = avant;
+  }
+}
+
+test('supprimerVideoR2 : supprime seulement une vidéo de boost, jamais un autre fichier', () =>
+  avecBaseStockage(async () => {
+    const supprimes: string[] = [];
+    const supprimer = async (chemin: string) => {
+      supprimes.push(chemin);
+      return { success: true };
+    };
+    assert.equal(await supprimerVideoR2('https://cdn.test/boosts/ma-boutique/video_1_ab.mp4', supprimer), true);
+    assert.equal(await supprimerVideoR2('https://cdn.test/boosts/ma-boutique/miniature.jpg', supprimer), false);
+    assert.equal(await supprimerVideoR2('https://cdn.test/produits/ma-boutique/photo.mp4', supprimer), false);
+    assert.equal(await supprimerVideoR2('https://autre.test/boosts/ma-boutique/video.mp4', supprimer), false);
+    assert.equal(await supprimerVideoR2(null, supprimer), false);
+    assert.deepEqual(supprimes, ['boosts/ma-boutique/video_1_ab.mp4']);
+  }));
+
+test('supprimerVideoR2 : un échec R2 est absorbé (jamais bloquant)', () =>
+  avecBaseStockage(async () => {
+    assert.equal(await supprimerVideoR2('https://cdn.test/boosts/b/v.mp4', async () => ({ success: false, error: 'R2 indisponible' })), false);
+    assert.equal(
+      await supprimerVideoR2('https://cdn.test/boosts/b/v.mp4', async () => {
+        throw new Error('réseau');
+      }),
+      false
+    );
+  }));
+
+test('nettoyerVideos : supprime le fichier puis la référence, garde la référence si R2 échoue', () =>
+  avecBaseStockage(async () => {
+    const liste = BoostModel.listerVideosAPurger;
+    const maj = BoostModel.mettreAJour;
+    const misesAJour: Array<{ id: number; donnees: unknown }> = [];
+    BoostModel.listerVideosAPurger = async (joursBrouillon, joursTermine) => {
+      assert.equal(joursBrouillon, 7);
+      assert.equal(joursTermine, 30);
+      return [
+        { id: 1, video_url: 'https://cdn.test/boosts/a/v1.mp4' },
+        { id: 2, video_url: 'https://cdn.test/boosts/b/v2.mp4' },
+        { id: 3, video_url: 'https://cdn.test/boosts/c/v3.mp4' }
+      ];
+    };
+    BoostModel.mettreAJour = (async (id: number, donnees: unknown) => {
+      misesAJour.push({ id, donnees });
+      return null;
+    }) as typeof BoostModel.mettreAJour;
+    try {
+      const resultat = await BoostService.nettoyerVideos(async (chemin) => (chemin.includes('/v2') ? { success: false, error: 'boom' } : { success: true }));
+      assert.deepEqual(resultat, { examinees: 3, supprimees: 2, erreurs: 1 });
+      assert.deepEqual(
+        misesAJour.map((m) => m.id),
+        [1, 3]
+      );
+      assert.deepEqual(misesAJour[0].donnees, { video_url: null, video_duree_sec: null });
+    } finally {
+      BoostModel.listerVideosAPurger = liste;
+      BoostModel.mettreAJour = maj;
+    }
+  }));

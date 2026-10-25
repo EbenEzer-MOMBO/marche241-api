@@ -17,7 +17,13 @@ import { ajouterUtmBoost, estDestinationMarche241 } from '../lib/boost/utm';
 import { expliquerRemboursement } from '../lib/boost/remboursement';
 import { ajouterLienBoutique, lienBoutiquePublic } from '../lib/boost/texte';
 import { dateIso } from '../lib/boost/planning';
-import { DUREE_MAX_VIDEO_BOOST_SEC, estUrlVideoBoutique } from '../config/boost-video.config';
+import {
+  cheminVideoDepuisUrl,
+  DELAI_BROUILLON_VIDEO_JOURS,
+  DELAI_VIDEO_BOOST_TERMINE_JOURS,
+  DUREE_MAX_VIDEO_BOOST_SEC,
+  estUrlVideoBoutique
+} from '../config/boost-video.config';
 import { estConformiteComplete } from '../config/conformite-boost.config';
 import { isEvenementTermine } from '../utils/produit-evenement';
 import {
@@ -242,6 +248,7 @@ export async function preparerVideoPourPublication(
     televerser?: typeof televerserVideo;
     attendre?: typeof attendreVideoPrete;
     sauverId?: (boostId: number, videoId: string) => Promise<void>;
+    effacerId?: (boostId: number) => Promise<void>;
   } = {}
 ): Promise<string | null> {
   if ((boost.media_type ?? 'image') !== 'video') return null;
@@ -251,6 +258,11 @@ export async function preparerVideoPourPublication(
     deps.sauverId ??
     (async (boostId: number, videoId: string) => {
       await BoostModel.mettreAJour(boostId, { meta_video_id: videoId });
+    });
+  const effacerId =
+    deps.effacerId ??
+    (async (boostId: number) => {
+      await BoostModel.mettreAJour(boostId, { meta_video_id: null });
     });
   let videoId = boost.meta_video_id;
   if (!videoId) {
@@ -267,9 +279,33 @@ export async function preparerVideoPourPublication(
     );
   }
   if (etat === 'error') {
+    // Sans cela, chaque relance relirait la même vidéo en échec : l'identifiant est effacé pour que
+    // la prochaine tentative renvoie le fichier à Meta.
+    await effacerId(boost.id);
     throw new MetaGraphError('Meta a rejeté le traitement de la vidéo', 'advideos');
   }
   return videoId;
+}
+
+type SupprimerFichier = (chemin: string) => Promise<{ success: boolean; error?: string }>;
+
+const supprimerFichierR2: SupprimerFichier = async (chemin) => (await import('../utils/storage.utils')).deleteFile(chemin);
+
+/**
+ * Supprime une vidéo de boost de R2 (au mieux : un échec est journalisé, jamais bloquant). Ne touche que
+ * `boosts/{slug}/*.mp4|mov` sous STORAGE_PUBLIC_URL. Renvoie true si un fichier a été supprimé.
+ */
+export async function supprimerVideoR2(videoUrl: string | null | undefined, supprimer: SupprimerFichier = supprimerFichierR2): Promise<boolean> {
+  const chemin = cheminVideoDepuisUrl(videoUrl);
+  if (!chemin) return false;
+  try {
+    const resultat = await supprimer(chemin);
+    if (!resultat.success) logger.warn(`[BoostService] Suppression R2 de ${chemin} impossible : ${resultat.error ?? 'raison inconnue'}`);
+    return resultat.success;
+  } catch (err: any) {
+    logger.warn(`[BoostService] Suppression R2 de ${chemin} impossible : ${err?.message}`);
+    return false;
+  }
 }
 
 export class BoostService {
@@ -345,6 +381,10 @@ export class BoostService {
     if (donnees.nom !== undefined) maj.nom = (donnees.nom || boost.nom).trim().slice(0, 120);
     const resultat = await BoostModel.mettreAJour(boost.id, maj);
     if (!resultat) throw introuvable();
+    // Vidéo remplacée ou retirée : l'ancien fichier n'est plus référencé par personne
+    if (boost.video_url && maj.video_url !== undefined && maj.video_url !== boost.video_url) {
+      await supprimerVideoR2(boost.video_url);
+    }
     return resultat;
   }
 
@@ -352,6 +392,28 @@ export class BoostService {
     if (!(await BoostModel.supprimerBrouillon(boost.id))) {
       throw new BoostErreur('Seul un brouillon peut être supprimé', 409, 'BOOST_NON_MODIFIABLE');
     }
+    await supprimerVideoR2(boost.video_url);
+  }
+
+  /**
+   * Purge les vidéos qui ne servent plus : brouillons abandonnés (7 jours) et boosts refusés, rejetés ou
+   * terminés (30 jours). Le fichier R2 est supprimé puis la référence effacée ; les boosts en cours ou à
+   * valider ne sont jamais touchés.
+   */
+  static async nettoyerVideos(supprimer: SupprimerFichier = supprimerFichierR2): Promise<{ examinees: number; supprimees: number; erreurs: number }> {
+    const aPurger = await BoostModel.listerVideosAPurger(DELAI_BROUILLON_VIDEO_JOURS, DELAI_VIDEO_BOOST_TERMINE_JOURS);
+    let supprimees = 0;
+    let erreurs = 0;
+    for (const boost of aPurger) {
+      const chemin = cheminVideoDepuisUrl(boost.video_url);
+      if (chemin && !(await supprimerVideoR2(boost.video_url, supprimer))) {
+        erreurs += 1;
+        continue;
+      }
+      await BoostModel.mettreAJour(boost.id, { video_url: null, video_duree_sec: null });
+      supprimees += 1;
+    }
+    return { examinees: aPurger.length, supprimees, erreurs };
   }
 
   /** Liste les champs manquants ou invalides avant soumission (vide = soumettable). */

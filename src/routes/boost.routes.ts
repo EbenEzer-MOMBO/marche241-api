@@ -23,6 +23,8 @@ import {
   urlVideoUploadSchema
 } from '../utils/validation.schemas.boost';
 
+import { uploadVideoLimiter } from '../middlewares/rate-limit.middleware';
+
 const router = Router();
 
 const admin = [authOrServiceKey, exigerCleService];
@@ -352,8 +354,9 @@ router.post('/estimation/impressions', auth, validate(estimationImpressionsSchem
  *     responses:
  *       200: { description: "{ success, upload_url, url, path, expire_en_sec }" }
  *       400: { description: Type ou poids hors limites }
+ *       429: { description: "Trop d'URL demandées (20 par heure et par vendeur)" }
  */
-router.post('/video/upload-url', auth, validate(urlVideoUploadSchema), isBoutiqueOwner, BoostController.urlUploadVideo);
+router.post('/video/upload-url', auth, uploadVideoLimiter, validate(urlVideoUploadSchema), isBoutiqueOwner, BoostController.urlUploadVideo);
 
 /**
  * @swagger
