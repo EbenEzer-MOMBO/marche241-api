@@ -1,9 +1,11 @@
 import { PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import { Request } from 'express';
 import { s3Client, storageBucket, buildPublicUrl } from '../config/storage';
+import { URL_PUT_VIDEO_EXPIRE_SEC, extensionVideo } from '../config/boost-video.config';
 
 // Interface pour les options d'upload
 export interface UploadOptions {
@@ -233,6 +235,38 @@ export const uploadFromRequest = async (
  * @param filePath Chemin du fichier dans le bucket
  * @returns Résultat de la suppression
  */
+/**
+ * URL PUT présignée (10 min) pour un upload vidéo direct navigateur → R2.
+ * `taille` (content-length) et `contentType` sont signés : R2 refuse tout fichier de taille ou de type
+ * différents, les limites (50 Mo, MP4/MOV) ne dépendent donc pas de valeurs seulement déclarées par le client.
+ */
+export const creerUrlTeleversementVideo = async (
+  slug: string,
+  contentType: string,
+  taille: number
+): Promise<{ urlPut: string; urlPublique: string; chemin: string; expireEnSec: number }> => {
+  const ext = extensionVideo(contentType);
+  const chemin = `boosts/${slug}/video_${Date.now()}_${crypto.randomBytes(4).toString('hex')}${ext}`;
+  const urlPut = await getSignedUrl(
+    s3Client,
+    new PutObjectCommand({
+      Bucket: storageBucket,
+      Key: chemin,
+      ContentType: contentType,
+      ContentLength: taille
+    }),
+    // Le presigner exclut content-type de la signature par défaut : sans cela, le client choisirait le type
+    // servi par le CDN (ex. text/html) au lieu du type validé (MP4/MOV).
+    { expiresIn: URL_PUT_VIDEO_EXPIRE_SEC, signableHeaders: new Set(['content-type']) }
+  );
+  return {
+    urlPut,
+    urlPublique: buildPublicUrl(chemin),
+    chemin,
+    expireEnSec: URL_PUT_VIDEO_EXPIRE_SEC
+  };
+};
+
 export const deleteFile = async (filePath: string): Promise<{success: boolean, error?: string}> => {
   try {
     await s3Client.send(new DeleteObjectCommand({

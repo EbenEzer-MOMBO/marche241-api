@@ -1,4 +1,5 @@
 import { randomBytes } from 'crypto';
+import { ATTENTE_VIDEO_META_MS } from '../config/boost-video.config';
 import { MetaGraphError, metaGraphGet, metaGraphPost, META_GRAPH_VERSION } from '../lib/meta/graph';
 import { fenetrePublication } from '../lib/boost/planning';
 import { clesMetaVilles, idsMetaInterets } from '../config/ciblage-boost.config';
@@ -131,11 +132,60 @@ export interface PublicationInput {
   titre: string;
   description?: string | null;
   imageUrl: string;
+  /** Identifiant Meta de la vidéo déjà prête. Absent = créa image (`link_data`). */
+  videoId?: string | null;
   fxXafParUsd: number;
   /** Page qui porte la créa. Vide seulement en mode simulé, si aucune page n'est configurée. */
   pageId: string;
   /** Instagram de cette page. Null : la pub reste sur Facebook. */
   instagramId: string | null;
+}
+
+export interface CreativeInput {
+  objectif: ObjectifBoost;
+  texte: string;
+  titre: string;
+  description?: string | null;
+  imageUrl: string;
+  urlDestination: string | null;
+  whatsappE164: string | null;
+  pageId: string;
+  instagramId: string | null;
+  videoId?: string | null;
+}
+
+/** Construit `object_story_spec` : `video_data` si `videoId`, sinon `link_data`. */
+export function construireCreative(input: CreativeInput): Record<string, unknown> {
+  const meta = objectifMeta(input.objectif);
+  const lien = lienDestination(input.objectif, input.urlDestination, input.whatsappE164);
+  const cta = { type: meta.cta, value: { link: lien } };
+  const spec: Record<string, unknown> = { page_id: input.pageId };
+  if (input.videoId) {
+    // Meta refuse `link` dans un CTA WHATSAPP_MESSAGE de `video_data` : la destination passe par app_destination.
+    const ctaVideo =
+      input.objectif === 'whatsapp'
+        ? { type: meta.cta, value: { app_destination: 'WHATSAPP' } }
+        : cta;
+    spec.video_data = {
+      video_id: input.videoId,
+      image_url: input.imageUrl,
+      message: input.texte,
+      title: input.titre,
+      link_description: input.description || undefined,
+      call_to_action: ctaVideo
+    };
+  } else {
+    spec.link_data = {
+      message: input.texte,
+      name: input.titre,
+      description: input.description || undefined,
+      link: lien,
+      picture: input.imageUrl,
+      call_to_action: cta
+    };
+  }
+  if (input.instagramId) spec.instagram_user_id = input.instagramId;
+  return spec;
 }
 
 export interface PublicationResult {
@@ -214,19 +264,18 @@ export async function publierBoost(input: PublicationInput): Promise<Publication
   const adSetId = await metaGraphPost(`act_${actId}/adsets`, adSetBody, token, opts);
   if (!adSetId) throw new MetaGraphError('Ensemble de publicités Meta sans identifiant', 'adsets');
 
-  const lien = lienDestination(input.objectif, input.urlDestination, input.whatsappE164);
-  const objectStorySpec: Record<string, unknown> = {
-    page_id: pageId,
-    link_data: {
-      message: input.texte,
-      name: input.titre,
-      description: input.description || undefined,
-      link: lien,
-      picture: input.imageUrl,
-      call_to_action: { type: meta.cta, value: { link: lien } }
-    }
-  };
-  if (input.instagramId) objectStorySpec.instagram_user_id = input.instagramId;
+  const objectStorySpec = construireCreative({
+    objectif: input.objectif,
+    texte: input.texte,
+    titre: input.titre,
+    description: input.description,
+    imageUrl: input.imageUrl,
+    urlDestination: input.urlDestination,
+    whatsappE164: input.whatsappE164,
+    pageId,
+    instagramId: input.instagramId,
+    videoId: input.videoId
+  });
 
   const adId = await metaGraphPost(
     `act_${actId}/ads`,
@@ -242,6 +291,69 @@ export async function publierBoost(input: PublicationInput): Promise<Publication
   if (!adId) throw new MetaGraphError('Publicité Meta sans identifiant', 'ads');
 
   return { dryRun: false, campaignId, adSetId, adId, dateDebut, dateFin };
+}
+
+export type StatutVideoMeta = 'ready' | 'processing' | 'error';
+
+export function extraireStatutVideo(json: unknown): StatutVideoMeta {
+  const statut = (json as { status?: unknown } | null)?.status;
+  const brut =
+    typeof statut === 'string'
+      ? statut
+      : ((statut as { video_status?: string; processing_phase?: { status?: string } } | undefined)?.video_status ??
+        (statut as { processing_phase?: { status?: string } } | undefined)?.processing_phase?.status);
+  if (brut === 'ready' || brut === 'complete') return 'ready';
+  if (brut === 'error' || brut === 'failed') return 'error';
+  return 'processing';
+}
+
+/** Téléverse une vidéo vers Meta via `file_url`. Mode simulé : `dry_video_…`. */
+export async function televerserVideo(fileUrl: string, nom: string): Promise<string> {
+  if (estModeSimule()) return `dry_video_${randomBytes(4).toString('hex')}`;
+  const config = await exigerConnexionPrete();
+  const videoId = await metaGraphPost(
+    `act_${config.adAccountId}/advideos`,
+    { file_url: fileUrl, name: nom },
+    config.accessToken,
+    optionsGraph(config)
+  );
+  if (!videoId) throw new MetaGraphError('Vidéo Meta sans identifiant', 'advideos');
+  return videoId;
+}
+
+export async function statutVideo(videoId: string): Promise<StatutVideoMeta> {
+  if (estModeSimule() || videoId.startsWith('dry_video_')) return 'ready';
+  const config = await chargerMetaConfig();
+  const json = await metaGraphGet<{ status?: unknown }>(
+    videoId,
+    { fields: 'status' },
+    config.accessToken,
+    optionsGraph(config)
+  );
+  return extraireStatutVideo(json);
+}
+
+function attendre(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Attend `ready` ou `error`, 40 s maximum. Au-delà : `processing`. */
+export async function attendreVideoPrete(
+  videoId: string,
+  timeoutMs = ATTENTE_VIDEO_META_MS,
+  pauseMs = 2000
+): Promise<StatutVideoMeta> {
+  if (estModeSimule() || videoId.startsWith('dry_video_')) return 'ready';
+  const debut = Date.now();
+  let dernier: StatutVideoMeta = 'processing';
+  while (Date.now() - debut < timeoutMs) {
+    dernier = await statutVideo(videoId);
+    if (dernier === 'ready' || dernier === 'error') return dernier;
+    const restant = timeoutMs - (Date.now() - debut);
+    if (restant <= 0) break;
+    await attendre(Math.min(pauseMs, restant));
+  }
+  return dernier;
 }
 
 /** Passe campagne, ensemble et publicité en ACTIVE. Sans effet en mode simulé. */

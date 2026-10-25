@@ -7,6 +7,7 @@ test('devisDepuisMedia : commission en % avec minimum', () => {
     budget_media_fcfa: 50_000,
     commission_bps: 2000,
     commission_fcfa: 10_000,
+    frais_video_fcfa: 0,
     tva_bps: 0,
     tva_fcfa: 0,
     total_fcfa: 60_000
@@ -72,4 +73,43 @@ test('totalMinimumPourMedia : plus petit total à la centaine couvrant le budget
   assert.ok(devisDepuisTotal(total - 100, 3000, 1000).budget_media_fcfa < 3900);
   // commission au minimum : 500 FCFA de média → 1 500 FCFA
   assert.equal(totalMinimumPourMedia(500, 3000, 1000), 1500);
+});
+
+test('frais vidéo : déduit avant la commission, la somme vaut toujours le total', () => {
+  for (const total of [7500, 15_000, 30_000, 123_457]) {
+    const d = devisDepuisTotal(total, 2000, 1000, 0, 1000);
+    assert.equal(d.frais_video_fcfa, 1000);
+    assert.equal(d.budget_media_fcfa + d.commission_fcfa + d.frais_video_fcfa + d.tva_fcfa, total);
+    // La commission ne porte que sur le média : 20 % du média, frais vidéo exclu
+    assert.equal(d.commission_fcfa, Math.max(1000, Math.round(((total - 1000) * 2000) / 12_000)));
+  }
+  assert.equal(devisDepuisTotal(7500, 2000, 1000, 0, 1000).budget_media_fcfa, 5417);
+  assert.equal(devisDepuisTotal(7500, 2000, 1000).frais_video_fcfa, 0);
+});
+
+test('frais vidéo avec TVA : somme exacte', () => {
+  for (const total of [7500, 9999, 50_000]) {
+    const d = devisDepuisTotal(total, 1500, 1000, 1800, 1000);
+    assert.equal(d.budget_media_fcfa + d.commission_fcfa + d.frais_video_fcfa + d.tva_fcfa, total);
+  }
+});
+
+test('frais vidéo : le pack Découverte (3 000) ne laisse presque rien au média, refus sous le plancher', () => {
+  const d = devisDepuisTotal(3000, 2000, 1000, 0, 1000);
+  assert.equal(d.budget_media_fcfa, 1000);
+  assert.throws(() => devisDepuisTotal(2000, 2000, 1000, 0, 1000), /commission minimum de 1000 FCFA et les frais vidéo de 1000 FCFA/);
+});
+
+test('devisDepuisMedia avec frais vidéo : total = média + commission + frais', () => {
+  const d = devisDepuisMedia(50_000, 2000, 1000, 0, 1000);
+  assert.equal(d.frais_video_fcfa, 1000);
+  assert.equal(d.total_fcfa, 50_000 + 10_000 + 1000);
+});
+
+test('totalMinimumPourMedia : le frais vidéo relève le total minimum, aller-retour cohérent', () => {
+  const sans = totalMinimumPourMedia(1800, 2000, 1000);
+  const avec = totalMinimumPourMedia(1800, 2000, 1000, 0, 1000);
+  assert.ok(avec >= sans + 1000);
+  assert.ok(devisDepuisTotal(avec, 2000, 1000, 0, 1000).budget_media_fcfa >= 1800);
+  assert.ok(devisDepuisTotal(avec - 100, 2000, 1000, 0, 1000).budget_media_fcfa < 1800);
 });

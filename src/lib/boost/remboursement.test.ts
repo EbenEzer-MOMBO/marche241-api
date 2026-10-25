@@ -96,3 +96,18 @@ test('e-mail de remboursement : HTML échappé, transfert et version texte', () 
   assert.match(sansTransfert.text, /Versement effectué par l'équipe Marché 241\./);
   assert.ok(!sansTransfert.html.includes('>Date<'), 'date réelle inconnue hors application : non affichée');
 });
+
+test('boost vidéo terminé : le frais vidéo apparaît dans le détail, la somme reste exacte', () => {
+  const b = boost({ total_fcfa: 7500, budget_media_fcfa: 5417, commission_fcfa: 1083, frais_video_fcfa: 1000, frais_encaissement_fcfa: 188, depense_fcfa: 2000 });
+  const cloture = Math.max(0, 7500 - 2000 - Math.round(1083 * (2000 / 5417)) - 188 - 1000);
+  const e = expliquerRemboursement({ ...b, montant_a_rembourser_fcfa: cloture });
+  assert.ok(e.lignes.some((l) => l.libelle.startsWith('Frais vidéo') && l.montant === -1000));
+  assert.equal(somme(e.lignes), cloture);
+});
+
+test('boost vidéo refusé : le frais vidéo est remboursé (aucune ligne dédiée)', () => {
+  const b = boost({ statut: 'refuse', total_fcfa: 7500, frais_video_fcfa: 1000, frais_encaissement_fcfa: 188, depense_fcfa: 0, montant_a_rembourser_fcfa: 7312 });
+  const e = expliquerRemboursement(b);
+  assert.equal(somme(e.lignes), 7312);
+  assert.ok(!e.lignes.some((l) => l.libelle.startsWith('Frais vidéo')));
+});

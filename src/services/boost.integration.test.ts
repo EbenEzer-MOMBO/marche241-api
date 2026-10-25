@@ -51,7 +51,7 @@ describe('Boost Meta — intégration HTTP (Postgres local, dry-run)', { skip: i
     sql = new Client({ connectionString: URL_BASE_TEST });
     await sql.connect();
     await sql.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
-    for (const fichier of ['tests/boost/schema-minimal.sql', 'migrations/026_create_boosts_tables.sql', 'migrations/027_extend_transactions_for_boost.sql', 'migrations/028_create_meta_connexion.sql', 'migrations/028_create_meta_connexion.sql', 'migrations/029_boost_frais_encaissement.sql', 'migrations/029_boost_frais_encaissement.sql', 'migrations/030_create_vendeur_guides.sql', 'migrations/030_create_vendeur_guides.sql', 'migrations/031_create_notifications_telegram.sql', 'migrations/031_create_notifications_telegram.sql', 'migrations/039_relances_boosts.sql', 'migrations/042_boutique_page_meta.sql']) {
+    for (const fichier of ['tests/boost/schema-minimal.sql', 'migrations/026_create_boosts_tables.sql', 'migrations/027_extend_transactions_for_boost.sql', 'migrations/028_create_meta_connexion.sql', 'migrations/028_create_meta_connexion.sql', 'migrations/029_boost_frais_encaissement.sql', 'migrations/029_boost_frais_encaissement.sql', 'migrations/030_create_vendeur_guides.sql', 'migrations/030_create_vendeur_guides.sql', 'migrations/031_create_notifications_telegram.sql', 'migrations/031_create_notifications_telegram.sql', 'migrations/039_relances_boosts.sql', 'migrations/042_boutique_page_meta.sql', 'migrations/046_boosts_video.sql']) {
       await sql.query(fs.readFileSync(path.join(RACINE, fichier), 'utf8'));
     }
     const v1 = await sql.query(`INSERT INTO vendeurs (telephone, nom, email) VALUES ('24177000001', 'Awa', 'awa@test.ga') RETURNING id`);
@@ -274,7 +274,7 @@ describe('Boost Meta — intégration HTTP (Postgres local, dry-run)', { skip: i
   test('approbation refusée hors mode simulé si Meta n’est pas configuré (boost intact)', async () => {
     process.env.META_DRY_RUN = 'false';
     try {
-      const r = await appel('POST', `/boosts/admin/${boostId}/approuver`, { cle: CLE_SERVICE, corps: { conformite: ['interdit', 'allegations', 'ciblage', 'visuel'] } });
+      const r = await appel('POST', `/boosts/admin/${boostId}/approuver`, { cle: CLE_SERVICE, corps: { conformite: ['interdit', 'allegations', 'ciblage', 'visuel', 'lisible', 'musique'] } });
       assert.equal(r.status, 409);
       assert.equal(r.json.code, 'META_NON_CONFIGURE');
       assert.match(r.json.message, /Aucun compte publicitaire/);
@@ -291,20 +291,20 @@ describe('Boost Meta — intégration HTTP (Postgres local, dry-run)', { skip: i
     assert.equal(incomplet.json.code, 'CONFORMITE_INCOMPLETE');
 
     await appel('PUT', '/boosts/admin/parametres', { cle: CLE_SERVICE, corps: { kill_switch: true } });
-    const coupe = await appel('POST', `/boosts/admin/${boostId}/approuver`, { cle: CLE_SERVICE, corps: { conformite: ['interdit', 'allegations', 'ciblage', 'visuel'] } });
+    const coupe = await appel('POST', `/boosts/admin/${boostId}/approuver`, { cle: CLE_SERVICE, corps: { conformite: ['interdit', 'allegations', 'ciblage', 'visuel', 'lisible', 'musique'] } });
     assert.equal(coupe.status, 409);
     await appel('PUT', '/boosts/admin/parametres', { cle: CLE_SERVICE, corps: { kill_switch: false } });
 
     const ok = await appel('POST', `/boosts/admin/${boostId}/approuver`, {
       cle: CLE_SERVICE,
-      corps: { conformite: ['interdit', 'allegations', 'ciblage', 'visuel'], valide_par: 'Testeur' }
+      corps: { conformite: ['interdit', 'allegations', 'ciblage', 'visuel', 'lisible', 'musique'], valide_par: 'Testeur' }
     });
     assert.equal(ok.status, 200);
     assert.equal(ok.json.boost.statut, 'actif');
     assert.equal(ok.json.boost.dry_run, true);
     assert.match(ok.json.boost.meta_campaign_id, /^dry_campaign_/);
     assert.equal(ok.json.boost.valide_par, 'Testeur');
-    const re = await appel('POST', `/boosts/admin/${boostId}/approuver`, { cle: CLE_SERVICE, corps: { conformite: ['interdit', 'allegations', 'ciblage', 'visuel'] } });
+    const re = await appel('POST', `/boosts/admin/${boostId}/approuver`, { cle: CLE_SERVICE, corps: { conformite: ['interdit', 'allegations', 'ciblage', 'visuel', 'lisible', 'musique'] } });
     assert.equal(re.status, 409, 'double approbation refusée');
   });
 

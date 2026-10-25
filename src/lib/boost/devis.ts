@@ -9,54 +9,68 @@ export interface DevisBoost {
   budget_media_fcfa: number;
   commission_bps: number;
   commission_fcfa: number;
+  /** Frais fixe de la créa vidéo (stockage, traitement), déduit avant la commission. 0 pour une image. */
+  frais_video_fcfa: number;
   tva_bps: number;
   tva_fcfa: number;
   total_fcfa: number;
 }
 
-/** Devis à partir du budget média (commission = max(minimum, média × bps), TVA sur média + commission). */
+/**
+ * Devis à partir du budget média (commission = max(minimum, média × bps), TVA sur média + commission + frais vidéo).
+ * Le frais vidéo est fixe : il n'entre pas dans la base de la commission.
+ */
 export function devisDepuisMedia(
   mediaFcfa: number,
   commissionBps: number,
   commissionMinFcfa: number,
-  tvaBps = 0
+  tvaBps = 0,
+  fraisVideoFcfa = 0
 ): DevisBoost {
   const media = Math.max(0, Math.round(mediaFcfa));
+  const fraisVideo = Math.max(0, Math.round(fraisVideoFcfa));
   const pourcentage = Math.round((media * commissionBps) / 10_000);
   const commission = Math.max(commissionMinFcfa, pourcentage);
-  const tva = Math.max(0, Math.round(((media + commission) * tvaBps) / 10_000));
+  const tva = Math.max(0, Math.round(((media + commission + fraisVideo) * tvaBps) / 10_000));
   return {
     budget_media_fcfa: media,
     commission_bps: commissionBps,
     commission_fcfa: commission,
+    frais_video_fcfa: fraisVideo,
     tva_bps: tvaBps,
     tva_fcfa: tva,
-    total_fcfa: media + commission + tva
+    total_fcfa: media + commission + fraisVideo + tva
   };
 }
 
 /**
- * Devis à partir du total payé par le vendeur. La somme média + commission + TVA vaut toujours
- * exactement `totalFcfa`. Lève une erreur si le total ne couvre pas la commission minimum.
+ * Devis à partir du total payé par le vendeur. La somme média + commission + frais vidéo + TVA vaut
+ * toujours exactement `totalFcfa`. Le frais vidéo (fixe) est déduit avant la commission, qui ne porte
+ * que sur le média. Lève une erreur si le total ne couvre pas la commission minimum et le frais vidéo.
  */
 export function devisDepuisTotal(
   totalFcfa: number,
   commissionBps: number,
   commissionMinFcfa: number,
-  tvaBps = 0
+  tvaBps = 0,
+  fraisVideoFcfa = 0
 ): DevisBoost {
   const total = Math.round(totalFcfa);
+  const fraisVideo = Math.max(0, Math.round(fraisVideoFcfa));
   const baseHt = Math.round((total * 10_000) / (10_000 + tvaBps));
   const tva = total - baseHt;
-  const commission = Math.max(commissionMinFcfa, Math.round((baseHt * commissionBps) / (10_000 + commissionBps)));
-  const media = baseHt - commission;
+  const net = baseHt - fraisVideo;
+  const commission = Math.max(commissionMinFcfa, Math.round((net * commissionBps) / (10_000 + commissionBps)));
+  const media = net - commission;
   if (media <= 0) {
-    throw new Error(`Le montant de ${total} FCFA ne couvre pas la commission minimum de ${commissionMinFcfa} FCFA`);
+    const frais = fraisVideo > 0 ? ` et les frais vidéo de ${fraisVideo} FCFA` : '';
+    throw new Error(`Le montant de ${total} FCFA ne couvre pas la commission minimum de ${commissionMinFcfa} FCFA${frais}`);
   }
   return {
     budget_media_fcfa: media,
     commission_bps: commissionBps,
     commission_fcfa: commission,
+    frais_video_fcfa: fraisVideo,
     tva_bps: tvaBps,
     tva_fcfa: tva,
     total_fcfa: total
@@ -88,15 +102,22 @@ export function budgetJourMinimum(
 
 /**
  * Plus petit total payé (arrondi à la centaine supérieure) dont le budget média atteint `mediaMinFcfa`.
- * Inverse de `devisDepuisTotal` : la commission vaut max(minimum, base × bps / (10 000 + bps)).
+ * Inverse de `devisDepuisTotal` : la commission vaut max(minimum, (base − frais vidéo) × bps / (10 000 + bps)).
  */
-export function totalMinimumPourMedia(mediaMinFcfa: number, commissionBps: number, commissionMinFcfa: number, tvaBps = 0): number {
+export function totalMinimumPourMedia(
+  mediaMinFcfa: number,
+  commissionBps: number,
+  commissionMinFcfa: number,
+  tvaBps = 0,
+  fraisVideoFcfa = 0
+): number {
   const media = Math.max(0, Math.ceil(mediaMinFcfa));
-  let total = Math.max(media + commissionMinFcfa, Math.ceil((media * (10_000 + commissionBps)) / 10_000));
+  const fraisVideo = Math.max(0, Math.round(fraisVideoFcfa));
+  let total = Math.max(media + commissionMinFcfa, Math.ceil((media * (10_000 + commissionBps)) / 10_000)) + fraisVideo;
   total = Math.ceil((total * (10_000 + tvaBps)) / 10_000);
   total = Math.ceil(total / 100) * 100;
   // Garde-fou contre les arrondis : on avance par centaine jusqu'à couvrir le média
-  while (devisDepuisTotal(total, commissionBps, commissionMinFcfa, tvaBps).budget_media_fcfa < media) total += 100;
+  while (devisDepuisTotal(total, commissionBps, commissionMinFcfa, tvaBps, fraisVideo).budget_media_fcfa < media) total += 100;
   return total;
 }
 

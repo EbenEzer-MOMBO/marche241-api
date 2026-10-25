@@ -187,3 +187,25 @@ export const passkeyOptionsLimiter = rateLimit({
     code: 'TOO_MANY_REQUESTS'
   }
 });
+
+/**
+ * Limiteur des URL d'upload vidéo de boost : chaque appel émet une URL PUT valable 10 minutes vers un
+ * nouveau fichier de R2. Compté par vendeur (pas par IP) pour borner le stockage qu'un compte peut remplir.
+ */
+export const creerLimiteurUploadVideo = (max: number) =>
+  rateLimit({
+    windowMs: 60 * 60 * 1000,
+    max,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req) => (req.vendeur ? `vendeur:${req.vendeur.id}` : ipKeyGenerator(req.ip ?? '')),
+    message: {
+      success: false,
+      message: "Trop d'envois de vidéos en peu de temps, veuillez réessayer dans une heure.",
+      code: 'TOO_MANY_REQUESTS'
+    }
+  });
+
+export const LIMITE_UPLOAD_VIDEO_PAR_HEURE = 20;
+
+export const uploadVideoLimiter = creerLimiteurUploadVideo(LIMITE_UPLOAD_VIDEO_PAR_HEURE);

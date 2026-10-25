@@ -17,6 +17,13 @@ import { ajouterUtmBoost, estDestinationMarche241 } from '../lib/boost/utm';
 import { expliquerRemboursement } from '../lib/boost/remboursement';
 import { ajouterLienBoutique, lienBoutiquePublic } from '../lib/boost/texte';
 import { dateIso } from '../lib/boost/planning';
+import {
+  cheminVideoDepuisUrl,
+  DELAI_BROUILLON_VIDEO_JOURS,
+  DELAI_VIDEO_BOOST_TERMINE_JOURS,
+  DUREE_MAX_VIDEO_BOOST_SEC,
+  estUrlVideoBoutique
+} from '../config/boost-video.config';
 import { estConformiteComplete } from '../config/conformite-boost.config';
 import { isEvenementTermine } from '../utils/produit-evenement';
 import {
@@ -29,8 +36,11 @@ import {
   lireStatutPublicite,
   normaliserStatutEffectif,
   objectifMeta,
-  publierBoost
+  publierBoost,
+  televerserVideo,
+  attendreVideoPrete
 } from './meta-ads.service';
+import { MetaGraphError } from '../lib/meta/graph';
 import {
   chargerMetaConfig,
   decouvrir,
@@ -133,22 +143,37 @@ export interface DonneesBrouillon {
   texte_principal?: string | null;
   description?: string | null;
   image_url?: string | null;
+  media_type?: 'image' | 'video';
+  video_url?: string | null;
+  video_duree_sec?: number | null;
 }
 
 /**
  * Message d'erreur si le budget média par jour est sous le plancher de l'objectif (null sinon).
  * Pour WhatsApp, indique le montant minimum pour la durée choisie ou l'alternative « Visites ».
  */
-export function messageBudgetInsuffisant(totalFcfa: number, dureeJours: number, objectif: ObjectifBoost | null | undefined, parametres: BoostParametres): string | null {
-  const devis = devisDepuisTotal(totalFcfa, parametres.commission_bps, parametres.commission_min_fcfa, parametres.tva_bps);
+export function messageBudgetInsuffisant(
+  totalFcfa: number,
+  dureeJours: number,
+  objectif: ObjectifBoost | null | undefined,
+  parametres: BoostParametres,
+  fraisVideoFcfa = 0
+): string | null {
+  const devis = devisDepuisTotal(totalFcfa, parametres.commission_bps, parametres.commission_min_fcfa, parametres.tva_bps, fraisVideoFcfa);
   const parJour = budgetParJour(devis.budget_media_fcfa, dureeJours);
   const minimum = budgetJourMinimum(objectif, parametres);
   if (parJour >= minimum) return null;
   if (objectif === 'whatsapp' && minimum > parametres.budget_jour_min_fcfa) {
-    const totalMin = totalMinimumPourMedia(minimum * dureeJours, parametres.commission_bps, parametres.commission_min_fcfa, parametres.tva_bps);
+    const totalMin = totalMinimumPourMedia(minimum * dureeJours, parametres.commission_bps, parametres.commission_min_fcfa, parametres.tva_bps, fraisVideoFcfa);
     return `Pour recevoir des messages WhatsApp, Meta demande au moins ${formaterFcfa(minimum)} de publicité par jour : il faut au moins ${formaterFcfa(totalMin)} pour ${dureeJours} jours. Augmentez le montant, réduisez la durée ou choisissez l'objectif « Visites »`;
   }
-  return `Budget publicitaire trop faible pour ${dureeJours} jours (${formaterFcfa(parJour)} par jour, minimum ${formaterFcfa(minimum)}) : augmentez le montant ou réduisez la durée`;
+  const avecVideo = fraisVideoFcfa > 0 ? ` (dont ${formaterFcfa(fraisVideoFcfa)} de frais vidéo)` : '';
+  return `Budget publicitaire trop faible pour ${dureeJours} jours (${formaterFcfa(parJour)} par jour, minimum ${formaterFcfa(minimum)})${avecVideo} : augmentez le montant ou réduisez la durée`;
+}
+
+/** Frais fixe applicable à un boost : seulement pour une créa vidéo. */
+export function fraisVideoPour(mediaType: string | null | undefined, parametres: Pick<BoostParametres, 'frais_video_fcfa'>): number {
+  return mediaType === 'video' ? Math.max(0, parametres.frais_video_fcfa) : 0;
 }
 
 /**
@@ -217,6 +242,72 @@ function ciblageComplet(partiel: Partial<CiblageBoost> | undefined, existant?: C
   return { ...base, ...(partiel ?? {}) } as CiblageBoost;
 }
 
+export async function preparerVideoPourPublication(
+  boost: Pick<Boost, 'id' | 'media_type' | 'video_url' | 'meta_video_id'>,
+  deps: {
+    televerser?: typeof televerserVideo;
+    attendre?: typeof attendreVideoPrete;
+    sauverId?: (boostId: number, videoId: string) => Promise<void>;
+    effacerId?: (boostId: number) => Promise<void>;
+  } = {}
+): Promise<string | null> {
+  if ((boost.media_type ?? 'image') !== 'video') return null;
+  const televerser = deps.televerser ?? televerserVideo;
+  const attendre = deps.attendre ?? attendreVideoPrete;
+  const sauverId =
+    deps.sauverId ??
+    (async (boostId: number, videoId: string) => {
+      await BoostModel.mettreAJour(boostId, { meta_video_id: videoId });
+    });
+  const effacerId =
+    deps.effacerId ??
+    (async (boostId: number) => {
+      await BoostModel.mettreAJour(boostId, { meta_video_id: null });
+    });
+  let videoId = boost.meta_video_id;
+  if (!videoId) {
+    if (!boost.video_url) throw new BoostErreur('Une vidéo est requise', 400, 'VALIDATION_ERROR');
+    videoId = await televerser(boost.video_url, `M241 · boost_${boost.id}`);
+    await sauverId(boost.id, videoId);
+  }
+  const etat = await attendre(videoId);
+  if (etat === 'processing') {
+    throw new BoostErreur(
+      'La vidéo est encore en traitement chez Meta. Réessayez dans quelques secondes.',
+      409,
+      'VIDEO_EN_TRAITEMENT'
+    );
+  }
+  if (etat === 'error') {
+    // Sans cela, chaque relance relirait la même vidéo en échec : l'identifiant est effacé pour que
+    // la prochaine tentative renvoie le fichier à Meta.
+    await effacerId(boost.id);
+    throw new MetaGraphError('Meta a rejeté le traitement de la vidéo', 'advideos');
+  }
+  return videoId;
+}
+
+type SupprimerFichier = (chemin: string) => Promise<{ success: boolean; error?: string }>;
+
+const supprimerFichierR2: SupprimerFichier = async (chemin) => (await import('../utils/storage.utils')).deleteFile(chemin);
+
+/**
+ * Supprime une vidéo de boost de R2 (au mieux : un échec est journalisé, jamais bloquant). Ne touche que
+ * `boosts/{slug}/*.mp4|mov` sous STORAGE_PUBLIC_URL. Renvoie true si un fichier a été supprimé.
+ */
+export async function supprimerVideoR2(videoUrl: string | null | undefined, supprimer: SupprimerFichier = supprimerFichierR2): Promise<boolean> {
+  const chemin = cheminVideoDepuisUrl(videoUrl);
+  if (!chemin) return false;
+  try {
+    const resultat = await supprimer(chemin);
+    if (!resultat.success) logger.warn(`[BoostService] Suppression R2 de ${chemin} impossible : ${resultat.error ?? 'raison inconnue'}`);
+    return resultat.success;
+  } catch (err: any) {
+    logger.warn(`[BoostService] Suppression R2 de ${chemin} impossible : ${err?.message}`);
+    return false;
+  }
+}
+
 export class BoostService {
   static async parametres(): Promise<BoostParametres> {
     return BoostParametresModel.lire();
@@ -275,7 +366,10 @@ export class BoostService {
       titre: donnees.titre ?? null,
       texte_principal: donnees.texte_principal ?? null,
       description: donnees.description ?? null,
-      image_url: donnees.image_url ?? null
+      image_url: donnees.image_url ?? null,
+      media_type: donnees.media_type ?? 'image',
+      video_url: donnees.video_url ?? null,
+      video_duree_sec: donnees.video_duree_sec ?? null
     });
     await BoostEvenementModel.creer(boost.id, 'creation', 'vendeur');
     return boost;
@@ -287,6 +381,10 @@ export class BoostService {
     if (donnees.nom !== undefined) maj.nom = (donnees.nom || boost.nom).trim().slice(0, 120);
     const resultat = await BoostModel.mettreAJour(boost.id, maj);
     if (!resultat) throw introuvable();
+    // Vidéo remplacée ou retirée : l'ancien fichier n'est plus référencé par personne
+    if (boost.video_url && maj.video_url !== undefined && maj.video_url !== boost.video_url) {
+      await supprimerVideoR2(boost.video_url);
+    }
     return resultat;
   }
 
@@ -294,6 +392,28 @@ export class BoostService {
     if (!(await BoostModel.supprimerBrouillon(boost.id))) {
       throw new BoostErreur('Seul un brouillon peut être supprimé', 409, 'BOOST_NON_MODIFIABLE');
     }
+    await supprimerVideoR2(boost.video_url);
+  }
+
+  /**
+   * Purge les vidéos qui ne servent plus : brouillons abandonnés (7 jours) et boosts refusés, rejetés ou
+   * terminés (30 jours). Le fichier R2 est supprimé puis la référence effacée ; les boosts en cours ou à
+   * valider ne sont jamais touchés.
+   */
+  static async nettoyerVideos(supprimer: SupprimerFichier = supprimerFichierR2): Promise<{ examinees: number; supprimees: number; erreurs: number }> {
+    const aPurger = await BoostModel.listerVideosAPurger(DELAI_BROUILLON_VIDEO_JOURS, DELAI_VIDEO_BOOST_TERMINE_JOURS);
+    let supprimees = 0;
+    let erreurs = 0;
+    for (const boost of aPurger) {
+      const chemin = cheminVideoDepuisUrl(boost.video_url);
+      if (chemin && !(await supprimerVideoR2(boost.video_url, supprimer))) {
+        erreurs += 1;
+        continue;
+      }
+      await BoostModel.mettreAJour(boost.id, { video_url: null, video_duree_sec: null });
+      supprimees += 1;
+    }
+    return { examinees: aPurger.length, supprimees, erreurs };
   }
 
   /** Liste les champs manquants ou invalides avant soumission (vide = soumettable). */
@@ -301,7 +421,18 @@ export class BoostService {
     const erreurs: Array<{ field: string; message: string }> = [];
     if (!boost.titre || boost.titre.trim().length < 3) erreurs.push({ field: 'titre', message: 'Le titre doit contenir au moins 3 caractères' });
     if (!boost.texte_principal || boost.texte_principal.trim().length < 5) erreurs.push({ field: 'texte_principal', message: 'Le texte doit contenir au moins 5 caractères' });
-    if (!boost.image_url) erreurs.push({ field: 'image_url', message: 'Un visuel est requis' });
+    if (!boost.image_url) {
+      erreurs.push({
+        field: 'image_url',
+        message: (boost.media_type ?? 'image') === 'video' ? 'Une miniature de la vidéo est requise' : 'Un visuel est requis'
+      });
+    }
+    if ((boost.media_type ?? 'image') === 'video') {
+      if (!boost.video_url) erreurs.push({ field: 'video_url', message: 'Une vidéo est requise' });
+      if (!boost.video_duree_sec || boost.video_duree_sec < 1 || boost.video_duree_sec > DUREE_MAX_VIDEO_BOOST_SEC) {
+        erreurs.push({ field: 'video_duree_sec', message: `La vidéo doit durer entre 1 et ${DUREE_MAX_VIDEO_BOOST_SEC} secondes` });
+      }
+    }
     if (boost.type_cible === 'produit' && !boost.produit_id) erreurs.push({ field: 'produit_id', message: 'Choisissez le produit à promouvoir' });
     if (boost.objectif === 'whatsapp') {
       if (!boost.whatsapp_e164 || !/^\+[1-9]\d{7,14}$/.test(boost.whatsapp_e164)) {
@@ -318,7 +449,7 @@ export class BoostService {
     }
     if (!erreurs.some((e) => e.field === 'total_fcfa' || e.field === 'duree_jours')) {
       try {
-        const message = messageBudgetInsuffisant(boost.total_fcfa, boost.duree_jours, boost.objectif, parametres);
+        const message = messageBudgetInsuffisant(boost.total_fcfa, boost.duree_jours, boost.objectif, parametres, fraisVideoPour(boost.media_type, parametres));
         // Plancher WhatsApp : c'est le montant qu'il faut augmenter (la durée est souvent déjà au minimum)
         if (message) erreurs.push({ field: boost.objectif === 'whatsapp' ? 'total_fcfa' : 'duree_jours', message });
       } catch (err: any) {
@@ -336,12 +467,18 @@ export class BoostService {
     if (boost.statut !== 'brouillon') throw new BoostErreur('Ce boost a déjà été soumis', 409, 'BOOST_NON_MODIFIABLE');
     const parametres = await BoostParametresModel.lire();
     const erreurs = BoostService.validerPourSoumission(boost, parametres);
+    if ((boost.media_type ?? 'image') === 'video' && boost.video_url) {
+      const boutique = await BoutiqueModel.getBoutiqueById(boost.boutique_id);
+      if (!boutique || !estUrlVideoBoutique(boost.video_url, boutique.slug)) {
+        erreurs.push({ field: 'video_url', message: 'La vidéo doit être dans le dossier de votre boutique' });
+      }
+    }
     if (erreurs.length) {
       const err = new BoostErreur('Le boost est incomplet', 400, 'VALIDATION_ERROR') as BoostErreur & { errors?: unknown };
       err.errors = erreurs.map((e) => ({ ...e, code: 'BOOST_CHAMP_INVALIDE' }));
       throw err;
     }
-    const devis = devisDepuisTotal(boost.total_fcfa, parametres.commission_bps, parametres.commission_min_fcfa, parametres.tva_bps);
+    const devis = devisDepuisTotal(boost.total_fcfa, parametres.commission_bps, parametres.commission_min_fcfa, parametres.tva_bps, fraisVideoPour(boost.media_type, parametres));
     const url =
       boost.objectif !== 'whatsapp' && boost.url_destination && estDestinationMarche241(boost.url_destination, process.env.FRONTEND_URL)
         ? ajouterUtmBoost(boost.url_destination, boost.id)
@@ -350,6 +487,7 @@ export class BoostService {
       budget_media_fcfa: devis.budget_media_fcfa,
       commission_bps: devis.commission_bps,
       commission_fcfa: devis.commission_fcfa,
+      frais_video_fcfa: devis.frais_video_fcfa,
       tva_fcfa: devis.tva_fcfa,
       total_fcfa: devis.total_fcfa,
       frais_encaissement_fcfa: fraisEncaissement(devis.total_fcfa, parametres.frais_encaissement_bps),
@@ -387,7 +525,7 @@ export class BoostService {
     // laisser Meta refuser la publication après encaissement.
     let insuffisant: string | null;
     try {
-      insuffisant = messageBudgetInsuffisant(boost.total_fcfa, boost.duree_jours, boost.objectif, await BoostParametresModel.lire());
+      insuffisant = messageBudgetInsuffisant(boost.total_fcfa, boost.duree_jours, boost.objectif, await BoostParametresModel.lire(), boost.frais_video_fcfa ?? 0);
     } catch (err: any) {
       // Paramètres modifiés depuis la soumission (ex. commission minimum relevée au-dessus du total)
       insuffisant = err?.message ?? 'Montant devenu insuffisant';
@@ -485,9 +623,11 @@ export class BoostService {
   static async approuver(boostId: number, conformite: string[], valideur: string): Promise<{ boost: Boost; erreur?: string }> {
     const parametres = await BoostParametresModel.lire();
     if (parametres.kill_switch) throw new BoostErreur('Kill switch actif : publications coupées', 409, 'KILL_SWITCH');
-    if (!estConformiteComplete(conformite)) throw new BoostErreur('Checklist de conformité incomplète', 400, 'CONFORMITE_INCOMPLETE');
     const boost = await BoostModel.getById(boostId);
     if (!boost) throw introuvable();
+    if (!estConformiteComplete(conformite, boost.media_type)) {
+      throw new BoostErreur('Checklist de conformité incomplète', 400, 'CONFORMITE_INCOMPLETE');
+    }
     if (boost.statut !== 'en_attente_validation' && boost.statut !== 'erreur') {
       throw new BoostErreur("Ce boost n'est pas en attente de validation", 409, 'BOOST_NON_VALIDABLE');
     }
@@ -539,6 +679,7 @@ export class BoostService {
       : {};
 
     try {
+      const videoIdPublication = dejaCree ? boost.meta_video_id : await preparerVideoPourPublication(boost);
       const publication = dejaCree
         ? {
             dryRun: boost.dry_run,
@@ -560,6 +701,7 @@ export class BoostService {
             titre: boost.titre ?? boost.nom,
             description: boost.description,
             imageUrl: boost.image_url ?? '',
+            videoId: videoIdPublication,
             fxXafParUsd: parametres.fx_xaf_par_usd,
             pageId: page?.pageId ?? '',
             instagramId: page?.instagramId ?? null
@@ -569,6 +711,7 @@ export class BoostService {
         meta_adset_id: publication.adSetId,
         texte_principal: texte || boost.texte_principal,
         meta_ad_id: publication.adId,
+        meta_video_id: videoIdPublication ?? boost.meta_video_id,
         meta_derniere_erreur: null,
         dry_run: publication.dryRun,
         date_debut: publication.dateDebut,

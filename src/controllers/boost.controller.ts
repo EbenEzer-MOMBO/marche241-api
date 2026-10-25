@@ -4,7 +4,7 @@ import { MetaConnexionModel } from '../models/meta-connexion.model';
 import { BoostRelanceService, verifierJeton } from '../services/boost-relance.service';
 import { PubliciteParametresModel } from '../models/publicite.model';
 import { BoutiqueModel } from '../models/boutique.model';
-import { BoostErreur, BoostService } from '../services/boost.service';
+import { BoostErreur, BoostService, fraisVideoPour } from '../services/boost.service';
 import { estimerAudience, estimerImpressionsJour } from '../services/meta-estimation.service';
 import { santeMeta, estModeSimule } from '../services/meta-ads.service';
 import { decouvrir, enregistrerChoix, MetaConnexionErreur, verifier } from '../services/meta-connexion.service';
@@ -21,8 +21,10 @@ import {
   PAYS_CIBLAGE,
   VILLES_GABON
 } from '../config/ciblage-boost.config';
-import { CONFORMITE_BOOST } from '../config/conformite-boost.config';
+import { CONFORMITE_BOOST, conformiteRequise } from '../config/conformite-boost.config';
 import { logger } from '../utils/logger';
+import { creerUrlTeleversementVideo } from '../utils/storage.utils';
+import { estTypeVideoAutorise, TAILLE_MAX_VIDEO_BOOST } from '../config/boost-video.config';
 
 const corps = (req: Request) => (req as any).validatedBody ?? req.body;
 const params = (req: Request) => (req as any).validatedParams ?? req.params;
@@ -84,6 +86,7 @@ export class BoostController {
           commission_min_fcfa: parametres.commission_min_fcfa,
           tva_bps: parametres.tva_bps,
           frais_encaissement_bps: parametres.frais_encaissement_bps,
+          frais_video_fcfa: parametres.frais_video_fcfa,
           budget_jour_min_fcfa: parametres.budget_jour_min_fcfa,
           // Plancher WhatsApp converti en FCFA au taux courant (le front n'a pas besoin du taux)
           budget_jour_min_whatsapp_fcfa: budgetJourMinimum('whatsapp', parametres),
@@ -120,7 +123,7 @@ export class BoostController {
 
   static async getDevis(req: Request, res: Response): Promise<void> {
     try {
-      const { total_fcfa, duree_jours, objectif } = corps(req);
+      const { total_fcfa, duree_jours, objectif, media_type } = corps(req);
       const p = await BoostParametresModel.lire();
       if (!estTotalDansBornes(total_fcfa, p.total_min_fcfa, p.total_max_fcfa)) {
         const message = `Le montant doit être compris entre ${formaterFcfa(p.total_min_fcfa)} et ${formaterFcfa(p.total_max_fcfa)}`;
@@ -132,7 +135,8 @@ export class BoostController {
         });
         return;
       }
-      const devis = devisDepuisTotal(total_fcfa, p.commission_bps, p.commission_min_fcfa, p.tva_bps);
+      const fraisVideo = fraisVideoPour(media_type, p);
+      const devis = devisDepuisTotal(total_fcfa, p.commission_bps, p.commission_min_fcfa, p.tva_bps, fraisVideo);
       const minimumJour = budgetJourMinimum(objectif, p);
       res.json({
         success: true,
@@ -143,7 +147,7 @@ export class BoostController {
           frais_encaissement_fcfa: fraisEncaissement(devis.total_fcfa, p.frais_encaissement_bps),
           // Plancher de l'objectif (WhatsApp plus élevé) et total minimum correspondant pour la durée
           budget_jour_min_fcfa: minimumJour,
-          total_minimum_fcfa: Math.max(p.total_min_fcfa, totalMinimumPourMedia(minimumJour * duree_jours, p.commission_bps, p.commission_min_fcfa, p.tva_bps))
+          total_minimum_fcfa: Math.max(p.total_min_fcfa, totalMinimumPourMedia(minimumJour * duree_jours, p.commission_bps, p.commission_min_fcfa, p.tva_bps, fraisVideo))
         }
       });
     } catch (err: any) {
@@ -174,11 +178,12 @@ export class BoostController {
 
   static async estimerImpressions(req: Request, res: Response): Promise<void> {
     try {
-      const { totaux_fcfa, duree_jours } = corps(req);
+      const { totaux_fcfa, duree_jours, media_type } = corps(req);
       const p = await BoostParametresModel.lire();
+      const fraisVideo = fraisVideoPour(media_type, p);
       const medias = (totaux_fcfa as number[]).map((total) => {
         try {
-          return devisDepuisTotal(total, p.commission_bps, p.commission_min_fcfa, p.tva_bps).budget_media_fcfa;
+          return devisDepuisTotal(total, p.commission_bps, p.commission_min_fcfa, p.tva_bps, fraisVideo).budget_media_fcfa;
         } catch {
           return 0;
         }
@@ -193,6 +198,43 @@ export class BoostController {
       });
     } catch (err) {
       repondreErreur(res, err, "l'estimation des impressions");
+    }
+  }
+
+  static async urlUploadVideo(req: Request, res: Response): Promise<void> {
+    try {
+      const { boutique_id, content_type, taille } = corps(req);
+      if (!estTypeVideoAutorise(String(content_type))) {
+        res.status(400).json({
+          success: false,
+          message: 'Seuls les fichiers MP4 et MOV sont acceptés',
+          code: 'VALIDATION_ERROR'
+        });
+        return;
+      }
+      if (Number(taille) > TAILLE_MAX_VIDEO_BOOST) {
+        res.status(400).json({
+          success: false,
+          message: 'La vidéo ne doit pas dépasser 50 Mo',
+          code: 'VALIDATION_ERROR'
+        });
+        return;
+      }
+      const boutique = await BoutiqueModel.getBoutiqueById(Number(boutique_id));
+      if (!boutique) {
+        res.status(404).json({ success: false, message: 'Boutique introuvable', code: 'BOUTIQUE_INTROUVABLE' });
+        return;
+      }
+      const urls = await creerUrlTeleversementVideo(boutique.slug, String(content_type), Number(taille));
+      res.json({
+        success: true,
+        upload_url: urls.urlPut,
+        url: urls.urlPublique,
+        path: urls.chemin,
+        expire_en_sec: urls.expireEnSec
+      });
+    } catch (err) {
+      repondreErreur(res, err, "la préparation de l'upload vidéo");
     }
   }
 
@@ -338,7 +380,7 @@ export class BoostController {
         success: true,
         ...(await BoostService.detail(await BoostService.rafraichirSiPerime(boost), false)),
         relances: await BoostRelanceModel.suivi(boost.id),
-        conformite_items: CONFORMITE_BOOST
+        conformite_items: conformiteRequise(boost.media_type)
       });
     } catch (err) {
       repondreErreur(res, err, 'la récupération du boost');
@@ -586,6 +628,14 @@ export class BoostController {
       res.json({ success: true, resultat: await BoostService.synchroniserTous() });
     } catch (err) {
       repondreErreur(res, err, 'la synchronisation des boosts');
+    }
+  }
+
+  static async nettoyerVideosCron(_req: Request, res: Response): Promise<void> {
+    try {
+      res.json({ success: true, resultat: await BoostService.nettoyerVideos() });
+    } catch (err) {
+      repondreErreur(res, err, 'le nettoyage des vidéos de boosts');
     }
   }
 

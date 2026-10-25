@@ -733,6 +733,7 @@ export interface Boost {
   commission_fcfa: number;
   tva_fcfa: number;
   frais_encaissement_fcfa: number; // frais eBilling non remboursables, figés à la soumission (inclus dans total_fcfa)
+  frais_video_fcfa: number; // frais fixe d'une créa vidéo, figé à la soumission (inclus dans total_fcfa, déduit avant la commission)
   total_fcfa: number; // montant payé par le vendeur
   depense_fcfa: number;
 
@@ -748,6 +749,10 @@ export interface Boost {
   texte_principal: string | null;
   description: string | null;
   image_url: string | null;
+  media_type: 'image' | 'video';
+  video_url: string | null;
+  video_duree_sec: number | null;
+  meta_video_id: string | null;
   cta: string;
 
   note_revue: string | null;
@@ -820,6 +825,7 @@ export interface BoostParametres {
   commission_min_fcfa: number;
   tva_bps: number;
   frais_encaissement_bps: number; // frais eBilling retenus sur les remboursements (250 = 2,5 %)
+  frais_video_fcfa: number; // frais fixe ajouté aux boosts vidéo (1000 par défaut), conservé seulement si la pub a diffusé
   total_min_fcfa: number;
   total_max_fcfa: number;
   duree_min_jours: number;

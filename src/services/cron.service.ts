@@ -37,6 +37,7 @@ export class CronService {
     this.scheduleSyncBoosts();
     this.scheduleClotureBoostsEchus();
     this.scheduleRelancesBoosts();
+    this.scheduleNettoyerVideosBoosts();
 
     // Publicité interne : début/fin de diffusion, libération des semaines non payées
     this.scheduleStatutsPublicites();
@@ -107,6 +108,25 @@ export class CronService {
    * Relance les boosts Meta non finalisés, une fois par heure.
    * L'envoi effectif n'a lieu qu'à l'heure de Libreville configurée.
    */
+  static scheduleNettoyerVideosBoosts(): void {
+    const jobName = 'nettoyer-videos-boosts';
+
+    const task = cron.schedule('30 3 * * *', async () => {
+      try {
+        const { BoostService } = await import('./boost.service');
+        const result = await BoostService.nettoyerVideos();
+        console.log(
+          `[CronService] Vidéos de boosts : ${result.examinees} examinée(s), ${result.supprimees} supprimée(s), ${result.erreurs} erreur(s)`
+        );
+      } catch (error) {
+        console.error('[CronService] Erreur lors du nettoyage des vidéos de boosts:', error);
+      }
+    }, { timezone: 'Africa/Libreville' });
+
+    this.jobs.set(jobName, task);
+    console.log(`[CronService] Tâche planifiée: ${jobName} - chaque jour à 03:30 (Libreville), brouillons 7 jours, boosts terminés 30 jours`);
+  }
+
   static scheduleRelancesBoosts(): void {
     const jobName = 'relances-boosts';
 

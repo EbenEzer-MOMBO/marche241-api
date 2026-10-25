@@ -33,6 +33,7 @@ const COLONNES_AUTORISEES = [
   'commission_fcfa',
   'tva_fcfa',
   'frais_encaissement_fcfa',
+  'frais_video_fcfa',
   'total_fcfa',
   'depense_fcfa',
   'duree_jours',
@@ -45,6 +46,10 @@ const COLONNES_AUTORISEES = [
   'texte_principal',
   'description',
   'image_url',
+  'media_type',
+  'video_url',
+  'video_duree_sec',
+  'meta_video_id',
   'cta',
   'note_revue',
   'conformite',
@@ -285,6 +290,26 @@ export class BoostModel {
     return rows[0] ?? null;
   }
 
+  /**
+   * Boosts dont la vidéo n'est plus utile : brouillons inactifs depuis `joursBrouillon` jours, boosts refusés,
+   * rejetés par Meta ou terminés depuis `joursTermine` jours. Les autres statuts ne sont jamais renvoyés.
+   */
+  static async listerVideosAPurger(joursBrouillon: number, joursTermine: number, limite = 200): Promise<Array<Pick<Boost, 'id' | 'video_url'>>> {
+    const { rows } = await query<Pick<Boost, 'id' | 'video_url'>>(
+      `SELECT id, video_url FROM boosts
+       WHERE video_url IS NOT NULL
+         AND (
+           (statut = 'brouillon'::statut_boost AND date_modification < NOW() - make_interval(days => $1))
+           OR (statut IN ('refuse'::statut_boost, 'rejete_meta'::statut_boost, 'termine'::statut_boost)
+               AND date_modification < NOW() - make_interval(days => $2))
+         )
+       ORDER BY id
+       LIMIT $3`,
+      [joursBrouillon, joursTermine, limite]
+    );
+    return rows;
+  }
+
   static async supprimerBrouillon(id: number): Promise<boolean> {
     const { rowCount } = await query(`DELETE FROM boosts WHERE id = $1 AND statut = 'brouillon'::statut_boost`, [id]);
     return (rowCount ?? 0) > 0;
@@ -491,6 +516,7 @@ export const PARAMETRES_BOOST_DEFAUT: BoostParametres = {
   commission_min_fcfa: 1000,
   tva_bps: 0,
   frais_encaissement_bps: 250,
+  frais_video_fcfa: 1000,
   total_min_fcfa: 3000,
   total_max_fcfa: 500_000,
   duree_min_jours: 3,

@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  construireCreative,
   construireTargeting,
   depenseVersFcfa,
+  extraireStatutVideo,
   fcfaVersMontantMineur,
   lireInsights,
   lireStatutPublicite,
@@ -11,6 +13,7 @@ import {
   parserInsights,
   activerPublication,
   publierBoost,
+  televerserVideo,
   PublicationInput
 } from './meta-ads.service';
 import { definirMetaConfigPourTests } from './meta-connexion.service';
@@ -273,6 +276,55 @@ test('statut effectif de la publicité', async () => {
 test('parserInsights ignore les lignes sans date', () => {
   assert.deepEqual(parserInsights([{ spend: '1' }]), []);
   assert.deepEqual(parserInsights(undefined), []);
+});
+
+test('construireCreative : image = link_data, vidéo = video_data, Instagram optionnel', () => {
+  const base = {
+    objectif: 'trafic' as const,
+    texte: 'Hello',
+    titre: 'Titre',
+    description: 'Desc',
+    imageUrl: 'https://cdn.test/m.jpg',
+    urlDestination: 'https://marche241.ga/x',
+    whatsappE164: null,
+    pageId: 'page_1',
+    instagramId: null as string | null
+  };
+  const image = construireCreative(base);
+  assert.equal((image.link_data as { picture: string }).picture, base.imageUrl);
+  assert.equal(image.video_data, undefined);
+  assert.equal(image.instagram_user_id, undefined);
+  const video = construireCreative({ ...base, videoId: 'vid_9', instagramId: 'ig_1' });
+  assert.equal(video.link_data, undefined);
+  assert.equal((video.video_data as { video_id: string; image_url: string }).video_id, 'vid_9');
+  assert.equal((video.video_data as { image_url: string }).image_url, base.imageUrl);
+  assert.equal(video.instagram_user_id, 'ig_1');
+  const wa = construireCreative({ ...base, objectif: 'whatsapp', whatsappE164: '+24177000000', urlDestination: null, videoId: 'vid_w' });
+  const ctaWa = (wa.video_data as { call_to_action: { type: string; value: { link?: string; app_destination?: string } } }).call_to_action;
+  assert.equal(ctaWa.type, 'WHATSAPP_MESSAGE');
+  // Meta refuse `link` dans un CTA WHATSAPP_MESSAGE de video_data (constaté le 25/10/2026)
+  assert.equal(ctaWa.value.link, undefined);
+  assert.equal(ctaWa.value.app_destination, 'WHATSAPP');
+  const ctaTrafic = (video.video_data as { call_to_action: { value: { link?: string } } }).call_to_action;
+  assert.equal(ctaTrafic.value.link, 'https://marche241.ga/x');
+});
+
+test('extraireStatutVideo et téléversement simulé dry_video_', async () => {
+  assert.equal(extraireStatutVideo({ status: { video_status: 'ready' } }), 'ready');
+  assert.equal(extraireStatutVideo({ status: { video_status: 'error' } }), 'error');
+  assert.equal(extraireStatutVideo({ status: { video_status: 'processing' } }), 'processing');
+  definirMetaConfigPourTests({ dryRun: true });
+  const id = await televerserVideo('https://cdn.test/v.mp4', 'test');
+  assert.match(id, /^dry_video_/);
+});
+
+test('publication réelle vidéo : creative.video_data', async () => {
+  configurerMetaReel();
+  installerFetch('XAF');
+  await publierBoost({ ...input, videoId: 'vid_meta' });
+  const creative = JSON.parse(appels.filter((a) => a.method === 'POST')[2].body.creative);
+  assert.equal(creative.object_story_spec.video_data.video_id, 'vid_meta');
+  assert.equal(creative.object_story_spec.link_data, undefined);
 });
 
 test('hors mode simulé, une connexion incomplète bloque la publication (pas de simulation silencieuse)', async () => {

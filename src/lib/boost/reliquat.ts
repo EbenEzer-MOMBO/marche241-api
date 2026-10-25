@@ -4,6 +4,8 @@
  * budget média, la commission (et la TVA) sont conservées au prorata de la dépense ; le reste est
  * dû au vendeur et remboursé manuellement par versement.
  * Les frais d'encaissement (eBilling, figés à la soumission) ne sont jamais remboursés.
+ * Le frais vidéo (fixe, figé à la soumission) n'est conservé que si la publicité a réellement diffusé
+ * (dépense > 0) : refus Marché 241 ou rejet Meta sans dépense = remboursé.
  */
 
 export interface MontantsBoost {
@@ -12,6 +14,7 @@ export interface MontantsBoost {
   commission_fcfa: number;
   tva_fcfa: number;
   frais_encaissement_fcfa?: number;
+  frais_video_fcfa?: number;
 }
 
 export interface Cloture {
@@ -19,6 +22,7 @@ export interface Cloture {
   commission_conservee_fcfa: number;
   tva_conservee_fcfa: number;
   frais_encaissement_fcfa: number;
+  frais_video_conserve_fcfa: number;
   montant_a_rembourser_fcfa: number;
 }
 
@@ -32,6 +36,12 @@ export function fraisRetenus(montants: MontantsBoost): number {
   return Math.min(Math.max(0, montants.frais_encaissement_fcfa ?? 0), Math.max(0, montants.total_fcfa));
 }
 
+/** Frais vidéo conservés : en entier dès qu'il y a eu de la diffusion, sinon rien (jamais plus que le total payé). */
+export function fraisVideoConserves(montants: MontantsBoost, depenseFcfa: number): number {
+  if (depenseFcfa <= 0) return 0;
+  return Math.min(Math.max(0, montants.frais_video_fcfa ?? 0), Math.max(0, montants.total_fcfa));
+}
+
 export function calculerCloture(montants: MontantsBoost, depenseFcfa: number): Cloture {
   const media = Math.max(0, montants.budget_media_fcfa);
   const depense = Math.min(Math.max(Math.round(depenseFcfa), 0), media);
@@ -39,12 +49,14 @@ export function calculerCloture(montants: MontantsBoost, depenseFcfa: number): C
   const commission = Math.round(montants.commission_fcfa * ratio);
   const tva = Math.round(montants.tva_fcfa * ratio);
   const frais = fraisRetenus(montants);
-  const remboursement = Math.max(0, montants.total_fcfa - depense - commission - tva - frais);
+  const fraisVideo = fraisVideoConserves(montants, depense);
+  const remboursement = Math.max(0, montants.total_fcfa - depense - commission - tva - frais - fraisVideo);
   return {
     depense_fcfa: depense,
     commission_conservee_fcfa: commission,
     tva_conservee_fcfa: tva,
     frais_encaissement_fcfa: frais,
+    frais_video_conserve_fcfa: fraisVideo,
     montant_a_rembourser_fcfa: remboursement
   };
 }
