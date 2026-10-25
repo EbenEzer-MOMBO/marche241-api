@@ -122,30 +122,12 @@ const CONDITION_EVENEMENT = `(COALESCE(p.variants->>'type', '') = 'evenement'
   OR EXISTS (SELECT 1 FROM categories ce WHERE ce.id = p.categorie_id AND ce.slug = 'evenements'))`;
 
 /**
- * Date d'événement (`variants.meta.<cle>`) en timestamptz : une saisie « AAAA-MM-JJTHH:mm » sans
- * fuseau est une heure locale du Gabon (UTC+1) ; une date avec fuseau explicite est lue telle quelle ;
- * toute autre valeur donne NULL (jamais d'erreur de cast).
- */
-const dateMetaSql = (cle: string) => {
-  const brut = `(p.variants->'meta'->>'${cle}')`;
-  return `(CASE
-    WHEN ${brut} ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}(:[0-9]{2}([.][0-9]+)?)?$' THEN (${brut} || '+01')::timestamptz
-    WHEN ${brut} ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}(:[0-9]{2}([.][0-9]+)?)?(Z|[+-][0-9]{2}(:?[0-9]{2})?)$' THEN ${brut}::timestamptz
-  END)`;
-};
-
-/**
  * Événement terminé : fin (`date_fin` postérieure au début, sinon début + 12 h) dépassée.
+ * `evenement_fin` (migration 045) renvoie NULL pour un non-événement ou une date invalide.
  * Miroir SQL de `isEvenementTermine` (utils/produit-evenement.ts) ; à n'appliquer
  * qu'aux requêtes publiques.
  */
-const CONDITION_EVENEMENT_TERMINE = `(COALESCE(p.variants->>'type', '') = 'evenement'
-  AND COALESCE(
-    CASE WHEN ${dateMetaSql('date_fin')} IS NOT NULL
-         AND (${dateMetaSql('date_debut')} IS NULL OR ${dateMetaSql('date_fin')} > ${dateMetaSql('date_debut')})
-      THEN ${dateMetaSql('date_fin')} END,
-    ${dateMetaSql('date_debut')} + INTERVAL '12 hours'
-  ) <= NOW())`;
+const CONDITION_EVENEMENT_TERMINE = `(evenement_fin(p.variants) <= NOW())`;
 
 /** Filtre public : produit actif et, pour un événement, non terminé. */
 const CONDITION_PUBLIC = `p.statut = 'actif' AND NOT COALESCE(${CONDITION_EVENEMENT_TERMINE}, FALSE)`;

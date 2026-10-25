@@ -28,6 +28,7 @@ import {
 } from '../lib/database-types';
 import { devisPublicite, DevisPublicite, remboursementProrata } from '../lib/publicite/devis';
 import { CRENEAUX_FORMULE, creneauxPage, LIBELLES_FORMULE, lignesReservation } from '../lib/publicite/creneaux';
+import { isEvenementTermine } from '../utils/produit-evenement';
 import {
   ajouterSemaines,
   bornesPeriode,
@@ -243,6 +244,7 @@ export class PubliciteService {
       if (!produitId) throw new PubliciteErreur('Choisissez le produit à mettre en avant', 400, 'PRODUIT_REQUIS');
       const produit = await ProduitModel.getProduitById(produitId);
       if (!produit || produit.boutique_id !== boutique.id) throw new PubliciteErreur('Produit introuvable', 404, 'PRODUIT_INTROUVABLE');
+      if (isEvenementTermine(produit)) throw new PubliciteErreur('Cet événement est terminé : il ne peut plus être mis en avant', 400, 'EVENEMENT_TERMINE');
       return urlProduit(frontendUrl(), boutique.slug, produit.id);
     }
     return urlBoutique(frontendUrl(), boutique.slug);

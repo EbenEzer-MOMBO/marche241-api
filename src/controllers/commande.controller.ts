@@ -640,10 +640,12 @@ export class CommandeController {
         }
         
         // Vérifier si le produit est actif
-        if (produit.statut !== 'actif' || isEvenementTermine(produit)) {
+        // Pas de contrôle « événement terminé » ici : une commande créée avant la fin
+        // de l'événement reste payable (le contrôle se fait à la création de la commande).
+        if (produit.statut !== 'actif') {
           produitsIndisponibles.push({
             nom: article.nom_produit,
-            raison: isEvenementTermine(produit) ? 'Événement terminé' : 'Produit non disponible'
+            raison: 'Produit non disponible'
           });
           continue;
         }

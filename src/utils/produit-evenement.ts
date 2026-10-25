@@ -301,6 +301,31 @@ export function dateEvenementEnMs(valeur: unknown): number | null {
   return Number.isNaN(ms) ? null : ms;
 }
 
+const FORMAT_DATE_SANS_FUSEAU = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/;
+const FORMAT_DATE_AVEC_FUSEAU = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}(:?\d{2})?)$/;
+
+/**
+ * Lecture stricte d'une date d'événement : mêmes formats et même résultat que la fonction SQL
+ * `evenement_date_meta` (migration 045). Un format inconnu ou une date de calendrier inexistante
+ * (31 février, 25 h 99) donne null.
+ */
+export function dateEvenementStricteEnMs(valeur: unknown): number | null {
+  const texteDate = texte(valeur);
+  const sansFuseau = FORMAT_DATE_SANS_FUSEAU.test(texteDate);
+  if (!sansFuseau && !FORMAT_DATE_AVEC_FUSEAU.test(texteDate)) return null;
+  const [annee, mois, jour, heure, minute] = [
+    texteDate.slice(0, 4), texteDate.slice(5, 7), texteDate.slice(8, 10),
+    texteDate.slice(11, 13), texteDate.slice(14, 16)
+  ].map(Number);
+  const secondes = /^.{16}:(\d{2})/.exec(texteDate)?.[1];
+  const calendrier = new Date(Date.UTC(annee, mois - 1, jour, heure, minute));
+  const valide =
+    calendrier.getUTCFullYear() === annee && calendrier.getUTCMonth() === mois - 1 &&
+    calendrier.getUTCDate() === jour && heure <= 23 && minute <= 59 &&
+    (secondes === undefined || Number(secondes) <= 59);
+  return valide ? dateEvenementEnMs(texteDate) : null;
+}
+
 /** Fin par défaut d'un événement sans `date_fin` valide : début + 12 h (même règle que le scanner). */
 const DUREE_PAR_DEFAUT_EVENEMENT_MS = 12 * 60 * 60 * 1000;
 
@@ -315,8 +340,8 @@ export function isEvenementTermine(
 ): boolean {
   if (!isProduitEvenement(produit)) return false;
   const meta = ((produit?.variants || {}) as VariantsEvenement).meta || {};
-  const debut = dateEvenementEnMs(meta.date_debut);
-  const finSaisie = dateEvenementEnMs(meta.date_fin);
+  const debut = dateEvenementStricteEnMs(meta.date_debut);
+  const finSaisie = dateEvenementStricteEnMs(meta.date_fin);
   const finValide = finSaisie !== null && (debut === null || finSaisie > debut) ? finSaisie : null;
   const fin = finValide ?? (debut !== null ? debut + DUREE_PAR_DEFAUT_EVENEMENT_MS : null);
   return fin !== null && fin <= maintenantMs;
@@ -333,9 +358,19 @@ export function verifierDatesEvenement(
   { creation }: { creation: boolean }
 ): ErreurModificationEvenement[] {
   const meta = ((variants || {}) as VariantsEvenement).meta || {};
-  const debut = dateEvenementEnMs(meta.date_debut);
-  const fin = dateEvenementEnMs(meta.date_fin);
+  const debut = dateEvenementStricteEnMs(meta.date_debut);
+  const fin = dateEvenementStricteEnMs(meta.date_fin);
   const erreurs: ErreurModificationEvenement[] = [];
+
+  for (const cle of ['date_debut', 'date_fin'] as const) {
+    if (texte(meta[cle]) && dateEvenementStricteEnMs(meta[cle]) === null) {
+      erreurs.push({
+        field: `variants.meta.${cle}`,
+        code: 'DATE_INVALIDE',
+        message: cle === 'date_debut' ? 'La date de début est invalide' : 'La date de fin est invalide'
+      });
+    }
+  }
 
   if (creation && (debut === null || debut <= Date.now())) {
     erreurs.push({
