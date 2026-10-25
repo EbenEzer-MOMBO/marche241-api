@@ -18,6 +18,7 @@ import { expliquerRemboursement } from '../lib/boost/remboursement';
 import { ajouterLienBoutique, lienBoutiquePublic } from '../lib/boost/texte';
 import { dateIso } from '../lib/boost/planning';
 import { estConformiteComplete } from '../config/conformite-boost.config';
+import { isEvenementTermine } from '../utils/produit-evenement';
 import {
   activerPublication,
   changerStatutCampagne,
@@ -230,6 +231,7 @@ export class BoostService {
     if (produitId) {
       const produit = await ProduitModel.getProduitById(produitId);
       if (!produit || produit.boutique_id !== boutiqueId) throw new BoostErreur('Produit introuvable', 404, 'PRODUIT_INTROUVABLE');
+      if (isEvenementTermine(produit)) throw new BoostErreur('Cet événement est terminé : il ne peut plus être boosté', 400, 'EVENEMENT_TERMINE');
       const images = Array.isArray(produit.images) ? (produit.images as string[]) : [];
       return {
         type_cible: 'produit',

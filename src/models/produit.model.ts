@@ -122,6 +122,17 @@ const CONDITION_EVENEMENT = `(COALESCE(p.variants->>'type', '') = 'evenement'
   OR EXISTS (SELECT 1 FROM categories ce WHERE ce.id = p.categorie_id AND ce.slug = 'evenements'))`;
 
 /**
+ * Événement terminé : fin (`date_fin` postérieure au début, sinon début + 12 h) dépassée.
+ * `evenement_fin` (migration 045) renvoie NULL pour un non-événement ou une date invalide.
+ * Miroir SQL de `isEvenementTermine` (utils/produit-evenement.ts) ; à n'appliquer
+ * qu'aux requêtes publiques.
+ */
+const CONDITION_EVENEMENT_TERMINE = `(evenement_fin(p.variants) <= NOW())`;
+
+/** Filtre public : produit actif et, pour un événement, non terminé. */
+const CONDITION_PUBLIC = `p.statut = 'actif' AND NOT COALESCE(${CONDITION_EVENEMENT_TERMINE}, FALSE)`;
+
+/**
  * Échappe %, _ et \ pour une recherche ILIKE sûre.
  */
 function echapperIlike(terme: string): string {
@@ -144,7 +155,7 @@ function construireWhereListeProduits(
   }
 
   if (options.onlyActive)
-    conditions.push(`p.statut = 'actif'`);
+    conditions.push(CONDITION_PUBLIC);
 
   const motCle = filtres.q?.trim();
   if (motCle) {
@@ -713,7 +724,7 @@ export class ProduitModel {
     const { rows } = await query<Produit>(
       `SELECT p.*, ${JOINTURES}
        FROM produits p
-       WHERE p.categorie_id = $1 AND p.statut = 'actif'
+       WHERE p.categorie_id = $1 AND ${CONDITION_PUBLIC}
        ORDER BY p.note_moyenne DESC
        LIMIT $2`,
       [categorieId, limite]
@@ -733,7 +744,7 @@ export class ProduitModel {
     let categoriesAvecProduits: Set<number> | undefined;
     if (boutiqueId) {
       const { rows: produitsBoutique } = await query<{ categorie_id: number }>(
-        `SELECT DISTINCT categorie_id FROM produits WHERE boutique_id = $1 AND statut = 'actif'`,
+        `SELECT DISTINCT p.categorie_id FROM produits p WHERE p.boutique_id = $1 AND ${CONDITION_PUBLIC}`,
         [boutiqueId]
       );
 
@@ -770,7 +781,7 @@ export class ProduitModel {
                  SELECT c.id, c.nom, c.slug FROM categories c WHERE c.id = p.categorie_id
                ) c) AS categorie
        FROM produits p
-       WHERE p.categorie_id = ANY($1) AND p.statut = 'actif' ${filtreBoutique}
+       WHERE p.categorie_id = ANY($1) AND ${CONDITION_PUBLIC} ${filtreBoutique}
        ORDER BY
          CASE WHEN p.en_stock IS TRUE THEN 0 ELSE 1 END,
          p.note_moyenne DESC,
@@ -1063,7 +1074,7 @@ export class ProduitModel {
                  SELECT c.id, c.nom, c.slug FROM categories c WHERE c.id = p.categorie_id
                ) c) AS categorie
        FROM produits p
-       WHERE p.boutique_id = $1 AND p.statut = 'actif'
+       WHERE p.boutique_id = $1 AND ${CONDITION_PUBLIC}
        ORDER BY p.nombre_vues DESC
        LIMIT $2`,
       [boutiqueId, limite]

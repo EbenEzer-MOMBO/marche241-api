@@ -49,7 +49,7 @@ export class CategorieModel {
     const { rows } = await query<Categorie & { nombre_produits: string }>(
       `SELECT c.*, COUNT(p.id) AS nombre_produits
        FROM categories c
-       LEFT JOIN produits p ON p.categorie_id = c.id
+       LEFT JOIN produits p ON p.categorie_id = c.id AND NOT COALESCE(evenement_fin(p.variants) <= NOW(), FALSE)
        ${conditions}
        GROUP BY c.id
        ORDER BY c.ordre_affichage ASC`,

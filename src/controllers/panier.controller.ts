@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { PanierModel } from '../models/panier.model';
 import { Panier } from '../lib/database-types';
 import { logger } from '../utils/logger';
-import { isProduitEvenement, MESSAGE_MIX_PANIER } from '../utils/produit-evenement';
+import { isProduitEvenement, isEvenementTermine, MESSAGE_EVENEMENT_TERMINE, MESSAGE_MIX_PANIER } from '../utils/produit-evenement';
 
 export class PanierController {
   /**
@@ -231,6 +231,14 @@ export class PanierController {
         res.status(400).json({
           success: false,
           message: 'Ce produit n\'est plus disponible'
+        });
+        return;
+      }
+
+      if (isEvenementTermine(produit)) {
+        res.status(400).json({
+          success: false,
+          message: MESSAGE_EVENEMENT_TERMINE
         });
         return;
       }

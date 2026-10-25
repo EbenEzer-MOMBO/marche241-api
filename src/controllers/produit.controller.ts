@@ -11,6 +11,7 @@ import { EmailService } from '../services/email.service';
 import {
   ErreurModificationEvenement,
   isProduitEvenement,
+  isEvenementTermine,
   MESSAGE_PUBLICATION_RESERVEE_ADMIN,
   statutCreationEvenementVendeur,
   transitionStatutEvenementVendeurAutorisee,
@@ -184,7 +185,7 @@ export class ProduitController {
         produit = await ProduitModel.getProduitBySlug(idOrSlug);
       }
       
-      if (!produit || (produit.statut !== 'actif' && !estProprietaireDuProduit(req, produit))) {
+      if (!produit || ((produit.statut !== 'actif' || isEvenementTermine(produit)) && !estProprietaireDuProduit(req, produit))) {
         res.status(404).json({
           success: false,
           message: 'Produit non trouvé'
@@ -214,7 +215,7 @@ export class ProduitController {
       
       const produit = await ProduitModel.getProduitBySlug(slug);
 
-      if (!produit || (produit.statut !== 'actif' && !estProprietaireDuProduit(req, produit))) {
+      if (!produit || ((produit.statut !== 'actif' || isEvenementTermine(produit)) && !estProprietaireDuProduit(req, produit))) {
         res.status(404).json({
           success: false,
           message: 'Produit non trouvé'
