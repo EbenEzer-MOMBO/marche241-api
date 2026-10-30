@@ -215,7 +215,7 @@ describe('Boost Meta — intégration HTTP (Postgres local, dry-run)', { skip: i
     });
     const s = await appel('POST', `/boosts/${r.json.boost.id}/soumettre`, { jeton: jetonVendeur });
     assert.equal(s.status, 400);
-    assert.ok(s.json.errors.some((e: any) => e.field === 'duree_jours'));
+    assert.ok(s.json.errors.some((e: any) => e.field === 'total_fcfa'), "plancher Meta : c'est le montant à augmenter");
     assert.equal((await appel('DELETE', `/boosts/${r.json.boost.id}`, { jeton: jetonVendeur })).status, 200);
   });
 

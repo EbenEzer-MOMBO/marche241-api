@@ -149,7 +149,7 @@ export interface DonneesBrouillon {
 }
 
 /**
- * Message d'erreur si le budget média par jour est sous le plancher de l'objectif (null sinon).
+ * Message d'erreur si le budget média par jour est sous le plancher (null sinon).
  * Quand le plancher Meta dépasse le minimum général, indique le montant minimum pour la durée choisie
  * (et, pour WhatsApp, l'alternative « Visites »).
  */
@@ -453,8 +453,8 @@ export class BoostService {
     if (!erreurs.some((e) => e.field === 'total_fcfa' || e.field === 'duree_jours')) {
       try {
         const message = messageBudgetInsuffisant(boost.total_fcfa, boost.duree_jours, boost.objectif, parametres, fraisVideoPour(boost.media_type, parametres));
-        // Plancher WhatsApp : c'est le montant qu'il faut augmenter (la durée est souvent déjà au minimum)
-        if (message) erreurs.push({ field: boost.objectif === 'whatsapp' ? 'total_fcfa' : 'duree_jours', message });
+        // Plancher Meta : c'est le montant qu'il faut augmenter (la durée est souvent déjà au minimum)
+        if (message) erreurs.push({ field: budgetJourMinimum(parametres) > parametres.budget_jour_min_fcfa ? 'total_fcfa' : 'duree_jours', message });
       } catch (err: any) {
         erreurs.push({ field: 'total_fcfa', message: err.message });
       }
@@ -524,7 +524,7 @@ export class BoostService {
     if (boost.statut !== 'en_attente_paiement') {
       throw new BoostErreur("Ce boost n'est pas en attente de paiement", 409, 'BOOST_NON_PAYABLE');
     }
-    // Boost soumis avant l'introduction du plancher WhatsApp : on bloque le paiement plutôt que de
+    // Boost soumis avant l'introduction du plancher Meta : on bloque le paiement plutôt que de
     // laisser Meta refuser la publication après encaissement.
     let insuffisant: string | null;
     try {
@@ -635,12 +635,12 @@ export class BoostService {
       throw new BoostErreur("Ce boost n'est pas en attente de validation", 409, 'BOOST_NON_VALIDABLE');
     }
     // Le budget Meta vient du paiement du vendeur, marge déduite : on ne le complète jamais. Sous le
-    // plancher de l'objectif (WhatsApp), Meta refuserait la publication : on bloque avant tout appel.
+    // plancher Meta, Meta refuserait la publication : on bloque avant tout appel.
     const minimumJour = budgetJourMinimum(parametres);
     const parJour = budgetParJour(boost.budget_media_fcfa, boost.duree_jours);
     if (!boost.meta_campaign_id && parJour < minimumJour) {
       throw new BoostErreur(
-        `Budget Meta insuffisant pour cet objectif : ${formaterFcfa(parJour)} par jour, minimum ${formaterFcfa(minimumJour)}. Refusez le boost pour rembourser le vendeur, qui pourra en créer un avec un montant suffisant ou l'objectif « Visites »`,
+        `Budget Meta insuffisant pour cet objectif : ${formaterFcfa(parJour)} par jour, minimum ${formaterFcfa(minimumJour)}. Refusez le boost pour rembourser le vendeur, qui pourra en créer un avec un montant suffisant`,
         409,
         'BOOST_BUDGET_INSUFFISANT'
       );

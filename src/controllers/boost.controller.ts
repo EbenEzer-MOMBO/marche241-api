@@ -73,6 +73,7 @@ export class BoostController {
   static async getParametres(_req: Request, res: Response): Promise<void> {
     try {
       const parametres = await BoostParametresModel.lire();
+      const plancherMeta = budgetJourMinimum(parametres);
       // Carte « Mise en avant sur Marché 241 » : ouverte depuis le back-office (paramètres des bannières)
       const pub = await PubliciteParametresModel.lire();
       res.json({
@@ -90,8 +91,8 @@ export class BoostController {
           budget_jour_min_fcfa: parametres.budget_jour_min_fcfa,
           // Plancher Meta converti en FCFA au taux courant (le front n'a pas besoin du taux).
           // `budget_jour_min_whatsapp_fcfa` : ancien nom, conservé pour les fronts non redéployés.
-          budget_jour_min_meta_fcfa: budgetJourMinimum(parametres),
-          budget_jour_min_whatsapp_fcfa: budgetJourMinimum(parametres),
+          budget_jour_min_meta_fcfa: plancherMeta,
+          budget_jour_min_whatsapp_fcfa: plancherMeta,
           packs: parametres.packs,
           kill_switch: parametres.kill_switch,
           types: { plateforme: pub.plateforme_active && !pub.kill_switch, meta: true },
@@ -125,7 +126,7 @@ export class BoostController {
 
   static async getDevis(req: Request, res: Response): Promise<void> {
     try {
-      const { total_fcfa, duree_jours, objectif, media_type } = corps(req);
+      const { total_fcfa, duree_jours, media_type } = corps(req);
       const p = await BoostParametresModel.lire();
       if (!estTotalDansBornes(total_fcfa, p.total_min_fcfa, p.total_max_fcfa)) {
         const message = `Le montant doit être compris entre ${formaterFcfa(p.total_min_fcfa)} et ${formaterFcfa(p.total_max_fcfa)}`;
