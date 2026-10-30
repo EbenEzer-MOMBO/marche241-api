@@ -835,7 +835,7 @@ export interface BoostParametres {
   cpm_min_fcfa: number;
   cpm_max_fcfa: number;
   budget_jour_min_fcfa: number;
-  budget_jour_min_whatsapp_usd: number; // plancher Meta de l'objectif WhatsApp, en $US par jour (Meta exige > 2 $US)
+  budget_jour_min_whatsapp_usd: number; // plancher Meta tous objectifs (clé historique), en $US par jour (Meta exige > 2 $US)
   kill_switch: boolean;
   relance_active: boolean;
   relance_whatsapp_active: boolean;

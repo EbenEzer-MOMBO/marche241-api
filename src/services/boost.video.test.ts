@@ -149,16 +149,26 @@ test('fraisVideoPour : seulement pour une créa vidéo', () => {
 });
 
 test('messageBudgetInsuffisant : le frais vidéo réduit le média et le signale', () => {
-  // 3 000 FCFA sur 3 jours : suffisant en image (2 000 de média = 666/jour), pas en vidéo (1 000 = 333/jour)
-  const p = { ...parametres, budget_jour_min_fcfa: 600, frais_video_fcfa: 1000 } as BoostParametres;
+  // Plancher Meta neutralisé (0 $US) pour isoler le frais vidéo. 3 000 FCFA sur 3 jours : suffisant en image (2 000 de média = 666/jour), pas en vidéo (1 000 = 333/jour)
+  const p = { ...parametres, budget_jour_min_fcfa: 600, budget_jour_min_whatsapp_usd: 0, frais_video_fcfa: 1000 } as BoostParametres;
   assert.equal(messageBudgetInsuffisant(3000, 3, 'trafic', p, 0), null);
   const message = messageBudgetInsuffisant(3000, 3, 'trafic', p, 1000);
   assert.match(message ?? '', /dont 1 000 FCFA de frais vidéo/);
   assert.equal(messageBudgetInsuffisant(7500, 3, 'trafic', p, 1000), null);
 });
 
+test('messageBudgetInsuffisant : plancher Meta + frais vidéo, le total minimum inclut les frais vidéo', () => {
+  const p = { ...parametres, budget_jour_min_fcfa: 600, budget_jour_min_whatsapp_usd: 2.2, fx_xaf_par_usd: 600, frais_video_fcfa: 1000 } as BoostParametres;
+  const image = messageBudgetInsuffisant(5200, 3, 'trafic', p, 0);
+  assert.equal(image, null);
+  const video = messageBudgetInsuffisant(5200, 3, 'trafic', p, 1000);
+  assert.match(video ?? '', /^Meta demande au moins 1\s?320\s?FCFA/);
+  assert.match(video ?? '', /6\s?000\s?FCFA pour 3 jours/);
+  assert.equal(messageBudgetInsuffisant(6000, 3, 'trafic', p, 1000), null);
+});
+
 test('soumission vidéo : le devis figé contient le frais vidéo, jamais pour une image', () => {
-  const p = { ...parametres, budget_jour_min_fcfa: 600, frais_video_fcfa: 1000 } as BoostParametres;
+  const p = { ...parametres, budget_jour_min_fcfa: 600, budget_jour_min_whatsapp_usd: 0, frais_video_fcfa: 1000 } as BoostParametres;
   const erreurs = BoostService.validerPourSoumission(
     boost({ media_type: 'video', video_url: 'https://cdn.test/boosts/b/v.mp4', image_url: 'https://cdn.test/m.jpg', total_fcfa: 3000, duree_jours: 3 }),
     p

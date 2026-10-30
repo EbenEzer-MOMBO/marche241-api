@@ -13,9 +13,19 @@ test('budget WhatsApp : le pack Découverte (3 000 FCFA, 3 jours) est refusé av
   assert.match(message!, /« Visites »/);
 });
 
-test('budget : le même pack reste valable pour les objectifs Visites et Notoriété', () => {
-  assert.equal(messageBudgetInsuffisant(3000, 3, 'trafic', p), null);
-  assert.equal(messageBudgetInsuffisant(3000, 3, 'notoriete', p), null);
+test('budget : le même pack est aussi refusé pour Visites et Notoriété (boost 41), sans l\'alternative « Visites »', () => {
+  for (const objectif of ['trafic', 'notoriete'] as const) {
+    const message = messageBudgetInsuffisant(3000, 3, objectif, p);
+    assert.ok(message);
+    assert.match(message!, /^Meta demande au moins 1\s?320\s?FCFA de publicité par jour/);
+    assert.match(message!, /5\s?200\s?FCFA pour 3 jours/);
+    assert.doesNotMatch(message!, /« Visites »/);
+  }
+});
+
+test('budget : Visites et Notoriété passent avec un montant suffisant', () => {
+  assert.equal(messageBudgetInsuffisant(5200, 3, 'trafic', p), null);
+  assert.equal(messageBudgetInsuffisant(5200, 3, 'notoriete', p), null);
 });
 
 test('budget WhatsApp : un montant suffisant passe', () => {

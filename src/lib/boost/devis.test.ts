@@ -55,14 +55,12 @@ test('bornes et budget par jour', () => {
   assert.equal(budgetParJour(2000, 3), 666);
 });
 
-test('budgetJourMinimum : plancher WhatsApp en $US converti au taux, jamais sous le minimum général', () => {
+test('budgetJourMinimum : plancher Meta en $US converti au taux, jamais sous le minimum général', () => {
   const p = { budget_jour_min_fcfa: 600, budget_jour_min_whatsapp_usd: 2.2, fx_xaf_par_usd: 600 };
-  assert.equal(budgetJourMinimum('trafic', p), 600);
-  assert.equal(budgetJourMinimum('notoriete', p), 600);
-  assert.equal(budgetJourMinimum('whatsapp', p), 1320);
+  assert.equal(budgetJourMinimum(p), 1320);
   // le plancher suit le taux : à 650 FCFA / $US, 2,2 $US = 1 430 FCFA
-  assert.equal(budgetJourMinimum('whatsapp', { ...p, fx_xaf_par_usd: 650 }), 1430);
-  assert.equal(budgetJourMinimum('whatsapp', { ...p, budget_jour_min_whatsapp_usd: 0 }), 600);
+  assert.equal(budgetJourMinimum({ ...p, fx_xaf_par_usd: 650 }), 1430);
+  assert.equal(budgetJourMinimum({ ...p, budget_jour_min_whatsapp_usd: 0 }), 600);
 });
 
 test('totalMinimumPourMedia : plus petit total à la centaine couvrant le budget média', () => {
