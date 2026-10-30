@@ -88,8 +88,10 @@ export class BoostController {
           frais_encaissement_bps: parametres.frais_encaissement_bps,
           frais_video_fcfa: parametres.frais_video_fcfa,
           budget_jour_min_fcfa: parametres.budget_jour_min_fcfa,
-          // Plancher WhatsApp converti en FCFA au taux courant (le front n'a pas besoin du taux)
-          budget_jour_min_whatsapp_fcfa: budgetJourMinimum('whatsapp', parametres),
+          // Plancher Meta converti en FCFA au taux courant (le front n'a pas besoin du taux).
+          // `budget_jour_min_whatsapp_fcfa` : ancien nom, conservé pour les fronts non redéployés.
+          budget_jour_min_meta_fcfa: budgetJourMinimum(parametres),
+          budget_jour_min_whatsapp_fcfa: budgetJourMinimum(parametres),
           packs: parametres.packs,
           kill_switch: parametres.kill_switch,
           types: { plateforme: pub.plateforme_active && !pub.kill_switch, meta: true },
@@ -137,7 +139,7 @@ export class BoostController {
       }
       const fraisVideo = fraisVideoPour(media_type, p);
       const devis = devisDepuisTotal(total_fcfa, p.commission_bps, p.commission_min_fcfa, p.tva_bps, fraisVideo);
-      const minimumJour = budgetJourMinimum(objectif, p);
+      const minimumJour = budgetJourMinimum(p);
       res.json({
         success: true,
         devis: {
@@ -145,7 +147,7 @@ export class BoostController {
           duree_jours,
           budget_jour_fcfa: budgetParJour(devis.budget_media_fcfa, duree_jours),
           frais_encaissement_fcfa: fraisEncaissement(devis.total_fcfa, p.frais_encaissement_bps),
-          // Plancher de l'objectif (WhatsApp plus élevé) et total minimum correspondant pour la durée
+          // Plancher Meta par jour et total minimum correspondant pour la durée
           budget_jour_min_fcfa: minimumJour,
           total_minimum_fcfa: Math.max(p.total_min_fcfa, totalMinimumPourMedia(minimumJour * duree_jours, p.commission_bps, p.commission_min_fcfa, p.tva_bps, fraisVideo))
         }

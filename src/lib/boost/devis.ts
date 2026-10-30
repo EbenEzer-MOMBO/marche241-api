@@ -86,16 +86,14 @@ export function budgetParJour(mediaFcfa: number, dureeJours: number): number {
 }
 
 /**
- * Budget média minimum par jour (FCFA) selon l'objectif. Meta refuse un ensemble de publicités optimisé
- * pour les conversations WhatsApp sous 2 $US par jour (« doit être supérieur à 6,00 $US » sur 3 jours) :
- * ce plancher est exprimé en $US et converti avec le taux du back-office, pour suivre ses changements.
- * Jamais inférieur au minimum général.
+ * Budget média minimum par jour (FCFA), identique pour tous les objectifs. Meta refuse un ensemble de
+ * publicités sous 2 $US par jour (« doit être supérieur à 6,00 $US » sur 3 jours, constaté en Visites
+ * comme en WhatsApp) : ce plancher est exprimé en $US et converti avec le taux du back-office, pour
+ * suivre ses changements. Jamais inférieur au minimum général.
  */
 export function budgetJourMinimum(
-  objectif: string | null | undefined,
   parametres: { budget_jour_min_fcfa: number; budget_jour_min_whatsapp_usd: number; fx_xaf_par_usd: number }
 ): number {
-  if (objectif !== 'whatsapp') return parametres.budget_jour_min_fcfa;
   const fx = parametres.fx_xaf_par_usd > 0 ? parametres.fx_xaf_par_usd : 600;
   return Math.max(parametres.budget_jour_min_fcfa, Math.ceil(Number((parametres.budget_jour_min_whatsapp_usd * fx).toFixed(6))));
 }

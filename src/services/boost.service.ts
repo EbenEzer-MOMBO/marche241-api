@@ -150,7 +150,8 @@ export interface DonneesBrouillon {
 
 /**
  * Message d'erreur si le budget média par jour est sous le plancher de l'objectif (null sinon).
- * Pour WhatsApp, indique le montant minimum pour la durée choisie ou l'alternative « Visites ».
+ * Quand le plancher Meta dépasse le minimum général, indique le montant minimum pour la durée choisie
+ * (et, pour WhatsApp, l'alternative « Visites »).
  */
 export function messageBudgetInsuffisant(
   totalFcfa: number,
@@ -161,11 +162,13 @@ export function messageBudgetInsuffisant(
 ): string | null {
   const devis = devisDepuisTotal(totalFcfa, parametres.commission_bps, parametres.commission_min_fcfa, parametres.tva_bps, fraisVideoFcfa);
   const parJour = budgetParJour(devis.budget_media_fcfa, dureeJours);
-  const minimum = budgetJourMinimum(objectif, parametres);
+  const minimum = budgetJourMinimum(parametres);
   if (parJour >= minimum) return null;
-  if (objectif === 'whatsapp' && minimum > parametres.budget_jour_min_fcfa) {
+  if (minimum > parametres.budget_jour_min_fcfa) {
     const totalMin = totalMinimumPourMedia(minimum * dureeJours, parametres.commission_bps, parametres.commission_min_fcfa, parametres.tva_bps, fraisVideoFcfa);
-    return `Pour recevoir des messages WhatsApp, Meta demande au moins ${formaterFcfa(minimum)} de publicité par jour : il faut au moins ${formaterFcfa(totalMin)} pour ${dureeJours} jours. Augmentez le montant, réduisez la durée ou choisissez l'objectif « Visites »`;
+    const debut = objectif === 'whatsapp' ? 'Pour recevoir des messages WhatsApp, Meta demande' : 'Meta demande';
+    const alternative = objectif === 'whatsapp' ? " ou choisissez l'objectif « Visites »" : '';
+    return `${debut} au moins ${formaterFcfa(minimum)} de publicité par jour : il faut au moins ${formaterFcfa(totalMin)} pour ${dureeJours} jours. Augmentez le montant, réduisez la durée${alternative}`;
   }
   const avecVideo = fraisVideoFcfa > 0 ? ` (dont ${formaterFcfa(fraisVideoFcfa)} de frais vidéo)` : '';
   return `Budget publicitaire trop faible pour ${dureeJours} jours (${formaterFcfa(parJour)} par jour, minimum ${formaterFcfa(minimum)})${avecVideo} : augmentez le montant ou réduisez la durée`;
@@ -633,7 +636,7 @@ export class BoostService {
     }
     // Le budget Meta vient du paiement du vendeur, marge déduite : on ne le complète jamais. Sous le
     // plancher de l'objectif (WhatsApp), Meta refuserait la publication : on bloque avant tout appel.
-    const minimumJour = budgetJourMinimum(boost.objectif, parametres);
+    const minimumJour = budgetJourMinimum(parametres);
     const parJour = budgetParJour(boost.budget_media_fcfa, boost.duree_jours);
     if (!boost.meta_campaign_id && parJour < minimumJour) {
       throw new BoostErreur(

@@ -146,6 +146,7 @@ describe('Boost Meta — intégration HTTP (Postgres local, dry-run)', { skip: i
     assert.equal(r.json.devis.budget_media_fcfa, 2000);
     assert.equal(r.json.devis.commission_fcfa, 1000);
     assert.equal(r.json.devis.budget_jour_fcfa, 666);
+    assert.equal(r.json.devis.budget_jour_min_fcfa, 1320);
     const trop = await appel('POST', '/boosts/devis', { jeton: jetonVendeur, corps: { total_fcfa: 900 } });
     assert.equal(trop.status, 400);
     assert.equal(trop.json.code, 'VALIDATION_ERROR');
@@ -173,7 +174,7 @@ describe('Boost Meta — intégration HTTP (Postgres local, dry-run)', { skip: i
 
     const maj = await appel('PUT', `/boosts/${boostId}`, {
       jeton: jetonVendeur,
-      corps: { total_fcfa: 7500, duree_jours: 5, ciblage: { villes: ['2420605'], interets: ['mode'], sexes: ['femme'], etape_wizard: 2 } }
+      corps: { total_fcfa: 7500, duree_jours: 3, ciblage: { villes: ['2420605'], interets: ['mode'], sexes: ['femme'], etape_wizard: 2 } }
     });
     assert.equal(maj.status, 200);
     assert.deepEqual(maj.json.boost.ciblage.villes, ['2420605']);
@@ -381,7 +382,7 @@ describe('Boost Meta — intégration HTTP (Postgres local, dry-run)', { skip: i
   test('retour en brouillon possible tant que rien n’est payé', async () => {
     const b = await appel('POST', '/boosts', {
       jeton: jetonVendeur,
-      corps: { boutique_id: ids.boutique, total_fcfa: 7500, duree_jours: 5, titre: 'Test', texte_principal: 'Texte test', image_url: 'https://cdn.test/a.jpg', url_destination: 'https://exemple.com/page' }
+      corps: { boutique_id: ids.boutique, total_fcfa: 7500, duree_jours: 3, titre: 'Test', texte_principal: 'Texte test', image_url: 'https://cdn.test/a.jpg', url_destination: 'https://exemple.com/page' }
     });
     const id = b.json.boost.id;
     const s = await appel('POST', `/boosts/${id}/soumettre`, { jeton: jetonVendeur });
