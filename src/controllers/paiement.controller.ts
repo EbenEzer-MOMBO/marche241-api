@@ -20,6 +20,7 @@ import { formaterFcfa } from '../lib/boost/devis';
 import { normaliserTauxMarge } from '../lib/marge/marge';
 import { montantAttenduPourPaiement } from '../lib/marge/montant-attendu';
 import { BoutiqueModel } from '../models/boutique.model';
+import { viaRelaisEbilling } from '../lib/ebilling-relais';
 
 /** Notification Telegram de l'équipe pour une commande payée (sans attente : n'interrompt jamais le flux). */
 function notifierEquipeCommande(commande: Commande, montantPaye: number, systeme: string | null | undefined): void {
@@ -362,6 +363,11 @@ export class PaiementController {
         });
       }
     } catch (error: any) {
+      // Ne pas logger l'objet AxiosError entier : config.headers contient jetons et clé du relais
+      logger.error(
+        `[PaiementController] Exception dans initierPaiementVisa: ${error.message}`,
+        { statut: error.response?.status, detail: error.response?.data }
+      );
       res.status(500).json({
         success: false,
         message: 'Erreur lors de l\'initialisation du paiement Visa',
@@ -479,11 +485,11 @@ export class PaiementController {
       authData.append('api_id', apiId);
       authData.append('api_secret', apiSecret);
 
-      const response = await axios.post(authUrl, authData, {
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded'
-        }
+      const req = viaRelaisEbilling({
+        url: authUrl,
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
       });
+      const response = await axios.post(req.url, authData, { headers: req.headers });
 
       if (response.data && response.data.access_token) {
         const expiresInSec = Number(response.data.expires_in) || 3600;
@@ -523,12 +529,14 @@ export class PaiementController {
         payer_first_name: paymentData.firstname || ''
       };
 
-      const response = await axios.post(paymentUrl, globalArray, {
+      const req = viaRelaisEbilling({
+        url: paymentUrl,
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${accessToken}`
         }
       });
+      const response = await axios.post(req.url, globalArray, { headers: req.headers });
 
       return response.data;
     } catch (error: any) {
@@ -549,12 +557,14 @@ export class PaiementController {
     try {
       const ussdPushUrl = process.env.EBILLING_SEND_USSD_PUSH_URL || "https://staging.billing-easy.net/shap/api/v1/merchant/send-ussd-push";
 
-      const response = await axios.post(ussdPushUrl, ussdData, {
+      const req = viaRelaisEbilling({
+        url: ussdPushUrl,
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${accessToken}`
         }
       });
+      const response = await axios.post(req.url, ussdData, { headers: req.headers });
 
       return response.data;
     } catch (error: any) {
@@ -591,16 +601,13 @@ export class PaiementController {
       let paymentSystemName: string | null = null;
 
       try {
-        const response = await axios.get(checkBillUrl, {
-          auth: {
-            username: USER_NAME,
-            password: SHARED_KEY
-          },
-          headers: {
-            // Accepter tous les types de contenu, comme dans l'implémentation PHP
-            'Accept': '*/*'
-          }
+        // Accepter tous les types de contenu, comme dans l'implémentation PHP
+        const req = viaRelaisEbilling({
+          url: checkBillUrl,
+          headers: { 'Accept': '*/*' },
+          auth: { username: USER_NAME, password: SHARED_KEY }
         });
+        const response = await axios.get(req.url, { auth: req.auth, headers: req.headers });
 
 
         if (response.status !== 200) {
@@ -843,10 +850,12 @@ export class PaiementController {
       }
 
       try {
-        const response = await axios.get(`${SERVER_URL}/${billId}`, {
-          auth: { username: USER_NAME, password: SHARED_KEY },
+        const req = viaRelaisEbilling({
+          url: `${SERVER_URL}/${billId}`,
           headers: { Accept: '*/*' },
+          auth: { username: USER_NAME, password: SHARED_KEY },
         });
+        const response = await axios.get(req.url, { auth: req.auth, headers: req.headers });
 
         const billState = String(response.data?.state || '').toLowerCase();
 
