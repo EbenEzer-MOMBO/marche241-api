@@ -49,6 +49,26 @@ export function livraisonAutoActive(env: NodeJS.ProcessEnv = process.env): boole
 }
 
 /**
+ * Date et délai annoncés au vendeur dans un rappel, d'après le calendrier réellement possible :
+ * jamais avant J+`joursLivraison`, et jamais avant 1 étape de `delaiMinApresRappelHeures` par étape
+ * restante (le rappel 2 puis la livraison pour le rappel 1 ; la livraison seule pour le rappel 2).
+ * Une commande déjà ancienne ne reçoit donc pas une date passée.
+ */
+export function calendrierRappel(
+  rappel: 1 | 2,
+  dateConfirmation: Date,
+  maintenant: Date,
+  parametres: ParametresLivraisonAuto = lireParametresLivraisonAuto()
+): { dateLivraison: Date; joursRestants: number } {
+  const etapesRestantes = rappel === 1 ? 2 : 1;
+  const theorique = dateConfirmation.getTime() + parametres.joursLivraison * MS_PAR_JOUR;
+  const auPlusTot = maintenant.getTime() + etapesRestantes * parametres.delaiMinApresRappelHeures * MS_PAR_HEURE;
+  const dateLivraison = new Date(Math.max(theorique, auPlusTot));
+  const joursRestants = Math.max(1, Math.ceil((dateLivraison.getTime() - maintenant.getTime()) / MS_PAR_JOUR));
+  return { dateLivraison, joursRestants };
+}
+
+/**
  * Prochaine action pour une commande confirmée.
  * - rappel_1 : aucun rappel envoyé et âge >= joursRappel1
  * - rappel_2 : un rappel envoyé et âge >= joursRappel2

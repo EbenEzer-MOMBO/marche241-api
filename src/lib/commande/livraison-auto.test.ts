@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  calendrierRappel,
   decisionLivraisonAuto,
   lireParametresLivraisonAuto,
   livraisonAutoActive,
@@ -84,6 +85,26 @@ test('sans date de confirmation : rien', () => {
 test('2 rappels mais date du dernier rappel inconnue : rien (on ne livre pas sans preuve du préavis)', () => {
   const e = entree({ rappelsEnvoyes: 2, dateDernierRappel: null, maintenant: apres(12) });
   assert.equal(decisionLivraisonAuto(e, params), 'rien');
+});
+
+test('calendrier annoncé : rappels à J+7 et J+9 → J+10, dans 3 jours puis demain', () => {
+  const c1 = calendrierRappel(1, confirmation, apres(7), params);
+  assert.equal(c1.dateLivraison.getTime(), apres(10).getTime());
+  assert.equal(c1.joursRestants, 3);
+  const c2 = calendrierRappel(2, confirmation, apres(9), params);
+  assert.equal(c2.dateLivraison.getTime(), apres(10).getTime());
+  assert.equal(c2.joursRestants, 1);
+});
+
+test('calendrier annoncé : commande ancienne, jamais une date passée', () => {
+  const maintenant = apres(20);
+  const c1 = calendrierRappel(1, confirmation, maintenant, params);
+  assert.ok(c1.dateLivraison.getTime() > maintenant.getTime());
+  assert.equal(c1.dateLivraison.getTime(), maintenant.getTime() + 40 * 3600 * 1000);
+  assert.equal(c1.joursRestants, 2);
+  const c2 = calendrierRappel(2, confirmation, apres(21), params);
+  assert.equal(c2.dateLivraison.getTime(), apres(21, 20).getTime());
+  assert.equal(c2.joursRestants, 1);
 });
 
 test('interrupteur LIVRAISON_AUTO_ACTIVE', () => {
