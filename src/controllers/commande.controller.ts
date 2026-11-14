@@ -477,7 +477,7 @@ export class CommandeController {
           await PushService.sendToVendeur(vendeurId, {
             title: `Commande #${updatedCommande.numero_commande}`,
             body: `Statut mis à jour : ${statutLabel}`,
-            url: `/admin/${(updatedCommande.boutique as any)?.slug || ''}/commandes`
+            url: `/admin/${(updatedCommande.boutique as any)?.slug || ''}/orders`
           });
         } catch (pushError: any) {
           logger.error('[CommandeController] Erreur envoi push vendeur:', pushError.message);
