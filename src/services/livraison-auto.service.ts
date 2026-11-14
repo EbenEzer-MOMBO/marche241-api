@@ -35,7 +35,7 @@ export interface BilanLivraisonAuto {
 
 const frontend = (): string => (process.env.FRONTEND_URL || 'https://marche241.ga').replace(/\/$/, '');
 
-const lienCommandes = (slug: string): string => `${frontend()}/admin/${slug}/commandes`;
+const lienCommandes = (slug: string): string => `${frontend()}/admin/${slug}/orders`;
 
 const formaterDate = (date: Date): string =>
   new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Libreville' }).format(date);
@@ -82,7 +82,7 @@ async function prevenirVendeur(
     const envoyes = await PushService.sendToVendeur(commande.vendeur_id, {
       title: `Commande #${commande.numero_commande}`,
       body: `Sans action de votre part, elle sera marquée livrée ${joursRestants <= 1 ? 'demain' : `dans ${joursRestants} jours`}.`,
-      url: `/admin/${commande.boutique_slug}/commandes`
+      url: `/admin/${commande.boutique_slug}/orders`
     });
     pushEnvoye = envoyes > 0;
   } catch (erreur: any) {
@@ -126,7 +126,7 @@ async function notifierLivraison(commandeId: number): Promise<void> {
       await PushService.sendToVendeur(vendeurId, {
         title: `Commande #${commande.numero_commande}`,
         body: 'Statut mis à jour : livrée (automatiquement)',
-        url: `/admin/${(commande.boutique as any)?.slug || ''}/commandes`
+        url: `/admin/${(commande.boutique as any)?.slug || ''}/orders`
       });
     } catch (erreur: any) {
       logger.error(`[LivraisonAuto] Push livraison commande ${commande.numero_commande} impossible:`, erreur.message);
