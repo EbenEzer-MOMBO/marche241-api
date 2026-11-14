@@ -324,6 +324,8 @@ export class CommandeModel {
 
       if (statut === 'confirmee') {
         affectations.push('date_confirmation = NOW()');
+        // Nouvelle confirmation = nouveau départ du préavis de livraison automatique
+        affectations.push('rappels_livraison_auto = 0', 'date_dernier_rappel_livraison_auto = NULL');
       } else if (statut === 'expedie') {
         affectations.push('date_expedition = NOW()');
       } else if (statut === 'livree') {
@@ -773,4 +775,111 @@ export class CommandeModel {
       throw error;
     }
   }
+
+  /**
+   * Commandes « confirmées » à examiner pour la livraison automatique : confirmées depuis au moins
+   * `ageMinJours` jours (la règle fine est dans lib/commande/livraison-auto.ts), non archivées,
+   * les plus anciennes d'abord.
+   * @param ageMinJours Âge minimal depuis la confirmation (jours)
+   * @param limite Taille du lot
+   */
+  static async getCommandesPourLivraisonAuto(
+    ageMinJours: number,
+    delaiEtapeHeures: number,
+    limite: number
+  ): Promise<CommandeLivraisonAuto[]> {
+    const { rows } = await query<CommandeLivraisonAuto>(
+      `SELECT c.id, c.numero_commande, c.client_nom, c.total, c.date_confirmation,
+              c.rappels_livraison_auto, c.date_dernier_rappel_livraison_auto,
+              b.nom AS boutique_nom, b.slug AS boutique_slug, b.vendeur_id,
+              v.nom AS vendeur_nom, v.email AS vendeur_email
+         FROM commandes c
+         JOIN boutiques b ON b.id = c.boutique_id
+         LEFT JOIN vendeurs v ON v.id = b.vendeur_id
+        WHERE c.statut = 'confirmee'
+          AND c.archivee = false
+          AND c.date_confirmation IS NOT NULL
+          AND c.date_confirmation <= NOW() - ($1 || ' days')::interval
+          AND (
+            c.date_dernier_rappel_livraison_auto IS NULL
+            OR c.date_dernier_rappel_livraison_auto <= NOW() - ($2 || ' hours')::interval
+          )
+        ORDER BY c.date_confirmation ASC
+        LIMIT $3`,
+      [String(ageMinJours), String(delaiEtapeHeures), limite]
+    );
+    return rows;
+  }
+
+  /**
+   * Réserve l'envoi d'un rappel de livraison automatique : incrémente le compteur seulement si
+   * personne d'autre ne l'a fait entre-temps. Renvoie false si la réservation est perdue (appel
+   * simultané du cron) : l'appelant n'envoie alors rien.
+   * @param id ID de la commande
+   * @param rappelsAttendus Valeur du compteur lue avant l'envoi
+   */
+  static async reserverRappelLivraisonAuto(id: number, rappelsAttendus: number): Promise<boolean> {
+    const { rows } = await query<{ id: number }>(
+      `UPDATE commandes
+          SET rappels_livraison_auto = rappels_livraison_auto + 1,
+              date_dernier_rappel_livraison_auto = NOW()
+        WHERE id = $1 AND rappels_livraison_auto = $2 AND statut = 'confirmee'
+        RETURNING id`,
+      [id, rappelsAttendus]
+    );
+    return rows.length > 0;
+  }
+
+  /**
+   * Annule la réservation d'un rappel resté sans destinataire (ni e-mail ni push n'a abouti) pour
+   * qu'il soit retenté au prochain appel. Sans effet si le compteur a changé entre-temps.
+   * @param id ID de la commande
+   * @param rappelsApres Valeur du compteur après la réservation
+   * @param ancienneDate Date du dernier rappel avant la réservation (null si aucun)
+   */
+  static async libererRappelLivraisonAuto(id: number, rappelsApres: number, ancienneDate: Date | null): Promise<void> {
+    await query(
+      `UPDATE commandes
+          SET rappels_livraison_auto = rappels_livraison_auto - 1,
+              date_dernier_rappel_livraison_auto = $3
+        WHERE id = $1 AND rappels_livraison_auto = $2 AND rappels_livraison_auto > 0`,
+      [id, rappelsApres, ancienneDate]
+    );
+  }
+
+  /**
+   * Passe une commande « confirmée » en « livrée » (livraison automatique). La mise à jour est
+   * conditionnelle au statut : renvoie false si la commande a changé entre-temps (le vendeur l'a
+   * marquée lui-même, annulée, ou un autre appel du cron l'a déjà fait) et rien n'est alors notifié.
+   * Pas d'ajustement de stock : confirmée → livrée n'en provoque pas (cf. updateCommandeStatus).
+   * @param id ID de la commande
+   */
+  static async marquerLivreeAuto(id: number): Promise<boolean> {
+    const { rows } = await query<{ id: number }>(
+      `UPDATE commandes
+          SET statut = 'livree'::statut_commande,
+              date_livraison = NOW(),
+              date_modification = NOW()
+        WHERE id = $1 AND statut = 'confirmee'
+        RETURNING id`,
+      [id]
+    );
+    return rows.length > 0;
+  }
+}
+
+/** Commande confirmée examinée par le cron de livraison automatique (avec le contact du vendeur). */
+export interface CommandeLivraisonAuto {
+  id: number;
+  numero_commande: string;
+  client_nom: string;
+  total: number;
+  date_confirmation: Date;
+  rappels_livraison_auto: number;
+  date_dernier_rappel_livraison_auto: Date | null;
+  boutique_nom: string;
+  boutique_slug: string;
+  vendeur_id: number;
+  vendeur_nom: string | null;
+  vendeur_email: string | null;
 }

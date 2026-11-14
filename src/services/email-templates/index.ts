@@ -33,4 +33,6 @@ export { vendeurBoostEnLigneTemplate } from './vendeurBoostEnLigne';
 export type { VendeurBoostEnLigneData } from './vendeurBoostEnLigne';
 export { vendeurBoostRembourseTemplate } from './vendeurBoostRembourse';
 export type { VendeurBoostRembourseData } from './vendeurBoostRembourse';
+export { vendeurLivraisonAutoTemplate } from './vendeurLivraisonAuto';
+export type { VendeurLivraisonAutoData } from './vendeurLivraisonAuto';
 export type { VendeurRelanceBoostsData } from './vendeurRelanceBoosts';
