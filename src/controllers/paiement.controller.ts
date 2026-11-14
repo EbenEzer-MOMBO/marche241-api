@@ -1001,7 +1001,7 @@ export class PaiementController {
           await PushService.sendToVendeur(commande.boutique.vendeur_id, {
             title: 'Nouvelle commande !',
             body: `${commande.client_nom || 'Un client'} vient de commander pour ${commande.total} FCFA`,
-            url: `/admin/${(commande.boutique as any)?.slug || ''}/commandes`
+            url: `/admin/${(commande.boutique as any)?.slug || ''}/orders`
           });
         } catch (pushError: any) {
           logger.error('[PaiementController] Erreur envoi push vendeur:', pushError.message);
