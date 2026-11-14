@@ -12,7 +12,8 @@ import {
   vendeurEvenementRefuseTemplate,
   vendeurAvisVersementTemplate,
   vendeurBoostEnLigneTemplate,
-  vendeurBoostRembourseTemplate
+  vendeurBoostRembourseTemplate,
+  vendeurLivraisonAutoTemplate
 } from './email-templates';
 
 const RESEND_API_URL = 'https://api.resend.com/emails';
@@ -238,6 +239,12 @@ export class EmailService {
 
   static async envoyerBoostRembourse(email: string, data: Parameters<typeof vendeurBoostRembourseTemplate>[0]): Promise<void> {
     const { subject, html, text } = vendeurBoostRembourseTemplate(data);
+    await this.send(email, subject, html, text);
+  }
+
+  /** Rappel au vendeur : une commande confirmée va passer automatiquement en livrée. */
+  static async envoyerRappelLivraisonAuto(email: string, data: Parameters<typeof vendeurLivraisonAutoTemplate>[0]): Promise<void> {
+    const { subject, html, text } = vendeurLivraisonAutoTemplate(data);
     await this.send(email, subject, html, text);
   }
 

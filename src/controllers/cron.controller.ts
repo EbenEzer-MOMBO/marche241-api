@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { CronService } from '../services/cron.service';
 import { VueModel } from '../models/vue.model';
 import { AvisService } from '../services/avis.service';
+import { LivraisonAutoService } from '../services/livraison-auto.service';
 import { logger } from '../utils/logger';
 
 /**
@@ -486,8 +487,38 @@ export class CronController {
   }
 
   /**
+   * Livraison automatique des commandes confirmées : 2 rappels e-mail au vendeur (J+7, J+9) puis
+   * passage en « livrée » à J+10.
+   *
+   * GET /api/v1/cron/livraison-auto            (en-tête x-cron-key)
+   * GET /api/v1/cron/livraison-auto?simulation=1   liste ce qui serait fait, sans rien envoyer ni modifier
+   */
+  static async executeLivraisonAuto(req: Request, res: Response): Promise<void> {
+    try {
+      const simulation = ['1', 'true'].includes(String(req.query.simulation ?? '').toLowerCase());
+      const bilan = await LivraisonAutoService.executer({ simulation });
+
+      res.status(200).json({
+        success: true,
+        message: bilan.actif
+          ? `${bilan.rappels_1 + bilan.rappels_2} rappel(s), ${bilan.livrees} commande(s) passée(s) en livrée`
+          : 'Livraison automatique désactivée (LIVRAISON_AUTO_ACTIVE=false)',
+        ...bilan,
+        executed_at: new Date().toISOString()
+      });
+    } catch (error: any) {
+      logger.error('[CronController] Erreur livraison automatique:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erreur lors de la livraison automatique des commandes',
+        error: error.message
+      });
+    }
+  }
+
+  /**
    * Exécute manuellement l'annulation des commandes orphelines
-   * 
+   *
    * GET /api/v1/cron/annuler-commandes-orphelines
    */
   static async executeAnnulerCommandesOrphelines(req: Request, res: Response): Promise<void> {

@@ -239,7 +239,11 @@ export interface Commande {
   date_expedition?: Date;
   date_livraison?: Date;
   date_modification: Date;
-  
+
+  // Livraison automatique (cron) : rappels e-mail envoyés au vendeur avant le passage en livrée
+  rappels_livraison_auto?: number;
+  date_dernier_rappel_livraison_auto?: Date;
+
   // Relations
   boutique?: Boutique;
   articles?: CommandeArticle[];

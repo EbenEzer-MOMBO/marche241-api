@@ -31,6 +31,7 @@ d'importance (la tâche ne retire que les badges de plus de 7 jours), mais à v�
 | Statuts des publicités | toutes les heures, minute 5 | `/api/v1/cron/publicites/statuts` |
 | Synchronisation des boosts Meta | toutes les heures, minute 20 | `/api/v1/cron/boosts/sync` |
 | Relances des boosts non finalisés | toutes les heures, minute 40 | `/api/v1/cron/boosts/relances` |
+| Livraison automatique des commandes confirmées | chaque jour à 09:00 | `/api/v1/cron/livraison-auto` |
 | Retrait du badge « nouveau » | chaque jour à 03:00 | `/api/v1/cron/retirer-statut-nouveau` |
 | Agrégation des statistiques d'audience | chaque jour à 00:15 | `/api/v1/cron/agreger-statistiques` |
 | Nettoyage des vues (> 90 jours) | chaque jour à 00:45 | `/api/v1/cron/nettoyer-vues` |
@@ -42,6 +43,15 @@ Les relances de boosts tournent toutes les heures, mais l'envoi n'a lieu qu'à l
 réglée dans l'admin (`relance_heure_envoi`) ; les autres appels sont sans effet. Ne pas lancer deux fois
 la route dans la même heure : l'API ne verrouille pas la tâche (un doublon est toutefois évité par le
 garde-fou « un message par boutique et par intervalle »).
+
+La livraison automatique prévient le vendeur par e-mail (et push) 2 fois, à J+7 puis J+9 après la
+confirmation, puis passe la commande « confirmée » en « livrée » à J+10 (WhatsApp au client, push au
+vendeur). Un seul appel par jour suffit ; le rappel 1 et le rappel 2 ne partent jamais deux fois
+(compteur `commandes.rappels_livraison_auto`), et chaque étape (rappel 1, rappel 2, livraison) est
+espacée d'au moins 20 h de la précédente : une commande déjà ancienne à la mise en service du cron
+reçoit un rappel par jour, et un cron interrompu ne livre jamais sans préavis. `?simulation=1` liste ce qui serait fait sans rien
+envoyer ni modifier. Réglages : `LIVRAISON_AUTO_JOURS` (défaut 10, minimum 3) et
+`LIVRAISON_AUTO_ACTIVE=false` pour tout couper. Non incluse dans `/api/v1/cron/tasks`.
 
 Si cron-job.org garde le serveur éveillé via `/health`, mettre `MONITOR_AUTOPING_ACTIVE=false`.
 
