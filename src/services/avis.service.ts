@@ -27,8 +27,6 @@ export interface BilanInvitationsAvis {
 
 type CanalEnvoi = 'meta' | 'green_api' | 'echec';
 
-const frontend = (): string => (process.env.FRONTEND_URL || 'https://marche241.ga').replace(/\/$/, '');
-
 /** Envoie le lien WhatsApp ; ne lève jamais (un échec est un canal 'echec'). */
 async function envoyerLien(destinataire: Omit<InvitationCreee, 'jeton'>, jeton: string, relance: boolean): Promise<CanalEnvoi> {
   return WhatsAppService.sendInvitationAvis(destinataire.client_telephone, {
@@ -174,12 +172,6 @@ export class AvisService {
             : `${liste.length} nouveaux avis publiés sur vos produits`;
         try {
           await PushService.sendToVendeur(vendeurId, { title: titre, body: corps, url: chemin });
-          if (premier.vendeur_telephone) {
-            await WhatsAppService.sendCustomMessage(
-              premier.vendeur_telephone,
-              `⭐ *${titre}*\n\n${corps}.\n\nLisez et répondez depuis votre espace vendeur :\n${frontend()}${chemin}`
-            );
-          }
         } catch (err) {
           logger.warn(`[AvisService] Notification du vendeur ${vendeurId} non envoyée:`, err);
         }

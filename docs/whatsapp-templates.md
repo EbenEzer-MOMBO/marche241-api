@@ -5,7 +5,6 @@
 | Canal | Usage |
 |-------|--------|
 | **Meta Cloud API** | Templates transactionnels : confirmation, expédition, livraison, annulation, paiement échoué, notif vendeur |
-| **GREEN-API** | Fallback texte + `en_preparation` / `remboursee` + check-number + messages libres |
 
 Variables d'environnement Meta (mêmes credentials que l'admin campagnes) :
 
@@ -15,13 +14,7 @@ WHATSAPP_PHONE_NUMBER_ID=...
 META_WHATSAPP_GRAPH_VERSION=v21.0   # optionnel
 ```
 
-Variables GREEN-API (fallback / utilitaires) :
-
-```
-GREEN_API_ID_INSTANCE=...
-GREEN_API_TOKEN=...
-GREEN_API_URL=https://api.green-api.com
-```
+GREEN-API n'est gardé que pour `POST /whatsapp/check-number` (variables `GREEN_API_ID_INSTANCE`, `GREEN_API_TOKEN`, `GREEN_API_URL`) : aucun envoi texte libre, pas de repli, `en_preparation` / `remboursee` ne notifient plus par WhatsApp.
 
 Réconciliation paiements :
 
@@ -126,7 +119,7 @@ Aucun paramètre (header/body fixes ; bouton phone support dans le template Meta
 3. **Cron orphelines** — `GET /cron/annuler-commandes-orphelines?key=…`  
    - Commandes `en_attente` sans TX → `annulee` + `commande_annulee_notification`
 4. **PATCH `/commandes/:id/status`** — Meta pour `confirmee` / `expedie` / `livree` / `annulee`  
-   - GREEN-API pour `en_preparation` / `remboursee`
+   - aucun message WhatsApp pour `en_preparation` / `remboursee` (pas de template Meta)
 
 Pas de webhook Make.com : le suivi repose sur le poll front + la réconciliation cron externe.
 
@@ -165,4 +158,4 @@ Le seuil métier reste **60 minutes** (`PAYMENT_RECONCILE_AFTER_MINUTES`) : un p
 GET /api/v1/whatsapp/status
 ```
 
-Réponse attendue : `data.meta.configured` et/ou `data.greenApi.configured`.
+Réponse attendue : `data.meta.configured`.

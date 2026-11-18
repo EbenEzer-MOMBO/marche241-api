@@ -5,110 +5,15 @@ import { WhatsappSubscriberModel } from '../models/whatsapp_subscriber.model';
 
 export class WhatsAppController {
   /**
-   * Envoie un message WhatsApp personnalisé
+   * Envoi de texte libre supprimé : GREEN-API est retiré, seuls les templates Meta sont utilisés.
    */
-  static async envoyerMessage(req: Request, res: Response): Promise<void> {
-    try {
-      const { telephone, message } = req.body;
-
-      if (!telephone || !message) {
-        res.status(400).json({
-          success: false,
-          message: 'Les champs telephone et message sont obligatoires'
-        });
-        return;
-      }
-
-      const otpRegex =
-        /^Votre code de vérification Marché241 est:\s*(\d{4,8})\n\nCe code expire dans 10 minutes\.$/i;
-      const allowedTemplates: RegExp[] = [
-        otpRegex,
-        /^Marché241:/i,
-        /^Nouvelle commande/i,
-        /^Votre commande/i,
-        /^Statut de votre commande/i
-      ];
-
-      const hasInternalSecret =
-        !!process.env.INTERNAL_API_SECRET &&
-        req.headers['x-internal-secret'] === process.env.INTERNAL_API_SECRET;
-
-      let isUserAuthenticated = false;
-      const authHeader = req.headers.authorization;
-      if (authHeader && authHeader.startsWith('Bearer ')) {
-        const token = authHeader.substring(7);
-        try {
-          const jwtSecret = process.env.JWT_SECRET;
-          if (jwtSecret) {
-            const decoded = jwt.verify(token, jwtSecret);
-            if (decoded) {
-              isUserAuthenticated = true;
-            }
-          }
-        } catch {
-          // Token invalide → traité comme anonyme
-        }
-      }
-
-      const isTrusted = isUserAuthenticated || hasInternalSecret;
-
-      if (!isTrusted) {
-        // Accès public : uniquement le template OTP Marché241
-        if (!otpRegex.test(message.trim())) {
-          console.warn(
-            `[WhatsAppController] Envoi bloqué : format non autorisé (anonyme). Destination: ${telephone}`
-          );
-          res.status(403).json({
-            success: false,
-            message: 'Action interdite. Format de message non autorisé pour les requêtes publiques.',
-            code: 'FORBIDDEN_MESSAGE_FORMAT'
-          });
-          return;
-        }
-      } else {
-        // Auth / secret interne : allowlist de templates uniquement
-        const matchesAllowlist = allowedTemplates.some((regex) => regex.test(message.trim()));
-        if (!matchesAllowlist) {
-          console.warn(
-            `[WhatsAppController] Envoi bloqué : message hors allowlist. Destination: ${telephone}`
-          );
-          res.status(403).json({
-            success: false,
-            message: 'Action interdite. Message hors allowlist de templates.',
-            code: 'FORBIDDEN_MESSAGE_TEMPLATE'
-          });
-          return;
-        }
-      }
-
-      const messageId = await WhatsAppService.sendMessage(telephone, message);
-
-      if (!messageId) {
-        res.status(500).json({
-          success: false,
-          message: 'Échec de l\'envoi du message. Vérifiez la configuration GREEN-API.'
-        });
-        return;
-      }
-
-      res.status(200).json({
-        success: true,
-        message: 'Message envoyé avec succès via WhatsApp',
-        data: {
-          messageId,
-          numeroDestination: WhatsAppService.formatPhoneNumber(telephone)
-        }
-      });
-    } catch (error: any) {
-      console.error('Erreur lors de l\'envoi du message WhatsApp:', error.message);
-      res.status(500).json({
-        success: false,
-        message: 'Erreur lors de l\'envoi du message WhatsApp',
-        error: error.message
-      });
-    }
+  static async envoyerMessage(_req: Request, res: Response): Promise<void> {
+    res.status(410).json({
+      success: false,
+      message: 'Envoi de message libre indisponible : WhatsApp passe uniquement par les templates Meta.',
+      code: 'WHATSAPP_TEXTE_LIBRE_SUPPRIME'
+    });
   }
-
 
   /**
    * Envoie une notification de changement de statut de commande
@@ -161,7 +66,7 @@ export class WhatsAppController {
       if (!messageId) {
         res.status(200).json({
           success: true,
-          message: 'Notification non envoyée (service non configuré ou statut sans message défini)',
+          message: 'Notification non envoyée (Meta non configuré ou statut sans template défini)',
           data: {
             numeroDestination: telephone,
             numeroCommande,
@@ -232,7 +137,7 @@ export class WhatsAppController {
       if (!messageId) {
         res.status(500).json({
           success: false,
-          message: 'Échec de l\'envoi de la notification. Vérifiez la configuration Meta (WHATSAPP_*) ou GREEN-API.'
+          message: 'Échec de l\'envoi de la notification. Vérifiez la configuration Meta (WHATSAPP_*).'
         });
         return;
       }
@@ -258,89 +163,17 @@ export class WhatsAppController {
   }
 
   /**
-   * Endpoint de test pour vérifier la configuration WhatsApp GREEN-API
-   */
-  static async testConfiguration(req: Request, res: Response): Promise<void> {
-    try {
-      const { telephone } = req.body;
-
-      if (!telephone) {
-        res.status(400).json({
-          success: false,
-          message: 'Le champ telephone est obligatoire pour le test'
-        });
-        return;
-      }
-
-      // Vérifier si le service est configuré
-      if (!WhatsAppService.isConfigured()) {
-        res.status(500).json({
-          success: false,
-          message: 'Service WhatsApp non configuré',
-          details: 'Vérifiez les variables GREEN_API_ID_INSTANCE et GREEN_API_TOKEN'
-        });
-        return;
-      }
-
-      // Envoyer un message de test
-      const messageTest = `🧪 *Test Marché 241*
-
-Ce message confirme que la configuration WhatsApp GREEN-API fonctionne correctement.
-
-📅 Date: ${new Date().toLocaleString('fr-FR')}
-✅ Statut: Connecté`;
-
-      const messageId = await WhatsAppService.sendMessage(telephone, messageTest);
-
-      if (!messageId) {
-        res.status(500).json({
-          success: false,
-          message: 'Échec du test. Message non envoyé.',
-          details: 'Vérifiez les logs pour plus de détails.'
-        });
-        return;
-      }
-
-      res.status(200).json({
-        success: true,
-        message: 'Test WhatsApp réussi ! Message envoyé.',
-        data: {
-          messageId,
-          numeroDestination: WhatsAppService.formatPhoneNumber(telephone),
-          provider: 'GREEN-API'
-        }
-      });
-
-    } catch (error: any) {
-      console.error('Erreur lors du test WhatsApp:', error.message);
-      res.status(500).json({
-        success: false,
-        message: 'Échec du test WhatsApp',
-        error: error.message,
-        details: 'Vérifiez votre configuration GREEN_API_ID_INSTANCE et GREEN_API_TOKEN'
-      });
-    }
-  }
-
-  /**
    * Vérifie le statut de la configuration WhatsApp
    */
   static async getStatus(req: Request, res: Response): Promise<void> {
     try {
-      const greenConfigured = WhatsAppService.isConfigured();
       const metaConfigured = WhatsAppService.isMetaConfigured();
 
       res.status(200).json({
         success: true,
         data: {
-          configured: greenConfigured || metaConfigured,
-          greenApi: {
-            configured: greenConfigured,
-            provider: 'GREEN-API',
-            apiUrl: process.env.GREEN_API_URL || 'https://api.green-api.com',
-            instanceConfigured: !!process.env.GREEN_API_ID_INSTANCE,
-            tokenConfigured: !!process.env.GREEN_API_TOKEN,
-          },
+          configured: metaConfigured,
+          provider: 'Meta Cloud API',
           meta: {
             configured: metaConfigured,
             provider: 'Meta Cloud API',
