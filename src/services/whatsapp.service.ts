@@ -4,6 +4,7 @@ import {
   OrderArticleLike,
   TemplateComponent,
   buildAnnulationComponents,
+  buildBienvenueVendeurComponents,
   buildBilletsComponents,
   buildInvitationAvisComponents,
   buildConfirmationClientComponents,
@@ -326,6 +327,20 @@ export class WhatsAppService {
       buildInvitationAvisComponents(data)
     );
     return metaId ? 'meta' : 'echec';
+  }
+
+  /**
+   * Message de bienvenue à un nouveau vendeur (template Meta `message_bienvenue_nouveaux_vendeurs`).
+   */
+  static async sendBienvenueVendeur(phone: string, nom: string): Promise<string | null> {
+    if (!this.isMetaConfigured()) {
+      logger.warn('[WhatsAppService] Meta non configuré — message de bienvenue vendeur non envoyé');
+      return null;
+    }
+
+    const prenom = nom.trim().split(/\s+/)[0] || nom.trim();
+    const tpl = META_TEMPLATES.bienvenueVendeur;
+    return this.sendTemplateMessage(phone, tpl.name, tpl.language, buildBienvenueVendeurComponents({ prenom }));
   }
 
   /**
