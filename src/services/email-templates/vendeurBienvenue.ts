@@ -1,5 +1,7 @@
 import { badge, ctaButton, heading, infoTable, note, paragraph, renderEmailLayout, spacer } from './layout';
 
+const CHAINE_WHATSAPP_URL = 'https://whatsapp.com/channel/0029VbBzgLjAzNbrcnABaa3M';
+
 export interface VendeurBienvenueData {
   nom: string;
   boutiqueUrl: string;
@@ -24,6 +26,10 @@ export function vendeurBienvenueTemplate({ nom, boutiqueUrl, dashboardProduitsUr
       { label: '3 · Partagez votre lien', value: 'WhatsApp et réseaux sociaux' },
     ]),
     spacer(20),
+    paragraph('Rejoignez notre chaîne WhatsApp pour suivre les nouveautés, les conseils de vente et les annonces de la plateforme.'),
+    spacer(20),
+    ctaButton(CHAINE_WHATSAPP_URL, 'Rejoindre la chaîne WhatsApp'),
+    spacer(20),
     note("Une question ? Répondez simplement à cet email, une personne de l'équipe vous lit."),
   ].join('\n');
 
@@ -35,6 +41,6 @@ export function vendeurBienvenueTemplate({ nom, boutiqueUrl, dashboardProduitsUr
       contentRows,
       unsubscribe: true,
     }),
-    text: `Bienvenue sur Marché241, ${nom} ! Votre boutique est en ligne : ${boutiqueUrl}. Ajoutez vos premiers produits ici : ${dashboardProduitsUrl}`,
+    text: `Bienvenue sur Marché241, ${nom} ! Votre boutique est en ligne : ${boutiqueUrl}. Ajoutez vos premiers produits ici : ${dashboardProduitsUrl}. Rejoignez notre chaîne WhatsApp : ${CHAINE_WHATSAPP_URL}`,
   };
 }
