@@ -30,6 +30,7 @@ const META_TEMPLATES = {
   paiementEchoue: { name: 'tentative_de_paiement_echouee', language: 'fr' },
   billets: { name: 'billets_commande', language: 'fr' },
   invitationAvis: { name: 'invitation_avis', language: 'fr' },
+  bienvenueVendeur: { name: 'message_bienvenue_nouveaux_vendeurs', language: 'fr' },
   relanceBoosts: { name: 'relance_boosts_vendeur', language: 'fr' },
 } as const;
 
@@ -131,6 +132,19 @@ export function buildLivraisonComponents(data: {
     {
       type: 'body',
       parameters: textParams(data.clientNom, data.numeroCommande, data.boutiqueName),
+    },
+  ];
+}
+
+/**
+ * Template `message_bienvenue_nouveaux_vendeurs` (catégorie Marketing) :
+ * en-tête texte « Bienvenue à bord, {{1}} ! » (prénom), corps et bouton fixes.
+ */
+export function buildBienvenueVendeurComponents(data: { prenom: string }): TemplateComponent[] {
+  return [
+    {
+      type: 'header',
+      parameters: textParams(data.prenom),
     },
   ];
 }

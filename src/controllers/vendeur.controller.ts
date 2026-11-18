@@ -559,6 +559,15 @@ export class VendeurController {
             // On continue même si l'email échoue
           }
         }
+
+        // Message WhatsApp de bienvenue (template Meta) — n'empêche jamais la connexion
+        if (vendeurMisAJour.telephone) {
+          try {
+            await WhatsAppService.sendBienvenueVendeur(vendeurMisAJour.telephone, vendeurMisAJour.nom);
+          } catch (whatsappError: any) {
+            logger.error('[verifierCode] Erreur lors de l\'envoi du WhatsApp de bienvenue:', whatsappError);
+          }
+        }
       }
       
       // Générer un token JWT
