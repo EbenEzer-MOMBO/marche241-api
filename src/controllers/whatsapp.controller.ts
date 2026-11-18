@@ -195,25 +195,52 @@ export class WhatsAppController {
   }
 
   /**
-   * Vérification d'existence d'un compte WhatsApp : impossible via l'API Meta Cloud
-   * (GREEN-API retiré). Réponse permissive pour ne pas bloquer les parcours existants.
+   * Vérifie si un numéro dispose d'un compte WhatsApp
    */
   static async checkWhatsAppNumber(req: Request, res: Response): Promise<void> {
-    const { telephone } = req.body;
+    try {
+      const { telephone } = req.body;
 
-    if (!telephone) {
-      res.status(400).json({
-        success: false,
-        message: 'Le champ telephone est obligatoire'
+      if (!telephone) {
+        res.status(400).json({
+          success: false,
+          message: 'Le champ telephone est obligatoire'
+        });
+        return;
+      }
+
+      // Vérifier si le service est configuré
+      if (!WhatsAppService.isConfigured()) {
+        res.status(500).json({
+          success: false,
+          message: 'Service WhatsApp non configuré sur le serveur backend.'
+        });
+        return;
+      }
+
+      const result = await WhatsAppService.checkWhatsAppNumber(telephone);
+
+      if (!result) {
+        res.status(500).json({
+          success: false,
+          message: 'Échec de la vérification WhatsApp.'
+        });
+        return;
+      }
+
+      res.status(200).json({
+        success: true,
+        existsWhatsapp: result.existsWhatsapp
       });
-      return;
-    }
 
-    res.status(200).json({
-      success: true,
-      existsWhatsapp: true,
-      verifie: false
-    });
+    } catch (error: any) {
+      console.error('Erreur lors de la vérification du numéro WhatsApp:', error.message);
+      res.status(500).json({
+        success: false,
+        message: 'Erreur lors de la vérification du numéro WhatsApp',
+        error: error.message
+      });
+    }
   }
 
   /**

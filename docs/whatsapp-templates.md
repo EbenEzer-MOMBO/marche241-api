@@ -14,7 +14,7 @@ WHATSAPP_PHONE_NUMBER_ID=...
 META_WHATSAPP_GRAPH_VERSION=v21.0   # optionnel
 ```
 
-GREEN-API est retiré : aucun envoi texte libre, pas de repli, `en_preparation` / `remboursee` ne notifient plus par WhatsApp.
+GREEN-API n'est gardé que pour `POST /whatsapp/check-number` (variables `GREEN_API_ID_INSTANCE`, `GREEN_API_TOKEN`, `GREEN_API_URL`) : aucun envoi texte libre, pas de repli, `en_preparation` / `remboursee` ne notifient plus par WhatsApp.
 
 Réconciliation paiements :
 

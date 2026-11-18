@@ -4,6 +4,7 @@ import { BoutiqueModel } from '../models/boutique.model';
 import { WhatsappSubscriberModel } from '../models/whatsapp_subscriber.model';
 import { DemandeCodeVerification, VerificationCode, ConnexionVendeur, CreateVendeurData, Vendeur, StatutVendeur } from '../lib/database-types';
 import { EmailService } from '../services/email.service';
+import { WhatsAppService } from '../services/whatsapp.service';
 import jwt from 'jsonwebtoken';
 import { generateToken } from '../utils/jwt.utils';
 import { hasValidMxRecord } from '../utils/email.utils';
@@ -111,6 +112,17 @@ export class VendeurController {
         return;
       }
 
+      // Vérifier que le numéro fourni correspond bien à un compte WhatsApp existant
+      // avant de créer le vendeur (évite l'abus de numéros valides syntaxiquement mais fictifs)
+      const whatsappCheck = await WhatsAppService.checkWhatsAppNumber(telephone);
+      if (whatsappCheck !== null && whatsappCheck.existsWhatsapp === false) {
+        res.status(400).json({
+          success: false,
+          message: 'Le numéro de téléphone fourni ne correspond à aucun compte WhatsApp valide'
+        });
+        return;
+      }
+
       // Créer le vendeur et générer le code
       const { vendeur, code } = await VendeurModel.inscrireVendeur({
         email,
@@ -206,6 +218,17 @@ export class VendeurController {
         res.status(400).json({
           success: false,
           message: 'Le domaine de l\'adresse email fournie n\'existe pas ou ne peut pas recevoir d\'emails'
+        });
+        return;
+      }
+
+      // Vérifier que le numéro fourni correspond bien à un compte WhatsApp existant
+      // avant de créer le vendeur (évite l'abus de numéros valides syntaxiquement mais fictifs)
+      const whatsappCheck = await WhatsAppService.checkWhatsAppNumber(vendeurData.telephone);
+      if (whatsappCheck !== null && whatsappCheck.existsWhatsapp === false) {
+        res.status(400).json({
+          success: false,
+          message: 'Le numéro de téléphone fourni ne correspond à aucun compte WhatsApp valide'
         });
         return;
       }
