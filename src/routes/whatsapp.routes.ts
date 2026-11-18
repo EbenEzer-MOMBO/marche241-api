@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { WhatsAppController } from '../controllers/whatsapp.controller';
-import { auth, isAdmin } from '../middlewares/auth.middleware';
+import { auth } from '../middlewares/auth.middleware';
 import { whatsappLimiter, whatsappCheckLimiter } from '../middlewares/rate-limit.middleware';
 
 const router = Router();
@@ -9,7 +9,7 @@ const router = Router();
  * @swagger
  * /api/v1/whatsapp/status:
  *   get:
- *     summary: Vérifie le statut de la configuration WhatsApp GREEN-API
+ *     summary: Vérifie le statut de la configuration WhatsApp (Meta Cloud API)
  *     tags: [WhatsApp]
  *     responses:
  *       200:
@@ -28,7 +28,7 @@ const router = Router();
  *                       type: boolean
  *                     provider:
  *                       type: string
- *                       example: "GREEN-API"
+ *                       example: "Meta Cloud API"
  */
 router.get('/status', WhatsAppController.getStatus);
 
@@ -212,35 +212,6 @@ router.post('/envoyer-message', whatsappLimiter, WhatsAppController.envoyerMessa
  *         description: Erreur serveur
  */
 router.post('/notifier-vendeur', auth, WhatsAppController.notifierVendeurNouvelleCommande);
-
-/**
- * @swagger
- * /api/v1/whatsapp/test:
- *   post:
- *     summary: Test la configuration WhatsApp GREEN-API avec un message de démonstration
- *     tags: [WhatsApp]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - telephone
- *             properties:
- *               telephone:
- *                 type: string
- *                 description: Numéro WhatsApp pour le test
- *                 example: "+24177123456"
- *     responses:
- *       200:
- *         description: Test réussi, message envoyé
- *       400:
- *         description: Données invalides
- *       500:
- *         description: Erreur de configuration ou d'envoi
- */
-router.post('/test', auth, isAdmin, WhatsAppController.testConfiguration);
 
 /**
  * @swagger

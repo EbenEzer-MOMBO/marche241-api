@@ -26,7 +26,7 @@ config/      database.ts (Pool pg, helper `query`) · storage.ts (R2)
 routes/      *.routes.ts — schémas Joi + chaîne de middlewares ; montage dans routes/index.ts sous API_PREFIX (/api/v1)
 controllers/ classes à méthodes statiques (ex. ProduitController.creer)
 models/      accès SQL par entité (requêtes paramétrées $1, $2…)
-services/    email (Resend), whatsapp (Meta + Green API), push, passkey, billet, htmltopdf, cron, websocket, monitor
+services/    email (Resend), whatsapp (Meta uniquement), push, passkey, billet, htmltopdf, cron, websocket, monitor
 middlewares/ auth (JWT vendeur), service-auth (x-service-key admin), cron-auth, validation (Joi), rate-limit, captcha (Turnstile), upload (multer), error, logger
 utils/       validation.schemas*.ts, swagger-schemas*.ts, jwt, storage, logger…
 lib/database-types.ts   types du schéma — COPIE DE RÉFÉRENCE (cf. ../CLAUDE.md)
