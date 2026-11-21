@@ -7,6 +7,7 @@ import { WhatsAppService } from '../services/whatsapp.service';
 import { PushService } from '../services/push.service';
 import { logger } from '../utils/logger';
 import { stockDisponibleSelection } from '../utils/stock-variant';
+import { prixSelectionServeur } from '../utils/prix-commande';
 import {
   extraireParticipantsDepuisArticle,
   isProduitEvenement,
@@ -94,7 +95,28 @@ export class CommandeController {
             });
             continue;
           }
-          
+
+          // Le prix vient toujours du serveur : celui envoyé par le client est écrasé
+          const prixServeur = prixSelectionServeur(produit, article.variants_selectionnes);
+          if (!prixServeur.ok) {
+            produitsIndisponibles.push({
+              produit_id: article.produit_id,
+              nom: produit.nom,
+              raison: prixServeur.raison
+            });
+            continue;
+          }
+          if (Number(article.prix_unitaire) !== prixServeur.prixUnitaire) {
+            logger.warn(
+              `[createCommande] Prix client ignoré pour le produit ${article.produit_id} : reçu ${article.prix_unitaire}, attendu ${prixServeur.prixUnitaire}`
+            );
+          }
+          article.prix_unitaire = prixServeur.prixUnitaire;
+          // variant.prix = prix du variant seul : le front y ajoute les suppléments de personnalisation
+          if (article.variants_selectionnes?.variant && typeof article.variants_selectionnes.variant === 'object') {
+            article.variants_selectionnes.variant.prix = prixServeur.prixBase;
+          }
+
           // Vérifier le stock selon les variants
           // Nouveau format: variants_selectionnes = { variant: {...}, options: {...} }
           // Nouveau format produit: variants = { variants: [...], options: [...] }
